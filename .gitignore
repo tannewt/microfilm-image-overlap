@@ -1,0 +1,19 @@
+# Scan image data (large .tif/.jpg batches) -- not version controlled.
+scans/
+scans2/
+pages/
+
+# The microfilm scanner firmware is a separate project; keep it out of here.
+20260818-microfilm-scanner/
+
+# Generated SIFT feature cache (SQLite), match visualizations, and run logs.
+sift_cache/
+overlap_viz/
+logs/
+__pycache__/
+*.pyc
+
+# Text outputs from sequence_overlap / extract_anomalies runs.
+scan_overlap_results.txt
+*_anomalies.txt
+*_run.txt

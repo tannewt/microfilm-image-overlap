@@ -1,0 +1,353 @@
+# image-overlap
+
+Measure how much microfilm scans overlap, so you know how to stitch a
+sequence of scans back together. Three entry points:
+
+- **`sequence_overlap.py`** — run the analysis over every consecutive pair in a
+  folder (a *batch*), print each pair's overlap, and a summary at the end.
+- **`check_overlap_sift.py`** — analyze a single pair, with optional
+  `--vis` (match visualization) and `--stitch` (overlapped composite) outputs;
+  also holds the on-disk SIFT feature store used by the tools below.
+- **`build_sift_cache.py`** — build (in parallel, across ALL batches) the SIFT
+  feature cache that the cross-batch search indexes.
+- **`find_nonconsecutive_overlaps.py`** — find the **same source page scanned in
+  multiple batches** (a re-scan / re-shoot of a page across batches), reusing
+  the on-disk SIFT cache and a bag-of-visual-words candidate filter so it isn't
+  O(N²) full matching.
+
+Plus a helper:
+
+- **`extract_anomalies.py`** — turn a `sequence_overlap.py` text run into a
+  short report of the *no-overlap* and *near-duplicate* pairs.
+
+## Requirements
+
+```
+pip install opencv-python numpy
+```
+
+Python 3. Tested on large (~24 MB) `.tif` scans. No `scikit-learn` needed —
+the visual vocabulary uses `cv2.kmeans`, and the feature cache uses the
+stdlib `sqlite3`.
+
+## How files are organized (batches)
+
+The scanner (`20260818-microfilm-scanner/code.py`) names each scan:
+
+```
+<prefix>_<index>.tif        e.g. 07227-6300_0.28_0033.tif
+```
+
+`prefix` is a random 5-digit roll id plus the slide/delay settings; **all scans
+in one batch share the same prefix** and differ only in the trailing 4-digit
+index. Use `--pattern` to select one batch out of a folder that holds many:
+
+```
+python sequence_overlap.py scans2/P81-4720/ --pattern '^07227-'
+```
+
+`--pattern` is a regex matched with `re.search` (use `^` to anchor to the
+start of the filename). Files are sorted by the **last** number in the name
+(the per-image index), which is the correct key for this naming scheme. (The
+old "first number in the name" logic would collapse a whole batch to one
+entry, since every file shares the leading prefix number.)
+
+## Quick start
+
+### Run a whole batch
+
+```
+python sequence_overlap.py scans2/P81-4720/ --pattern '^07227-' --cache-dir sift_cache
+```
+
+`--cache-dir` reuses the shared SIFT cache built by `build_sift_cache.py` (see
+below), so SIFT runs at most once per image ever. Without it, the report
+recomputes SIFT in-memory each run. The cache is built at `--max-dim 3200`
+(default; COLMAP's default max image size) by `build_sift_cache.py`, and this
+report uses the same default so it reuses those rows.
+
+Output, one line per consecutive pair plus a summary:
+
+```
+07227-6300_0.28_0000.tif -> 07227-6300_0.28_0001.tif:   7.8% area,   7.9% vert, dx=+43 dy=+2946, 184 matches, IQR(dy)=7
+...
+07227-6300_0.28_0032.tif -> 07227-6300_0.28_0033.tif:   9.3% area,   9.3% vert, dx=+0 dy=+2887, 584 matches, IQR(dy)=0 [via pixel-NCC]
+...
+============================================================
+SUMMARY
+============================================================
+Pairs processed:       99
+Pairs with no overlap: 1
+  07227-6300_0.28_0025.tif -> 07227-6300_0.28_0026.tif: no_overlap
+...
+Area overlap across sequence:
+  ____#_____@@@@_______ ...
+```
+
+`dx`/`dy` are in the **scaled** image's pixels (the image is downscaled to
+`--max-dim` before SIFT); at `--max-dim 3200` a 6300-px-tall scan's dy is
+~0.51x its full-resolution value. The **area %** and **vert %** are
+scale-invariant — that is what the report and `extract_anomalies.py` use. A
+pair marked `[via pixel-NCC]` was detected by the pixel-correlation fallback
+(see below) rather than by SIFT.
+
+### Save the run to a file, then summarize the anomalies
+
+```
+python sequence_overlap.py scans2/P81-4720/ --pattern '^07227-' --cache-dir sift_cache \
+    > 07227_run.txt
+python extract_anomalies.py 07227_run.txt -o 07227_anomalies.txt
+```
+
+`extract_anomalies.py` lists the pairs that are *no-overlap* (gaps) and
+*near-duplicate* (>50% area overlap with a small vertical shift — the film
+barely advanced). Use `--near-dup 60` to change the near-duplicate area
+threshold.
+
+### Analyze / visualize a single pair
+
+```
+python check_overlap_sift.py scans2/P81-4720/07227-6300_0.28_0000.tif \
+                              scans2/P81-4720/07227-6300_0.28_0001.tif \
+                              --vis vis.png --stitch stitch.png
+```
+
+`--vis` draws the two images stacked with SIFT match lines between them and
+the projected overlap rectangle. `--stitch` writes the two images aligned on
+one canvas, averaged in the overlap region. Both honor the detected overlap,
+including the pixel-NCC fallback when SIFT can't match.
+
+## How overlap is detected (two methods)
+
+### 1. SIFT + dominant-cluster (default)
+
+SIFT keypoints are detected once per image and matched with FLANN + Lowe's
+ratio test. Repetitive page structure (text lines, column rules, repeated
+headings) produces spurious matches at a consistent but *wrong* vertical
+offset, so the per-match vertical offset is often **multi-modal**: a dominant
+cluster of real matches plus spurious clusters. The detector locates the
+single densest cluster (a 1-D histogram peak of the per-match `dy`), keeps
+the matches near that peak (in both `dy` and `dx`), and judges the overlap
+from that cluster alone:
+
+- **real overlap** = the cluster has at least `--min-matches` matches **and**
+  its `dy` IQR is at most `--max-iqr`.
+
+The returned translation is the cluster median, so the overlap metrics and
+the viz/stitch use the *real* overlap even when spurious matches are present.
+
+### 2. Pixel-NCC fallback (when SIFT fails)
+
+If SIFT finds too few consistent matches, the pair falls back to direct
+**pixel normalized cross-correlation**. This handles overlap regions that are
+mostly black — e.g. a microfilm **page boundary** with no texture — where SIFT
+has nothing to match. A real overlap's black region is the *same physical
+strip* in both frames, so black-on-black correlates strongly.
+
+The fallback sweeps a vertical shift and computes the NCC of the **overlapping
+rows only** (a central column band ignores the left/right frame borders). A
+real overlap shows up as a **high-NCC peak at a modest overlap extent**
+(`50`–`1500` px); the consistent frame border produces a spurious peak at
+near-full-frame extent with only moderate NCC, which the overlap-extent cap
+ignores. Reported as `[via pixel-NCC]` in the batch output.
+
+## Tuning
+
+| option | default | meaning |
+|---|---|---|
+| `--pattern` | — | regex selecting which filenames to process (one batch) |
+| `--min-matches` | 20 | min SIFT cluster size for a real overlap. Lower to ~15 to recover borderline overlaps with few but tight matches. |
+| `--max-iqr` | 500 | max `dy` IQR (px) of the SIFT cluster for a real overlap |
+| `--max-dx` | 500 | drop matches whose horizontal offset exceeds this. **Do not relax** — it rejects the "right edge of one page shows on the left of the next" artifact. |
+| `--ratio` | 0.6 | Lowe's ratio-test threshold (lower = stricter) |
+| `--contrast` | 0.08 | SIFT contrast threshold (higher = fewer, stronger keypoints) |
+| `--min-size` | 3.0 | minimum keypoint diameter (px), drops tiny text-character features |
+| `--max-dim` | 3200 | downscale each image so its largest dimension ≤ this before SIFT (0 = full res, slow). Must match the cache to reuse it. |
+| `--cache-dir` | — | persist SIFT keypoints/descriptors to a single SQLite store (`DIR/sift.sqlite`) so SIFT runs once per image ever. See "The SIFT feature cache" below. |
+| `--force-cache` | off | ignore the on-disk cache and recompute SIFT features |
+| `--vis` / `--stitch` | — | single-pair outputs (`check_overlap_sift.py` only) |
+| `--no-blend` | off | in the stitch, don't average the overlap (last image wins) |
+
+### Choosing `--min-matches`
+
+Default 20. If you have borderline real overlaps with a tight but small SIFT
+cluster (common at low-texture page boundaries that *just barely* have a few
+features), `--min-matches 15` recovers them. Don't go much lower, or the
+spurious frame-border matches can sneak through as false overlaps. (The
+pixel-NCC fallback already covers the truly black regions, so most
+low-texture pairs are caught without lowering this.)
+
+## Reading the output
+
+Each pair line:
+
+```
+A -> B:  AA.A% area, VV.V% vert, dx=+/-  dy=+/-, N matches, IQR(dy)=I [via pixel-NCC]
+```
+
+- **area %** — fraction of image A's area that overlaps image B.
+- **vert %** — vertical overlap as a fraction of A's height (the useful
+  number for stitching: how many rows are shared).
+- **dy** — vertical translation A→B in **scaled** pixels (positive = A's top
+  maps toward B's bottom, i.e. the shared strip is A's top / B's bottom). At
+  `--max-dim 3200` this is ~0.51x the full-resolution value; use `--max-dim 0`
+  for original-pixel translations. The scale-invariant **area %** / **vert %**
+  are what the report and `extract_anomalies.py` actually use.
+- **dx** — horizontal translation A→B.
+- **matches / IQR(dy)** — SIFT cluster size and tightness (the cluster method).
+- **`[via pixel-NCC]`** — overlap found by the pixel-NCC fallback.
+
+A pair reported `NO OVERLAP` is a genuine gap (no shared content), not a
+detection failure.
+
+## Files
+
+| file | purpose |
+|---|---|
+| `sequence_overlap.py` | consecutive-pair overlap analysis over one batch (`--pattern`) |
+| `check_overlap_sift.py` | single-pair analysis + SIFT/NCC detection + viz/stitch; also holds the on-disk SIFT feature store (`--cache-dir`) |
+| `build_sift_cache.py` | build the cross-batch SIFT feature cache in parallel (all batches at once) |
+| `find_nonconsecutive_overlaps.py` | find the same source page scanned in multiple batches, via bag-of-visual-words retrieval over the cache |
+| `extract_anomalies.py` | summarize a run's no-overlap & near-duplicate pairs |
+| `stitch_pages.py` | (separate) stitch pages using detected overlaps |
+| `visualize_overlap.py`, `check_overlap.py` | older overlap helpers |
+
+## The SIFT feature cache (`--cache-dir`)
+
+SIFT detection is the expensive step (tens of thousands of keypoints per
+microfilm scan). `build_sift_cache.py`, `sequence_overlap.py`, and
+`find_nonconsecutive_overlaps.py` all accept `--cache-dir DIR` to read/write a
+single on-disk store so SIFT runs **at most once per image ever**, across runs
+and across all three tools. Use `build_sift_cache.py` to populate it in
+parallel across all batches at once; the other tools then reuse it.
+
+The store is one SQLite file (`DIR/sift.sqlite`), following the layout the
+SfM tools (COLMAP, DBoW2, libvot) use for scalable feature storage:
+
+- **Descriptors are stored quantized to `uint8`** (128 bytes each), not
+  `float32` (512 bytes). SIFT descriptors fall in ~[0, 221], so the quantization
+  is lossless in practice and is 4× smaller / faster to load.
+- **Keypoints are stored compactly** as `(x, y, size)` `float32` — the only
+  fields the matching/overlap/viz pipeline reads.
+- One row per image, descriptors + keypoints as BLOBs, indexed by absolute
+  path. Loading is a single bulk `SELECT`, not thousands of small files.
+- Each row records the `contrast` / `min_size` / `max_dim` it was computed
+  with; a row is ignored (and recomputed) if you retune any of those, so a
+  stale cache can't silently give wrong results. `--force-cache` (or
+  `--force` for the builder) recomputes everything.
+
+Example sizes: ~13 MB for 8 large scans; ~2.4 GB for the full 1703-scan
+set at `--max-dim 3200` (~12k keypoints/scan). A warm reload is ~0.1 s per 8
+scans instead of re-running SIFT.
+
+```
+# Build the cache once in parallel across ALL batches (SIFT runs here):
+python build_sift_cache.py scans2/P81-4720/ --cache-dir sift_cache
+
+# Later runs hit the cache -- no SIFT, just matching.
+python sequence_overlap.py scans2/P81-4720/ --pattern '^07227-' --cache-dir sift_cache
+```
+
+The cache is keyed by absolute path, so a shared `--cache-dir` can safely hold
+many batches. `build_sift_cache.py` is safe to re-run: images already cached
+(with matching detection params) are skipped, so you can add new batches
+incrementally. Use `--force` to recompute after changing `--contrast`/
+`--min-size`/`--max-dim`.
+
+**Full-resolution vs scaled.** SIFT internally doubles its input to build the
+first octave, so on a 6300x4635 scan it works on a ~117-megapixel pyramid,
+eats ~8-16 GB, and yields ~135k keypoints. `--max-dim 3200` (the default, and
+COLMAP's default max image size) downscales first: ~12k keypoints/scan,
+~1 GB/worker, and ~3x faster detection + ~50x faster matching, with no loss for
+overlap/retrieval work. The dx/dy in reports are then in scaled pixels; the
+area % / vert % the reports rely on are scale-invariant. Use `--max-dim 0` only
+if you need original-pixel translations (slow, won't reuse a 3200 cache).
+
+## Finding the same source page across batches
+
+Within one batch a scanner only advances the film, so a batch's scans overlap
+only consecutively (handled by `sequence_overlap.py`). The cross-batch case is
+the interesting one: the **same physical page was captured again in a
+different batch** -- a re-scan, a re-shoot, or the same roll loaded twice.
+Those show up as scans from different batches (different filename prefix) that
+share a large fraction of the screen.
+
+`find_nonconsecutive_overlaps.py` indexes every image in a directory -- **all
+batches together** -- and reports cross-batch pairs that share screen content.
+It only ever considers pairs from *different* batches (same-batch
+non-consecutive pairs don't overlap, so checking them is wasted work).
+
+```
+# 1. Build the cross-batch cache once (parallel, all batches, all cores):
+python build_sift_cache.py scans2/P81-4720/ --cache-dir sift_cache
+
+# 2. Find the same source page scanned in multiple batches:
+python find_nonconsecutive_overlaps.py scans2/P81-4720/ --cache-dir sift_cache
+
+# 3. Only report strong near-duplicates (big overlap) across batches:
+python find_nonconsecutive_overlaps.py scans2/P81-4720/ --cache-dir sift_cache \
+    --min-area 50 --top-k 10
+```
+
+Each reported pair prints its overlap area %, vertical overlap %, the A->B
+translation, the SIFT cluster size, the bag-of-words similarity (`bowsim`),
+and the two batch prefixes it spans.
+
+**Why this scales.** With ~12k SIFT features per microfilm scan at
+`--max-dim 3200` (or ~96k at full resolution), running the full FLANN +
+dominant-cluster verification on all cross-batch pairs is infeasible. Instead
+this uses the same trick COLMAP's `vocab_tree_matcher` and the DBoW2 / libvot
+retrieval libraries use:
+
+1. Build a small **visual vocabulary** with k-means on a sample of cached
+   descriptors from *all* batches (`--vocab-k`, default 1000 words).
+2. Turn each image into a tiny **bag-of-visual-words histogram**, TF-IDF
+   weighted and L2-normalized. TF-IDF is important here: microfilm pages share
+   a lot of repetitive structure (text lines, column rules), so a plain count
+   histogram would make every pair look similar; TF-IDF down-weights those
+   common words and emphasizes the distinctive ones.
+3. Find **cross-batch candidate pairs** by histogram cosine similarity (one
+   NxN matrix multiply), keeping the top `--top-k` partners per image above
+   `--min-sim`. Histogramming subsamples descriptors per image (`--hist-sample`)
+   so a 96k-feature scan is histogrammed from 4k descriptors.
+4. Run the **full SIFT verification** (`match_keypoints` + `assess_overlap`)
+   only on those candidates, with each side's descriptors capped at
+   `--verify-cap` so a 96k x 96k match never happens.
+
+So the cost is O(N) histogramming + a cheap NxN similarity pass +
+O(candidates) verification, instead of O(N^2) full matching.
+
+| option | default | meaning |
+|---|---|---|
+| `--min-area` | 1.0 | minimum overlap area % to report a pair |
+| `--vocab-k` | 1000 | number of visual words (k-means clusters) |
+| `--sample-per-image` | 80 | descriptors sampled per image for the vocabulary |
+| `--top-k` | 20 | max cross-batch candidate partners verified per image |
+| `--min-sim` | 0.05 | minimum bag-of-words cosine similarity to verify |
+| `--hist-sample` | 4000 | max descriptors assigned to words per image (retrieval speed) |
+| `--verify-cap` | 5000 | cap descriptors per image during SIFT verification |
+| `--within-batch-gap` | off | also check same-batch pairs with sequence gap >= this (off by default) |
+
+## Example: end-to-end
+
+```
+# 1. Build the shared cross-batch SIFT cache once (parallel, all batches).
+#    SIFT runs here; later steps reuse it. (--max-dim 3200 is the default.)
+python build_sift_cache.py scans2/P81-4720/ --cache-dir sift_cache
+
+# 2. Get an overlap report for one batch (reuses the cache, no SIFT), save it.
+python sequence_overlap.py scans2/P81-4720/ --pattern '^07227-' --cache-dir sift_cache \
+    --min-matches 15 > 07227_run.txt
+
+# 3. Summarize the anomalies (gaps + near-duplicates).
+python extract_anomalies.py 07227_run.txt -o 07227_anomalies.txt
+
+# 4. Find the same source page scanned in OTHER batches (reuses the cache).
+python find_nonconsecutive_overlaps.py scans2/P81-4720/ --cache-dir sift_cache \
+    --min-sim 0.3 --min-area 50
+
+# 5. Inspect a specific pair visually.
+python check_overlap_sift.py scans2/P81-4720/07227-6300_0.28_0032.tif \
+    scans2/P81-4720/07227-6300_0.28_0033.tif \
+    --vis overlap_viz/0032-0033_vis.png --stitch overlap_viz/0032-0033_stitch.png
+```

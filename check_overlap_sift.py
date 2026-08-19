@@ -19,6 +19,8 @@ Examples:
 """
 
 import argparse
+import os
+import sqlite3
 import sys
 
 import cv2
@@ -41,10 +43,9 @@ def load_images(path_a, path_b):
     return img_a_color, img_b_color, gray_a, gray_b
 
 
-def detect_and_match(gray_a, gray_b, ratio=0.75, min_matches=4, contrast=0.08,
-                         min_size=0.0):
+def detect_keypoints(gray, contrast=0.08, min_size=0.0):
     """
-    Detect SIFT features and match with FLANN.
+    Detect SIFT keypoints and descriptors in a grayscale image.
 
     `contrast` is the SIFT contrast threshold; higher values keep only
     stronger, more distinctive keypoints (fewer, better results).
@@ -52,30 +53,231 @@ def detect_and_match(gray_a, gray_b, ratio=0.75, min_matches=4, contrast=0.08,
     smaller than this; useful to avoid matching small text characters and
     keep only larger structural features.
 
-    Returns:
-        kp_a, kp_b: keypoints in each image
-        good: list of matched DMatch objects (after ratio test)
+    Returns (kp, des).
     """
     sift = cv2.SIFT_create(contrastThreshold=contrast)
-    kp_a, des_a = sift.detectAndCompute(gray_a, None)
-    kp_b, des_b = sift.detectAndCompute(gray_b, None)
+    kp, des = sift.detectAndCompute(gray, None)
 
     # Keep only keypoints at least min_size pixels across (drops tiny
     # character-sized features while keeping larger structural ones).
-    if min_size > 0:
-        if kp_a:
-            keep_a = np.array([k.size >= min_size for k in kp_a])
-            kp_a = [k for k, m in zip(kp_a, keep_a) if m]
-            if des_a is not None:
-                des_a = des_a[keep_a]
-        if kp_b:
-            keep_b = np.array([k.size >= min_size for k in kp_b])
-            kp_b = [k for k, m in zip(kp_b, keep_b) if m]
-            if des_b is not None:
-                des_b = des_b[keep_b]
+    if min_size > 0 and kp:
+        keep = np.array([k.size >= min_size for k in kp])
+        kp = [k for k, m in zip(kp, keep) if m]
+        if des is not None:
+            des = des[keep]
+    return kp, des
 
-    if des_a is None or des_b is None or len(des_a) < min_matches or len(des_b) < min_matches:
-        return kp_a, kp_b, []
+
+def _keypoints_to_blob(kp):
+    """Pack keypoint (x, y, size) into a float32 BLOB for SQLite storage."""
+    if not kp:
+        return np.zeros((0, 3), dtype=np.float32).tobytes(), 0
+    arr = np.array([[k.pt[0], k.pt[1], k.size] for k in kp], dtype=np.float32)
+    return arr.tobytes(), len(kp)
+
+
+def _keypoints_from_blob(blob, n):
+    """Reconstruct cv2.KeyPoint list from a (x, y, size) float32 BLOB.
+
+    Only pt and size are needed by the matching / overlap / viz pipeline, so
+    that is all we store (angle/response/octave default)."""
+    if n == 0:
+        return []
+    arr = np.frombuffer(blob, dtype=np.float32).reshape(n, 3)
+    return [cv2.KeyPoint(float(arr[i, 0]), float(arr[i, 1]), float(arr[i, 2]))
+            for i in range(n)]
+
+
+def _descriptors_to_blob(des):
+    """Quantize float32 SIFT descriptors to uint8 (128 bytes each) for storage.
+
+    SIFT descriptors fall in [0, ~256); uint8 quantization is the standard
+    storage format (COLMAP, VLFeat) -- 4x smaller than float32 with negligible
+    matching-accuracy loss."""
+    if des is None or len(des) == 0:
+        return np.zeros((0, 128), dtype=np.uint8).tobytes()
+    return np.clip(np.round(des), 0, 255).astype(np.uint8).tobytes()
+
+
+def _descriptors_from_blob(blob, n):
+    """Load uint8 descriptors, returned as float32 (FLANN/L2 wants float)."""
+    if n == 0:
+        return None
+    return np.frombuffer(blob, dtype=np.uint8).reshape(n, 128).astype(
+        np.float32)
+
+
+def sift_cache_db_path(cache_dir):
+    """Path to the single SQLite feature store under `cache_dir`."""
+    os.makedirs(cache_dir, exist_ok=True)
+    return os.path.join(cache_dir, "sift.sqlite")
+
+
+def downscale_gray(gray, max_dim):
+    """
+    Downscale a grayscale image so its largest dimension is <= `max_dim`
+    (area interpolation), returning it unchanged if already small enough or
+    if `max_dim` <= 0.
+
+    SIFT internally *doubles* the input to build its first octave, so running
+    it on a 6300x4635 microfilm scan works on a ~117-megapixel pyramid and
+    eats ~8-16 GB while yielding ~135k keypoints. Downscaling to ~3200 px
+    first (COLMAP's default max image size) cuts memory ~16x, keypoints ~7x,
+    and detection/matching time ~10x with no loss for overlap/retrieval work.
+    The returned shape is what SIFT actually sees, so callers must use it for
+    overlap geometry (not the original image dimensions).
+    """
+    if max_dim is None or max_dim <= 0:
+        return gray
+    h, w = gray.shape[:2]
+    m = max(h, w)
+    if m <= max_dim:
+        return gray
+    scale = float(max_dim) / m
+    return cv2.resize(gray, (int(round(w * scale)), int(round(h * scale))),
+                      interpolation=cv2.INTER_AREA)
+
+
+def _open_cache(db_path):
+    """Open (creating if needed) the SQLite feature store and its schema."""
+    new = not os.path.exists(db_path)
+    con = sqlite3.connect(db_path)
+    con.execute("PRAGMA journal_mode=WAL")
+    if new:
+        con.executescript(
+            """
+            CREATE TABLE images (
+                image_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                path       TEXT UNIQUE NOT NULL,
+                name       TEXT,
+                h          INTEGER,
+                w          INTEGER,
+                contrast   REAL,
+                min_size   REAL,
+                max_dim    INTEGER DEFAULT 0,
+                n_kp       INTEGER,
+                kp         BLOB,        -- float32, n_kp x 3 (x, y, size)
+                des        BLOB         -- uint8,   n_kp x 128
+            );
+            CREATE INDEX images_path_idx ON images(path);
+            """
+        )
+        con.commit()
+    else:
+        # Migration for caches created before max_dim existed.
+        cols = {r[1] for r in con.execute("PRAGMA table_info(images)")}
+        if "max_dim" not in cols:
+            con.execute(
+                "ALTER TABLE images ADD COLUMN max_dim INTEGER DEFAULT 0")
+            con.commit()
+    return con
+
+
+def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
+                             max_dim=0, force=False):
+    """
+    Detect SIFT keypoints for `path`, reusing a single on-disk SQLite store
+    under `cache_dir` when given (and when the cache matches the requested
+    detection params). Descriptors are stored quantized to uint8.
+
+    `max_dim` (>0) downscales the image so its largest dimension is <= this
+    many pixels before SIFT (see `downscale_gray`). The stored `h, w` is the
+    *scaled* shape SIFT saw, so overlap geometry is consistent.
+
+    Returns (kp, des, shape). `shape` is the (scaled) image's (h, w). On a
+    failed load returns ([], None, (0, 0)).
+    """
+    abspath = os.path.abspath(path)
+    con = None
+    if cache_dir:
+        con = _open_cache(sift_cache_db_path(cache_dir))
+        if not force:
+            row = con.execute(
+                "SELECT n_kp, kp, des, h, w, contrast, min_size, max_dim "
+                "FROM images WHERE path = ?", (abspath,)
+            ).fetchone()
+            if row is not None:
+                n_kp, kp_blob, des_blob, h, w, c, ms, md = row
+                if (float(c) == float(contrast) and float(ms) == float(min_size)
+                        and int(md or 0) == int(max_dim or 0)):
+                    kp = _keypoints_from_blob(kp_blob, n_kp)
+                    des = _descriptors_from_blob(des_blob, n_kp)
+                    con.close()
+                    return kp, des, (int(h), int(w))
+
+    img = cv2.imread(path)
+    if img is None:
+        if con:
+            con.execute(
+                "INSERT OR REPLACE INTO images (path, name, h, w, contrast, "
+                "min_size, max_dim, n_kp, kp, des) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (abspath, os.path.basename(path), 0, 0,
+                 float(contrast), float(min_size), int(max_dim or 0), 0,
+                 _keypoints_to_blob([])[0], _descriptors_to_blob(None)))
+            con.commit(); con.close()
+        return [], None, (0, 0)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = downscale_gray(gray, max_dim)
+    shape = gray.shape[:2]
+    kp, des = detect_keypoints(gray, contrast, min_size)
+    if con:
+        kp_blob, n_kp = _keypoints_to_blob(kp)
+        con.execute(
+            "INSERT OR REPLACE INTO images (path, name, h, w, contrast, "
+            "min_size, max_dim, n_kp, kp, des) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (abspath, os.path.basename(path), shape[0], shape[1],
+             float(contrast), float(min_size), int(max_dim or 0), n_kp, kp_blob,
+             _descriptors_to_blob(des)))
+        con.commit(); con.close()
+    return kp, des, shape
+
+
+def iter_cached_features(cache_dir, contrast=None, min_size=None,
+                          max_dim=None, paths=None):
+    """
+    Yield (path, name, n_kp, kp, des, h, w) for every image in the SQLite
+    feature store, one at a time. Descriptors are loaded as float32 (uint8 on
+    disk). Callers that only need the descriptors transiently (e.g. building a
+    bag-of-words histogram) can free them between iterations to keep memory
+    flat regardless of how many images are stored.
+
+    If `contrast` / `min_size` / `max_dim` are given, rows whose stored params
+    do not match are skipped (stale cache from different tuning).
+
+    If `paths` (a set of absolute paths) is given, only those images are
+    yielded, so a shared cache directory can hold many batches without them
+    contaminating each other's vocabulary / histograms.
+    """
+    con = _open_cache(sift_cache_db_path(cache_dir))
+    cur = con.execute(
+        "SELECT path, name, n_kp, kp, des, h, w, contrast, min_size, max_dim "
+        "FROM images ORDER BY image_id"
+    )
+    for path, name, n_kp, kp_blob, des_blob, h, w, c, ms, md in cur:
+        if paths is not None and path not in paths:
+            continue
+        if contrast is not None and float(c) != float(contrast):
+            continue
+        if min_size is not None and float(ms) != float(min_size):
+            continue
+        if max_dim is not None and int(md or 0) != int(max_dim or 0):
+            continue
+        kp = _keypoints_from_blob(kp_blob, n_kp)
+        des = _descriptors_from_blob(des_blob, n_kp)
+        yield path, name, n_kp, kp, des, int(h), int(w)
+    con.close()
+
+
+def match_keypoints(des_a, des_b, ratio=0.75, min_matches=4):
+    """
+    Match two descriptor sets with FLANN + Lowe's ratio test.
+
+    Returns a list of matched DMatch objects (after the ratio test).
+    """
+    if (des_a is None or des_b is None or len(des_a) < min_matches
+            or len(des_b) < min_matches):
+        return []
 
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
     search_params = dict(checks=50)
@@ -90,6 +292,24 @@ def detect_and_match(gray_a, gray_b, ratio=0.75, min_matches=4, contrast=0.08,
             m, n = pair
             if m.distance < ratio * n.distance:
                 good.append(m)
+    return good
+
+
+def detect_and_match(gray_a, gray_b, ratio=0.75, min_matches=4, contrast=0.08,
+                         min_size=0.0):
+    """
+    Detect SIFT features in both images and match them with FLANN.
+
+    Thin wrapper around detect_keypoints + match_keypoints for the
+    single-pair case. See those functions for parameter meanings.
+
+    Returns:
+        kp_a, kp_b: keypoints in each image
+        good: list of matched DMatch objects (after ratio test)
+    """
+    kp_a, des_a = detect_keypoints(gray_a, contrast, min_size)
+    kp_b, des_b = detect_keypoints(gray_b, contrast, min_size)
+    good = match_keypoints(des_a, des_b, ratio, min_matches)
     return kp_a, kp_b, good
 
 
@@ -98,20 +318,166 @@ def filter_matches(kp_a, kp_b, good, max_dx=None):
     Drop matches with a large horizontal offset.
 
     The right edge of a page can show on the left of the next scan, producing
-    false matches whose dx is far from the true (mostly-vertical) overlap
-    offset. This keeps only matches whose dx is within `max_dx` pixels of the
-    median dx, so it adapts to pairs that have a real horizontal offset too.
-    Falls back to all matches if filtering would remove everything.
+    false matches with a large horizontal offset (|dx|). This keeps only
+    matches whose |dx| is at most `max_dx` pixels, i.e. near-zero horizontal
+    offset as expected for vertically-stacked scans. Falls back to all matches
+    if filtering would remove everything.
 
     Returns the filtered list of matches.
     """
     if len(good) == 0 or not max_dx:
         return good
     dx = np.array([kp_b[m.trainIdx].pt[0] - kp_a[m.queryIdx].pt[0] for m in good])
-    med = np.median(dx)
-    keep = np.abs(dx - med) <= max_dx
+    keep = np.abs(dx) <= max_dx
     filtered = [m for m, k in zip(good, keep) if k]
-    return filtered if filtered else good
+    return filtered
+
+
+def assess_overlap(kp_a, kp_b, good, min_matches=20, max_iqr=50.0,
+                   cluster_bin=20.0, cluster_tol=50.0):
+    """
+    Decide whether the matched points indicate a real overlap.
+
+    Repetitive structure in scanned pages (text lines, column rules, repeated
+    headings) produces spurious SIFT matches at a consistent but *wrong*
+    vertical offset, so the per-match dy is often multi-modal: a dominant
+    cluster of real matches plus one or more spurious clusters. Taking the
+    spread (IQR) of *all* matches then falsely reports "no overlap" whenever a
+    spurious cluster is large enough to inflate the overall IQR.
+
+    Instead this locates the single densest cluster of dy values (a 1-D
+    histogram peak), keeps the matches near that peak (in both dy and dx), and
+    judges the overlap from that cluster alone: the pair is a real overlap if
+    the cluster has at least `min_matches` matches whose dy IQR is at most
+    `max_iqr`.
+
+    `cluster_bin` is the histogram bin width (px) used to find the dy peak;
+    `cluster_tol` is the half-width (px) around the peak that defines cluster
+    membership in dy (dx uses twice this).
+
+    The returned translation (med_dx, med_dy) is the cluster median, so it is
+    the real overlap's translation even when spurious matches are present.
+
+    Returns (is_real, n_cluster, med_dx, med_dy, iqr_dy, mask) where `mask` is a
+    boolean array over `good` (True for matches in the dominant cluster) or
+    None when there are no matches.
+    """
+    n = len(good)
+    if n == 0:
+        return False, 0, 0.0, 0.0, 0.0, None
+    dx = np.array([kp_b[m.trainIdx].pt[0] - kp_a[m.queryIdx].pt[0] for m in good])
+    dy = np.array([kp_b[m.trainIdx].pt[1] - kp_a[m.queryIdx].pt[1] for m in good])
+
+    # Locate the densest dy cluster via a 1-D histogram.
+    lo, hi = float(dy.min()), float(dy.max())
+    if hi - lo < cluster_bin:
+        peak = float(np.median(dy))
+    else:
+        bins = np.arange(lo, hi + cluster_bin, cluster_bin)
+        counts, edges = np.histogram(dy, bins=bins)
+        k = int(np.argmax(counts))
+        peak = float((edges[k] + edges[k + 1]) / 2)
+
+    # Matches near the peak in dy, and near that group's dx center (drops
+    # laterally-mismatched outliers).
+    near_dy = np.abs(dy - peak) <= cluster_tol
+    dx_center = float(np.median(dx[near_dy])) if near_dy.any() else float(np.median(dx))
+    keep = near_dy & (np.abs(dx - dx_center) <= 2 * cluster_tol)
+
+    n_cl = int(keep.sum())
+    if n_cl == 0:
+        return False, 0, 0.0, 0.0, 0.0, None
+    cdx = dx[keep]
+    cdy = dy[keep]
+    med_dx = float(np.median(cdx))
+    med_dy = float(np.median(cdy))
+    iqr_dy = float(np.percentile(cdy, 75) - np.percentile(cdy, 25))
+    is_real = n_cl >= min_matches and iqr_dy <= max_iqr
+    return is_real, n_cl, med_dx, med_dy, iqr_dy, keep
+
+
+def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.6,
+                      step=10, margin=300, dx_search=240):
+    # Fallback overlap detector for low-texture overlap regions (e.g. a mostly
+    # black microfilm page boundary) where SIFT finds too few matching features.
+    #
+    # Sweeps a vertical shift s (A row r -> B row r+s) and computes the
+    # normalized cross-correlation of the OVERLAPPING pixel rows only (a central
+    # column band ignores the left/right frame borders). A real overlap appears
+    # as a high-NCC peak at a modest overlap extent L in [l_min, l_max]; the
+    # microfilm frame border produces a spurious peak at large L (near-full
+    # frame) with only moderate NCC, which the L cap ignores.
+    #
+    # Returns (is_real, dy, dx, ncc, L). When real, dy/dx is the A->B
+    # translation (A row r -> B row r+dy) and L is the overlap height in rows.
+    A = gray_a.astype(np.float32)
+    B = gray_b.astype(np.float32)
+    ha, wa = A.shape
+    hb, wb = B.shape
+    c0, c1 = margin, min(wa, wb) - margin
+    Ab = A[:, c0:c1]
+    Bb = B[:, c0:c1]
+
+    def ncc_at(s):
+        a0 = max(0, -s)
+        a1 = min(ha, hb - s)
+        L = a1 - a0
+        if L < l_min or L > l_max:
+            return None
+        a = Ab[a0:a1]
+        b = Bb[a0 + s:a1 + s]
+        am = a - a.mean()
+        bm = b - b.mean()
+        d = np.sqrt((am * am).sum() * (bm * bm).sum())
+        if d <= 0:
+            return None
+        return float((am * bm).sum() / d), L
+
+    best = None  # (ncc, s, L)
+    for s in range(-hb + 1, ha, step):
+        r = ncc_at(s)
+        if r is None:
+            continue
+        v, L = r
+        if best is None or v > best[0]:
+            best = (v, s, L)
+    if best is None:
+        return False, 0, 0, 0.0, 0
+    # refine dy around the coarse peak (1-px step)
+    for s in range(best[1] - step, best[1] + step + 1):
+        r = ncc_at(s)
+        if r is None:
+            continue
+        v, L = r
+        if v > best[0]:
+            best = (v, s, L)
+    if best[0] < ncc_min:
+        return False, 0, 0, 0.0, 0
+    dy = best[1]
+
+    # refine the lateral shift dx at this dy (full width, small range).
+    a0 = max(0, -dy)
+    a1 = min(ha, hb - dy)
+    a = A[a0:a1]
+    best_dx, best_dv = 0, -2.0
+    for dx in range(-dx_search, dx_search + 1, 4):
+        if dx >= 0:
+            seg_a = a[:, :wa - dx]
+            seg_b = B[a0 + dy:a1 + dy, dx:]
+        else:
+            seg_a = a[:, -dx:]
+            seg_b = B[a0 + dy:a1 + dy, :wb + dx]
+        if seg_a.shape != seg_b.shape or seg_a.shape[0] == 0:
+            continue
+        am = seg_a - seg_a.mean()
+        bm = seg_b - seg_b.mean()
+        d = np.sqrt((am * am).sum() * (bm * bm).sum())
+        if d <= 0:
+            continue
+        v = float((am * bm).sum() / d)
+        if v > best_dv:
+            best_dv, best_dx = v, dx
+    return True, dy, best_dx, best[0], best[2]
 
 
 def compute_translation(kp_a, kp_b, good):
@@ -377,6 +743,12 @@ def draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask, out_path,
     else:
         inlier_idx = np.where(mask.ravel())[0]
         inlier_idx = [k for k in inlier_idx if k < len(good)]
+    if len(inlier_idx) == 0:
+        # No SIFT cluster (e.g. overlap found via the pixel-NCC fallback): just
+        # save the projected-overlap view with no match lines.
+        print("  [vis] 0 SIFT match lines (overlap via pixel-NCC fallback)")
+        cv2.imwrite(out_path, vis)
+        return
     pts_a = np.array([kp_a[good[k].queryIdx].pt for k in inlier_idx])
     pts_b = np.array([kp_b[good[k].trainIdx].pt for k in inlier_idx])
 
@@ -443,10 +815,22 @@ def main():
              "features and keeps larger structural ones (default: 3.0)",
     )
     parser.add_argument(
-        "--max-dx", type=float, default=50.0,
-        help="Skip matches whose horizontal offset (dx) deviates from the median "
-             "dx by more than this many pixels; rejects false matches from page "
-             "edges wrapping around (default: 50.0)",
+        "--max-dx", type=float, default=500.0,
+        help="Skip matches whose horizontal offset |dx| exceeds this many pixels; "
+             "rejects false matches from page edges wrapping around "
+             "(default: 500.0)",
+    )
+    parser.add_argument(
+        "--min-matches", type=int, default=20,
+        help="Minimum matches for a real overlap (default: 20). A pair is "
+             "flagged NO OVERLAP if fewer matches OR the matches do not agree "
+             "on a translation (see --max-iqr).",
+    )
+    parser.add_argument(
+        "--max-iqr", type=float, default=500.0,
+        help="Maximum IQR of the per-match vertical offset (dy) for a real "
+             "overlap; scattered matches (high IQR) mean no real overlap "
+             "(default: 500.0)",
     )
     parser.add_argument(
         "--vis", type=str, default=None,
@@ -483,23 +867,49 @@ def main():
     n_raw = len(good)
     good = filter_matches(kp_a, kp_b, good, max_dx=args.max_dx)
     if len(good) != n_raw:
-        print(f"Matches after dx filter (|dx-med|<={args.max_dx}): "
+        print(f"Matches after dx filter (|dx|<={args.max_dx}): "
               f"{len(good)}/{n_raw}")
 
-    if len(good) == 0:
-        print("ERROR: no matches between the images - cannot align.")
-        sys.exit(1)
+    is_real, n_good, med_dx, med_dy, iqr_dy, mask = assess_overlap(
+        kp_a, kp_b, good, min_matches=args.min_matches, max_iqr=args.max_iqr)
+    print(f"Dominant cluster: {n_good}/{len(good)} matches, IQR(dy)={iqr_dy:.0f}px")
+    via_ncc = False
+    if not is_real:
+        # SIFT found too few consistent matches (often a mostly-black /
+        # page-boundary overlap region). Fall back to direct pixel NCC.
+        ncc_real, ncc_dy, ncc_dx, ncc_val, ncc_L = pixel_ncc_overlap(gray_a, gray_b)
+        if ncc_real:
+            print(f"Overlap via pixel-NCC fallback: dy={ncc_dy:+d} dx={ncc_dx:+d} "
+                  f"NCC={ncc_val:.2f} overlap_extent={ncc_L}px")
+            is_real = True
+            med_dx, med_dy = ncc_dx, ncc_dy
+            n_good = ncc_L
+            iqr_dy = 0.0
+            via_ncc = True
+            mask = np.zeros(len(good), dtype=bool)  # no SIFT cluster to draw
+    if not is_real:
+        if n_good == 0:
+            reason = "0 matches"
+        else:
+            reason = (f"{n_good} matches, IQR(dy)={iqr_dy:.0f}px "
+                      f"(need at least {args.min_matches} matches and "
+                      f"IQR(dy) at most {args.max_iqr:.0f})")
+        print(f"NO OVERLAP: {reason}; dominant cluster does not indicate an overlap.")
+        sys.exit(0)
 
-    T = compute_translation(kp_a, kp_b, good)
-    if T is None:
-        print("ERROR: could not compute translation.")
-        sys.exit(1)
+    T = np.array([[1.0, 0.0, med_dx],
+                  [0.0, 1.0, med_dy],
+                  [0.0, 0.0, 1.0]])
 
-    mcenter_a = np.median([kp_a[m.queryIdx].pt for m in good], axis=0)
-    mcenter_b = np.median([kp_b[m.trainIdx].pt for m in good], axis=0)
-    print(f"Matched-point center A: ({mcenter_a[0]:.1f}, {mcenter_a[1]:.1f})")
-    print(f"Matched-point center B: ({mcenter_b[0]:.1f}, {mcenter_b[1]:.1f})")
-    print(f"Translation (A->B): ({T[0,2]:+.1f}, {T[1,2]:+.1f}) px)")
+    if via_ncc:
+        print(f"Translation (A->B): ({T[0,2]:+.1f}, {T[1,2]:+.1f}) px "
+              f"[via pixel-NCC]")
+    else:
+        mcenter_a = np.median([kp_a[m.queryIdx].pt for m, k in zip(good, mask) if k], axis=0)
+        mcenter_b = np.median([kp_b[m.trainIdx].pt for m, k in zip(good, mask) if k], axis=0)
+        print(f"Matched-point center A: ({mcenter_a[0]:.1f}, {mcenter_a[1]:.1f})")
+        print(f"Matched-point center B: ({mcenter_b[0]:.1f}, {mcenter_b[1]:.1f})")
+        print(f"Translation (A->B): ({T[0,2]:+.1f}, {T[1,2]:+.1f}) px")
 
     metrics = compute_overlap(T, ha, wa, hb, wb)
 
@@ -516,13 +926,13 @@ def main():
     print(f"  Image A area: {metrics['area_a']:,.0f}, Image B area: {metrics['area_b']:,.0f}")
 
     if args.vis:
-        draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, None,
+        draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask,
                  args.vis, color_mode=args.color_mode)
         print(f"\nVisualization saved to: {args.vis}")
 
     if args.stitch:
         write_overlapped_image(
-            img_a_color, img_b_color, T, kp_a, kp_b, good, None,
+            img_a_color, img_b_color, T, kp_a, kp_b, good, mask,
             args.stitch, blend=not args.no_blend,
         )
         print(f"Stitched image saved to: {args.stitch}")
