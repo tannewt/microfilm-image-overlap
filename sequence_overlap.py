@@ -28,6 +28,8 @@ from check_overlap_sift import (
     assess_overlap,
     compute_overlap,
     pixel_ncc_overlap,
+    reanalyze_pair_fullres,
+    downscale_gray,
 )
 
 
@@ -82,7 +84,7 @@ def list_scans(directory, pattern=None):
 
 def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
                  min_matches=20, max_iqr=50.0, pattern=None, cache_dir=None,
-                 force_cache=False, max_dim=3200):
+                 force_cache=False, max_dim=3200, fullres_gaps=True):
     """
     Run the overlap analysis over every consecutive pair of scans in
     `scan_dir`, printing each pair's result and a summary at the end.
@@ -138,9 +140,13 @@ def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
 
     def get_gray(path):
         if grays[path] is None and shapes[path] != (0, 0):
-            img = cv2.imread(path)
+            # Load at the SAME scale as SIFT (downscaled to max_dim) so the
+            # pixel-NCC dy is in scaled px, matching the scaled shape used by
+            # compute_overlap. Loading full-res gave a full-res dy that the
+            # scaled geometry read as "no overlap" (0 area).
+            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             if img is not None:
-                grays[path] = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                grays[path] = downscale_gray(img, max_dim)
         return grays[path]
 
     rows = []
@@ -153,7 +159,8 @@ def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
 
         if ha == (0, 0) or hb == (0, 0):
             print(f"{na} -> {nb}: FAILED to load one of the images")
-            rows.append({"a": na, "b": nb, "status": "failed",
+            rows.append({"a": na, "b": nb, "path_a": a, "path_b": b,
+                         "status": "failed",
                          "area": 0.0, "vert": 0.0, "dx": 0.0, "dy": 0.0,
                          "matches": 0})
             continue
@@ -186,7 +193,8 @@ def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
                 msg = (f"{n_good} matches, IQR(dy)={iqr_dy:.0f}px "
                        f"(dominant cluster too small/spread)")
             print(f"{na} -> {nb}: NO OVERLAP ({msg})")
-            rows.append({"a": na, "b": nb, "status": "no_overlap",
+            rows.append({"a": na, "b": nb, "path_a": a, "path_b": b,
+                         "status": "no_overlap",
                          "area": 0.0, "vert": 0.0, "dx": 0.0, "dy": 0.0,
                          "matches": n_good})
             continue
@@ -201,12 +209,61 @@ def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
         tag = " [via pixel-NCC]" if via_ncc else ""
         print(f"{na} -> {nb}: {area_pct:5.1f}% area, {vert_pct:5.1f}% vert, "
               f"dx={dx:+.0f} dy={dy:+.0f}, {n_good} matches, IQR(dy)={iqr_dy:.0f}{tag}")
-        rows.append({"a": na, "b": nb, "status": "ok",
+        rows.append({"a": na, "b": nb, "path_a": a, "path_b": b,
+                     "status": "ok",
                      "area": area_pct, "vert": vert_pct, "dx": dx, "dy": dy,
                      "matches": n_good})
 
+    if fullres_gaps:
+        _recover_gaps_fullres(rows, ratio, contrast, min_size, max_dx,
+                             min_matches, max_iqr)
+
     print()
     print_summary(rows)
+
+
+def _recover_gaps_fullres(rows, ratio, contrast, min_size, max_dx,
+                        min_matches, max_iqr):
+    """
+    Second pass: re-run the detector at FULL resolution for every pair the
+    scaled pass flagged NO OVERLAP, and replace the row when full res recovers
+    a real overlap.
+
+    The scaled pass downscales to --max-dim before SIFT, which keeps it fast
+    (and lets it reuse the shared 3200 cache) but drops ~90pct of the
+    keypoints. Low-texture overlap regions that have too few features to clear
+    --min-matches at 3200 often have enough at full resolution, so a full-res
+    re-check of just the gaps recovers most borderline overlaps without
+    paying full-res SIFT for the whole batch. Consecutive gap pairs share an
+    image, so this caches the full-res keypoints/grayscale in memory.
+    """
+    kp_cache = {}
+    gray_cache = {}
+    recovered = 0
+    checked = 0
+    for r in rows:
+        if r.get("status") != "no_overlap":
+            continue
+        checked += 1
+        res = reanalyze_pair_fullres(
+            r["path_a"], r["path_b"], ratio=ratio, contrast=contrast,
+            min_size=min_size, max_dx=max_dx, min_matches=min_matches,
+            max_iqr=max_iqr, kp_cache=kp_cache, gray_cache=gray_cache)
+        if res is None or res["status"] != "ok":
+            continue
+        r["status"] = "ok"
+        r["area"] = res["area_pct"]
+        r["vert"] = res["vert_pct"]
+        r["dx"] = res["dx"]
+        r["dy"] = res["dy"]
+        r["matches"] = res["matches"]
+        tag = " [via pixel-NCC]" if res["via_ncc"] else " [recovered @ full res]"
+        print(f"{r['a']} -> {r['b']}: {res['area_pct']:5.1f}% area, "
+              f"{res['vert_pct']:5.1f}% vert, dx={res['dx']:+.0f} "
+              f"dy={res['dy']:+.0f}, {res['matches']} matches{tag}")
+        recovered += 1
+    if checked:
+        print(f"[full-res gap re-check: {recovered}/{checked} recovered]")
 
 
 def print_summary(rows):
@@ -315,13 +372,26 @@ def main():
         "--force-cache", action="store_true",
         help="Ignore any existing on-disk SIFT cache and recompute it.",
     )
+    parser.add_argument(
+        "--fullres-gaps", action="store_true", default=True,
+        help="(Default on.) Re-run the detector at FULL resolution on every "
+             "pair the scaled pass flags NO OVERLAP, to recover borderline "
+             "overlaps it missed. The scaled pass drops ~90pct of SIFT "
+             "keypoints, so low-texture overlaps that fail --min-matches at "
+             "3200 often succeed at full res. Use --no-fullres-gaps to disable.",
+    )
+    parser.add_argument(
+        "--no-fullres-gaps", dest="fullres_gaps", action="store_false",
+        help="Disable the full-res gap re-check (scaled pass only).",
+    )
     args = parser.parse_args()
 
     run_sequence(args.scan_dir, ratio=args.ratio, contrast=args.contrast,
                  min_size=args.min_size, max_dx=args.max_dx,
                  min_matches=args.min_matches, max_iqr=args.max_iqr,
                  pattern=args.pattern, cache_dir=args.cache_dir,
-                 force_cache=args.force_cache, max_dim=args.max_dim)
+                 force_cache=args.force_cache, max_dim=args.max_dim,
+                 fullres_gaps=args.fullres_gaps)
 
 
 if __name__ == "__main__":

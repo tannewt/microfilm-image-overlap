@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+markers = [
+  "integration: tests that need the real scan data and/or SIFT cache (auto-skipped without them)",
+  "slow: slow tests (e.g. full-resolution SIFT on real pairs)",
+]

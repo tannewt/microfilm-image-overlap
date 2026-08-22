@@ -14,6 +14,13 @@ sequence of scans back together. Three entry points:
   multiple batches** (a re-scan / re-shoot of a page across batches), reusing
   the on-disk SIFT cache and a bag-of-visual-words candidate filter so it isn't
   O(N²) full matching.
+- **`batch_report.py`** — a one-page summary **per batch** (by filename prefix):
+  image count, no-overlap pairs, capture rate (from file timestamps), the
+  estimated **600-dpi pixel coverage of the overlapped section**, the **unique
+  (new) 600-dpi lines captured per image** (to pick the settings that capture
+  the most new content while staying stitchable), and an **unreadable-image
+  flag** (squashed/stretched, blank). Uses the latest batch as the 600-dpi
+  physical-size reference.
 
 Plus a helper:
 
@@ -28,7 +35,10 @@ pip install opencv-python numpy
 
 Python 3. Tested on large (~24 MB) `.tif` scans. No `scikit-learn` needed —
 the visual vocabulary uses `cv2.kmeans`, and the feature cache uses the
-stdlib `sqlite3`.
+stdlib `sqlite3`. `batch_report.py` also uses `Pillow` (read-only header /
+thumbnail reads): `pip install pillow`.
+
+For the test suite: `pip install -r requirements-dev.txt` (adds `pytest`).
 
 ## How files are organized (batches)
 
@@ -151,6 +161,11 @@ real overlap shows up as a **high-NCC peak at a modest overlap extent**
 near-full-frame extent with only moderate NCC, which the overlap-extent cap
 ignores. Reported as `[via pixel-NCC]` in the batch output.
 
+The NCC fallback runs on the **same downscaled grayscale** as SIFT (`--max-dim`),
+so its `dy` is in scaled pixels and matches the overlap geometry the report uses.
+(A previous version loaded full-res grayscale, producing a full-res `dy` that the
+scaled geometry read as "no overlap" — caught by the integration tests.)
+
 ## Tuning
 
 | option | default | meaning |
@@ -176,6 +191,44 @@ features), `--min-matches 15` recovers them. Don't go much lower, or the
 spurious frame-border matches can sneak through as false overlaps. (The
 pixel-NCC fallback already covers the truly black regions, so most
 low-texture pairs are caught without lowering this.)
+
+### Recovering borderline overlaps at full resolution (on by default)
+
+The scaled pass downscales each image to `--max-dim` (default 3200) before
+SIFT, which keeps it fast and lets it reuse the shared cache but drops ~90%
+of the keypoints (a 6300-px scan yields ~12k features at 3200 vs ~75k at full
+res). Low-texture overlap regions that have too few features to clear
+`--min-matches` at 3200 often have enough at full resolution, so the scaled
+pass reports them as `NO OVERLAP` even though they're real overlaps.
+
+So both `sequence_overlap.py` and `batch_report.py` **always** follow the
+scaled pass with a full-resolution re-check of every pair it flagged `NO
+OVERLAP` (use `--no-fullres-gaps` to skip it). The re-check re-runs the
+detector at **full resolution** (no downscale, no disk cache) and replaces the
+verdict when full res recovers a real overlap. Consecutive gap pairs share an
+image, so the full-res keypoints/grayscale are cached in memory so each gap
+image is SIFT'd once. It only pays the (expensive, RAM-heavy) full-res SIFT
+cost on the gaps, not the whole batch.
+
+`batch_report.py` runs this as a separate phase after the high-parallelism
+scaled pass, in a **memory-bounded** worker pool (~available RAM / 7 GB per
+worker; full-res SIFT peaks at ~6.5 GB/image here) so the many scaled-pass
+workers don't all do full-res SIFT at once and OOM. Tune with
+`--fullres-jobs`; `sequence_overlap.py` is single-process.
+
+```
+# 07227: scaled pass reports 9 no-overlap; full-res re-check recovers 7.
+python sequence_overlap.py scans2/P81-4720/ --pattern '^07227-' \
+    --cache-dir sift_cache
+# SUMMARY: Pairs with no overlap: 2   (... 7 recovered @ full res)
+```
+
+For the `07227` batch this turns 9 no-overlap into 2 (the remaining 2 are
+genuinely tiny clusters even at full res). In `batch_report.py` the per-batch
+block shows both numbers, e.g. `no-overlap pairs: 2 / 99 (2 after full-res gap
+re-check; 7 recovered)`, lists the remaining gap pairs beneath that line, and
+the recovered pairs then count toward the 600-dpi overlap coverage; the
+report footer gives the grand total recovered across all batches.
 
 ## Reading the output
 
@@ -208,9 +261,33 @@ detection failure.
 | `check_overlap_sift.py` | single-pair analysis + SIFT/NCC detection + viz/stitch; also holds the on-disk SIFT feature store (`--cache-dir`) |
 | `build_sift_cache.py` | build the cross-batch SIFT feature cache in parallel (all batches at once) |
 | `find_nonconsecutive_overlaps.py` | find the same source page scanned in multiple batches, via bag-of-visual-words retrieval over the cache |
+| `batch_report.py` | one-page per-batch summary: image count, no-overlap pairs, capture rate, 600-dpi overlap + unique-line coverage, unreadable-image flags |
 | `extract_anomalies.py` | summarize a run's no-overlap & near-duplicate pairs |
 | `stitch_pages.py` | (separate) stitch pages using detected overlaps |
 | `visualize_overlap.py`, `check_overlap.py` | older overlap helpers |
+
+## Tests (`pytest`)
+
+`tests/` guards the detector against regressions. The pure-function unit
+tests (`test_geometry.py`, `test_detection.py`) run anywhere with no data —
+they cover the overlap geometry, the 600-dpi conversion math, batch grouping,
+the SIFT dominant-cluster rule, and the pixel-NCC fallback on synthetic
+images. The integration tests (`test_pairs_integration.py`) lock in the
+*observed* verdicts on real `07227-6300_0.28` pairs and auto-skip when the
+scan data / SIFT cache aren't present, so they run locally and skip in CI.
+
+```
+pip install -r requirements-dev.txt        # adds pytest
+pytest                                    # all tests (integration ones skip without data)
+pytest -m "not slow"                      # skip the RAM-heavy full-res pair tests
+pytest -m "not integration"              # just the fast unit tests
+```
+
+The integration tests pin the behavior that motivated the full-res gap
+re-check: a clear overlap and a near-duplicate are detected by the scaled
+pass; a low-texture overlap the scaled pass misses is recovered at full res;
+and two genuinely tiny overlaps (`0017->0018`, `0025->0026`) stay
+`NO OVERLAP` even at full res (no false positives).
 
 ## The SIFT feature cache (`--cache-dir`)
 
@@ -328,6 +405,82 @@ O(candidates) verification, instead of O(N^2) full matching.
 | `--verify-cap` | 5000 | cap descriptors per image during SIFT verification |
 | `--within-batch-gap` | off | also check same-batch pairs with sequence gap >= this (off by default) |
 
+## Per-batch report (`batch_report.py`)
+
+`batch_report.py` groups a directory's scans into batches by filename prefix
+and prints one compact block per batch:
+
+- **image count** — how many scans are in the batch
+- **no-overlap pairs** — consecutive pairs with no shared content (gaps),
+  listed by filename (the pairs that remain gaps after the full-res re-check)
+- **capture rate** — from the files' timestamps (span and seconds/image)
+- **overlap @600dpi** — the overlapped section between consecutive frames,
+  expressed as if scanned at 600 dpi (median per-pair + total across the batch)
+- **unique @600dpi** — the NEW content per image (image height minus the
+  overlapped strip) at 600 dpi, and `px/min` (unique lines × capture rate) —
+  the throughput of new content. Maximize this while keeping overlap
+  detectable (see the footer ranking).
+- **unreadable** — flags images that are squashed/stretched (directional
+  smear), blank, or (optionally) severely defocused, with the reason. The smear
+  threshold is calibrated so normal batches flag 0%; the `01473` run is the
+  squashed example.
+
+The **latest batch** (by capture time) is assumed to be scanned at 600 dpi and
+is the physical-size reference. Every other batch's dpi is estimated from its
+pixel dimensions relative to that reference (the scanner re-shoots the same
+glass area, so pixel dims scale linearly with dpi). The 600-dpi overlap
+coverage is the overlap area/height converted through that batch's estimated
+dpi, so batches shot at different resolutions are directly comparable. For
+example a batch whose images are 7724×10500 px resolves to ~1000 dpi, and its
+overlap coverage is scaled down by (600/1000)² to 600-dpi-equivalent pixels.
+
+It reuses the shared SIFT cache (`--cache-dir`) and runs the per-batch work in
+parallel across cores (the FLANN matching of consecutive pairs is the time
+sink, not SIFT).
+
+```
+# One block per batch, to a file (reuses the cache, ~minutes on ~1700 scans):
+python batch_report.py scans2/P81-4720/ --cache-dir sift_cache -o batch_report.txt
+
+# Recover borderline overlaps the scaled pass missed (full-res re-check of gaps):
+# (on by default; --no-fullres-gaps to skip)
+python batch_report.py scans2/P81-4720/ --cache-dir sift_cache
+
+# Just one batch:
+python batch_report.py scans2/P81-4720/ --pattern '^07227-' --cache-dir sift_cache
+
+# Fast iteration: skip the two expensive parts independently.
+python batch_report.py scans2/P81-4720/ --no-unreadable           # overlap + timing
+python batch_report.py scans2/P81-4720/ --no-overlap            # counts + readability + dpi
+python batch_report.py scans2/P81-4720/ --sample-readability 5  # fewer readability reads
+```
+
+Notes:
+
+- **Capture timestamp.** On the capture host a file's creation time is the
+  scan time, but after copying to another machine `st_ctime` resets to the
+  copy moment while `st_mtime` (last write) preserves the original capture
+  time. `--time-field auto` (the default) picks, per batch, the first of
+  `st_birthtime` / `st_mtime` / `st_ctime` that actually *varies within the
+  batch*, so the capture rate is meaningful; batch ordering / the "latest"
+  reference always uses `st_mtime`.
+- **Unique lines / ranking.** `unique @600dpi` is the new content per image
+  (height − overlap) at 600 dpi; `px/min` multiplies by the capture rate so you
+  can pick the scanner settings that capture the most new lines per minute
+  while keeping overlap detectable. The report footer ranks batches by unique
+  600dpi lines/min (among batches with detectable overlap) and highlights the
+  best fully-stitchable (zero-gap) one.
+- **Unreadable flag.** An image is flagged unreadable when its vertical /
+  horizontal detail ratio `R` drops below `--smear-floor` (default 0.6 =
+  squashed/stretched / directional smear — the `01473` run), or it is a blank
+  frame (ink outside a sane band). An absolute blur/defocus floor is *off* by
+  default (`--blur-floor 0`) because Laplacian variance is content-confounded:
+  sparse-but-readable pages score low and would false-positive on normal
+  batches (enable it only with uniform content density). Thresholds are tuned
+  so normal batches flag 0%.
+- **`--force-cache` with `--jobs>1`** can race on concurrent sqlite writes to
+  the shared cache; warm the cache first or use `--jobs 1`.
+
 ## Example: end-to-end
 
 ```
@@ -346,7 +499,10 @@ python extract_anomalies.py 07227_run.txt -o 07227_anomalies.txt
 python find_nonconsecutive_overlaps.py scans2/P81-4720/ --cache-dir sift_cache \
     --min-sim 0.3 --min-area 50
 
-# 5. Inspect a specific pair visually.
+# 5. One-block-per-batch summary (reuses the cache, parallel).
+python batch_report.py scans2/P81-4720/ --cache-dir sift_cache -o batch_report.txt
+
+# 6. Inspect a specific pair visually.
 python check_overlap_sift.py scans2/P81-4720/07227-6300_0.28_0032.tif \
     scans2/P81-4720/07227-6300_0.28_0033.tif \
     --vis overlap_viz/0032-0033_vis.png --stitch overlap_viz/0032-0033_stitch.png

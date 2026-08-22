@@ -17,3 +17,4 @@ __pycache__/
 scan_overlap_results.txt
 *_anomalies.txt
 *_run.txt
+batch_report.txt

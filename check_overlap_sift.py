@@ -595,6 +595,82 @@ def compute_overlap(T, ha, wa, hb, wb):
     }
 
 
+def reanalyze_pair_fullres(path_a, path_b, ratio=0.6, contrast=0.08,
+                           min_size=3.0, max_dx=500.0, min_matches=20,
+                           max_iqr=500.0, kp_cache=None, gray_cache=None):
+    """
+    Re-run the overlap detector for ONE pair at FULL resolution (no downscale,
+    no on-disk cache), to recover overlaps the scaled pass missed.
+
+    The scaled pass (--max-dim 3200, reused from the shared SIFT cache) is
+    fast but drops ~90pct of the keypoints (a 6300-px scan yields ~12k features
+    at 3200 vs ~75k at full res). Low-texture overlap regions that have too
+    few features to clear --min-matches at 3200 often have enough at full
+    resolution, so re-running only the no-overlap pairs at full res recovers
+    most borderline overlaps without paying full-res SIFT for the whole batch.
+
+    kp_cache / gray_cache are caller-owned dicts keyed by absolute path
+    (keypoints/descriptors/shape, and full grayscale) so consecutive gap pairs
+    that share an image only SIFT it once. They are created if None.
+
+    Returns a row dict in ORIGINAL pixel units:
+      status ok | no_overlap | failed, area_pct, vert_pct, dx, dy,
+      matches, via_ncc, vert_px_orig, area_px_orig -- or None on a load fail.
+    """
+    if kp_cache is None:
+        kp_cache = {}
+    if gray_cache is None:
+        gray_cache = {}
+
+    def get_kd(p):
+        if p not in kp_cache:
+            # max_dim=0 -> no downscale; cache_dir=None -> in-memory only,
+            # so the on-disk 3200 cache is never touched or written.
+            kp, des, shape = get_or_compute_keypoints(p, None, contrast,
+                                                       min_size, max_dim=0)
+            kp_cache[p] = (kp, des, shape)
+        return kp_cache[p]
+
+    kp_a, des_a, (ha, wa) = get_kd(path_a)
+    kp_b, des_b, (hb, wb) = get_kd(path_b)
+    if ha == 0 or hb == 0:
+        return None
+
+    good = match_keypoints(des_a, des_b, ratio)
+    good = filter_matches(kp_a, kp_b, good, max_dx=max_dx)
+    is_real, n_good, med_dx, med_dy, iqr_dy, _ = assess_overlap(
+        kp_a, kp_b, good, min_matches=min_matches, max_iqr=max_iqr)
+    via_ncc = False
+    if not is_real:
+        def get_gray(p):
+            if p not in gray_cache:
+                img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+                if img is not None:
+                    gray_cache[p] = img
+            return gray_cache.get(p)
+        ga, gb = get_gray(path_a), get_gray(path_b)
+        if ga is not None and gb is not None:
+            r = pixel_ncc_overlap(ga, gb)
+            if r[0]:
+                is_real = True
+                _, ncc_dy, ncc_dx, _, ncc_L = r
+                med_dx, med_dy = ncc_dx, ncc_dy
+                n_good = ncc_L
+                iqr_dy = 0.0
+                via_ncc = True
+    if not is_real:
+        return dict(status='no_overlap', area_pct=0.0, vert_pct=0.0,
+                    dx=0.0, dy=float(med_dy), matches=n_good, via_ncc=False,
+                    vert_px_orig=0.0, area_px_orig=0.0)
+    T = np.array([[1.0, 0.0, med_dx], [0.0, 1.0, med_dy], [0.0, 0.0, 1.0]])
+    m = compute_overlap(T, ha, wa, hb, wb)
+    return dict(status='ok', area_pct=m['overlap_area_pct'],
+                vert_pct=m['vert_pct'], dx=float(med_dx), dy=float(med_dy),
+                matches=n_good, via_ncc=via_ncc,
+                vert_px_orig=m['vert_pct'] / 100.0 * ha,
+                area_px_orig=m['overlap_area_pct'] / 100.0 * (wa * ha))
+
+
 def write_overlapped_image(img_a_color, img_b_color, T, kp_a, kp_b, good, mask,
                             out_path, blend=True):
     """
