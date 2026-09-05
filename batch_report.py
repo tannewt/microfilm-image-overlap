@@ -52,6 +52,9 @@ from check_overlap_sift import (
     pixel_ncc_overlap,
     reanalyze_pair_fullres,
     downscale_gray,
+    verify_near_duplicate,
+    NEAR_DUP_AREA_PCT,
+    STALL_NCC,
 )
 
 EXTS = ('.jpg', '.jpeg', '.tif', '.tiff', '.png', '.bmp')
@@ -224,7 +227,8 @@ def classify_unreadable(R, lap_var, ink, smear_floor=0.6, blur_floor=0.0,
         return 'blur'
     return None
 def analyze_overlap(scans, cache_dir, ratio, contrast, min_size, max_dx,
-                    min_matches, max_iqr, max_dim, force_cache):
+                    min_matches, max_iqr, max_dim, force_cache,
+                    near_dup_area=NEAR_DUP_AREA_PCT, stall_ncc=STALL_NCC):
     """
     Run the SIFT + pixel-NCC overlap analysis over every consecutive pair in
     one batch (reusing the on-disk SIFT cache). Returns a list of per-pair
@@ -235,7 +239,7 @@ def analyze_overlap(scans, cache_dir, ratio, contrast, min_size, max_dx,
       a, b            : basenames of the two images
       status          : "ok" | "no_overlap" | "failed"
       area_pct, vert_pct, dx, dy : as reported by sequence_overlap.py
-      matches, via_ncc
+      matches, via_ncc, is_stall
       vert_px_orig    : vertical overlap in A's original pixels
       area_px_orig    : overlap area in A's original pixels
     """
@@ -305,6 +309,34 @@ def analyze_overlap(scans, cache_dir, ratio, contrast, min_size, max_dx,
 
         T = np.array([[1.0, 0.0, med_dx], [0.0, 1.0, med_dy], [0.0, 0.0, 1.0]])
         m = compute_overlap(T, ha, wa, hb, wb)
+        is_stall = False
+        # Verify a high-area SIFT verdict (a near-duplicate): a genuine stall
+        # (near-identical frames) is kept; a spurious cluster (repetitive
+        # structure on two different pages) is discarded and the real
+        # (moderate) overlap is re-found by the thin-strip NCC (or NO OVERLAP
+        # if NCC finds nothing).
+        if m["overlap_area_pct"] > near_dup_area:
+            gray_a, gray_b = get_gray(pa), get_gray(pb)
+            if gray_a is not None and gray_b is not None:
+                rep = verify_near_duplicate(gray_a, gray_b, med_dx, med_dy,
+                                            ha, wa, hb, wb, stall_ncc=stall_ncc)
+                if rep is None:
+                    is_stall = True
+                elif rep["status"] == "no_overlap":
+                    rows.append(dict(a=na, b=nb, status="no_overlap",
+                                     area_pct=0.0, vert_pct=0.0, dx=0.0,
+                                     dy=float(rep["dy"]), matches=0,
+                                     via_ncc=False, is_stall=False,
+                                     vert_px_orig=0.0, area_px_orig=0.0))
+                    continue
+                else:
+                    med_dx, med_dy = rep["dx"], rep["dy"]
+                    n_good = rep["matches"]
+                    iqr_dy = 0.0
+                    via_ncc = True
+                    T = np.array([[1.0, 0.0, med_dx],
+                                  [0.0, 1.0, med_dy], [0.0, 0.0, 1.0]])
+                    m = compute_overlap(T, ha, wa, hb, wb)
         ow, oh = sizes[pa]  # original (w, h) of image A
         area_px_orig = m["overlap_area_pct"] / 100.0 * (ow * oh)
         vert_px_orig = m["vert_pct"] / 100.0 * oh
@@ -312,6 +344,7 @@ def analyze_overlap(scans, cache_dir, ratio, contrast, min_size, max_dx,
                          area_pct=m["overlap_area_pct"],
                          vert_pct=m["vert_pct"], dx=float(med_dx),
                          dy=float(med_dy), matches=n_good, via_ncc=via_ncc,
+                         is_stall=is_stall,
                          vert_px_orig=vert_px_orig,
                          area_px_orig=area_px_orig))
     return rows
@@ -354,7 +387,9 @@ def analyze_batch(task):
         rows = analyze_overlap(
             files, task["cache_dir"], task["ratio"], task["contrast"],
             task["min_size"], task["max_dx"], task["min_matches"],
-            task["max_iqr"], task["max_dim"], task["force_cache"])
+            task["max_iqr"], task["max_dim"], task["force_cache"],
+            near_dup_area=task["near_dup_area"],
+            stall_ncc=task["stall_ncc"])
         for i, r in enumerate(rows):
             if r["status"] == "no_overlap":
                 gaps.append((i, files[i], files[i + 1]))
@@ -413,6 +448,7 @@ def recheck_gaps(task):
             a, b, ratio=task["ratio"], contrast=task["contrast"],
             min_size=task["min_size"], max_dx=task["max_dx"],
             min_matches=task["min_matches"], max_iqr=task["max_iqr"],
+            near_dup_area=task["near_dup_area"], stall_ncc=task["stall_ncc"],
             kp_cache=kp_cache, gray_cache=gray_cache)
         out.append((i, res))
     return out
@@ -528,6 +564,16 @@ def main():
     ap.add_argument("--jobs", "-j", type=int, default=max(1, mp.cpu_count()),
                     help="Parallel worker processes, one per batch "
                          f"(default {max(1, mp.cpu_count())}).")
+    ap.add_argument("--near-dup-area", type=float, default=NEAR_DUP_AREA_PCT,
+                    help="SIFT area %% above which a high-overlap verdict is a "
+                         "near-duplicate verified with full-frame NCC (default "
+                         f"{NEAR_DUP_AREA_PCT:.0f}). A genuine stall (NCC >= "
+                         "--stall-ncc) is kept; a spurious cluster is discarded "
+                         "and the real overlap re-found by the thin-strip NCC.")
+    ap.add_argument("--stall-ncc", type=float, default=STALL_NCC,
+                    help="Full-frame NCC at the SIFT shift above which a "
+                         "near-duplicate is a genuine stall (near-identical "
+                         f"frames) and is kept (default {STALL_NCC:.1f}).")
     args = ap.parse_args()
 
     if not os.path.isdir(args.scan_dir):
@@ -568,6 +614,7 @@ def main():
             cache_dir=args.cache_dir, ratio=args.ratio, contrast=args.contrast,
             min_size=args.min_size, max_dx=args.max_dx,
             min_matches=args.min_matches, max_iqr=args.max_iqr,
+            near_dup_area=args.near_dup_area, stall_ncc=args.stall_ncc,
             max_dim=args.max_dim, force_cache=args.force_cache,
             no_overlap=args.no_overlap, no_unreadable=args.no_unreadable,
             readability_dim=args.readability_dim,
@@ -595,7 +642,9 @@ def main():
         gap_tasks = [dict(pref=pref, gaps=results[pref]["gaps"],
                          ratio=args.ratio, contrast=args.contrast,
                          min_size=args.min_size, max_dx=args.max_dx,
-                         min_matches=args.min_matches, max_iqr=args.max_iqr)
+                         min_matches=args.min_matches, max_iqr=args.max_iqr,
+                        near_dup_area=args.near_dup_area,
+                        stall_ncc=args.stall_ncc)
                     for pref in results if results[pref]["gaps"]]
         if gap_tasks:
             mem = available_memory_gb()
@@ -622,6 +671,7 @@ def main():
                                        dx=res["dx"], dy=res["dy"],
                                        matches=res["matches"],
                                        via_ncc=res["via_ncc"],
+                                       is_stall=False,
                                        vert_px_orig=res["vert_px_orig"],
                                        area_px_orig=res["area_px_orig"])
                         rows[i]["recovered_fullres"] = True

@@ -30,6 +30,9 @@ from check_overlap_sift import (
     pixel_ncc_overlap,
     reanalyze_pair_fullres,
     downscale_gray,
+    verify_near_duplicate,
+    NEAR_DUP_AREA_PCT,
+    STALL_NCC,
 )
 
 
@@ -84,7 +87,8 @@ def list_scans(directory, pattern=None):
 
 def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
                  min_matches=20, max_iqr=50.0, pattern=None, cache_dir=None,
-                 force_cache=False, max_dim=3200, fullres_gaps=True):
+                 force_cache=False, max_dim=3200, fullres_gaps=True,
+                 near_dup_area=NEAR_DUP_AREA_PCT, stall_ncc=STALL_NCC):
     """
     Run the overlap analysis over every consecutive pair of scans in
     `scan_dir`, printing each pair's result and a summary at the end.
@@ -206,7 +210,40 @@ def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
         area_pct = metrics["overlap_area_pct"]
         vert_pct = metrics["vert_pct"]
         dx, dy = med_dx, med_dy
-        tag = " [via pixel-NCC]" if via_ncc else ""
+        is_stall = False
+        # A high-area SIFT verdict (a "near-duplicate") is suspicious:
+        # repetitive newspaper structure can give a tight SIFT cluster at a
+        # consistent but WRONG shift, reporting ~100% overlap between two
+        # different pages whose real overlap is only ~12-35%. Verify with
+        # full-frame NCC at this shift: a genuine stall (near-identical
+        # frames) is kept; a spurious cluster is discarded and the real
+        # (moderate) overlap is re-found by the thin-strip NCC (or NO OVERLAP
+        # if NCC finds nothing).
+        if area_pct > near_dup_area:
+            gray_a = get_gray(path_a)
+            gray_b = get_gray(path_b)
+            if gray_a is not None and gray_b is not None:
+                rep = verify_near_duplicate(
+                    gray_a, gray_b, dx, dy, ha, wa, hb, wb,
+                    stall_ncc=stall_ncc)
+                if rep is None:
+                    is_stall = True  # genuine near-duplicate: keep SIFT verdict
+                elif rep["status"] == "no_overlap":
+                    print(f"{na} -> {nb}: NO OVERLAP "
+                          f"(spurious SIFT near-duplicate: NCC did not confirm)")
+                    rows.append({"a": na, "b": nb, "path_a": a, "path_b": b,
+                                 "status": "no_overlap",
+                                 "area": 0.0, "vert": 0.0, "dx": 0.0,
+                                 "dy": float(rep["dy"]), "matches": 0})
+                    continue
+                else:
+                    area_pct = rep["area_pct"]
+                    vert_pct = rep["vert_pct"]
+                    dx, dy = rep["dx"], rep["dy"]
+                    n_good = rep["matches"]
+                    iqr_dy = 0.0
+                    via_ncc = True
+        tag = " [via pixel-NCC]" if via_ncc else (" [stall]" if is_stall else "")
         print(f"{na} -> {nb}: {area_pct:5.1f}% area, {vert_pct:5.1f}% vert, "
               f"dx={dx:+.0f} dy={dy:+.0f}, {n_good} matches, IQR(dy)={iqr_dy:.0f}{tag}")
         rows.append({"a": na, "b": nb, "path_a": a, "path_b": b,
@@ -216,14 +253,15 @@ def run_sequence(scan_dir, ratio=0.6, contrast=0.08, min_size=3.0, max_dx=50.0,
 
     if fullres_gaps:
         _recover_gaps_fullres(rows, ratio, contrast, min_size, max_dx,
-                             min_matches, max_iqr)
+                             min_matches, max_iqr, near_dup_area, stall_ncc)
 
     print()
     print_summary(rows)
 
 
 def _recover_gaps_fullres(rows, ratio, contrast, min_size, max_dx,
-                        min_matches, max_iqr):
+                        min_matches, max_iqr, near_dup_area=NEAR_DUP_AREA_PCT,
+                        stall_ncc=STALL_NCC):
     """
     Second pass: re-run the detector at FULL resolution for every pair the
     scaled pass flagged NO OVERLAP, and replace the row when full res recovers
@@ -248,7 +286,8 @@ def _recover_gaps_fullres(rows, ratio, contrast, min_size, max_dx,
         res = reanalyze_pair_fullres(
             r["path_a"], r["path_b"], ratio=ratio, contrast=contrast,
             min_size=min_size, max_dx=max_dx, min_matches=min_matches,
-            max_iqr=max_iqr, kp_cache=kp_cache, gray_cache=gray_cache)
+            max_iqr=max_iqr, near_dup_area=near_dup_area,
+            stall_ncc=stall_ncc, kp_cache=kp_cache, gray_cache=gray_cache)
         if res is None or res["status"] != "ok":
             continue
         r["status"] = "ok"
@@ -384,6 +423,22 @@ def main():
         "--no-fullres-gaps", dest="fullres_gaps", action="store_false",
         help="Disable the full-res gap re-check (scaled pass only).",
     )
+    parser.add_argument(
+        "--near-dup-area", type=float, default=NEAR_DUP_AREA_PCT,
+        help="SIFT area %% above which a high-overlap verdict is treated as a "
+             "near-duplicate and verified with full-frame NCC (default %.0f). "
+             "A genuine stall (near-identical frames, NCC >= --stall-ncc) is "
+             "kept; a spurious cluster (repetitive structure on two different "
+             "pages) is discarded and the real moderate overlap is re-found by "
+             "the thin-strip NCC." % NEAR_DUP_AREA_PCT,
+    )
+    parser.add_argument(
+        "--stall-ncc", type=float, default=STALL_NCC,
+        help="Full-frame NCC at the SIFT shift above which a near-duplicate is "
+             "a genuine stall (near-identical frames) and is kept (default %.1f). "
+             "Below it the SIFT cluster is spurious and the real overlap is "
+             "re-found by the thin-strip NCC." % STALL_NCC,
+    )
     args = parser.parse_args()
 
     run_sequence(args.scan_dir, ratio=args.ratio, contrast=args.contrast,
@@ -391,7 +446,8 @@ def main():
                  min_matches=args.min_matches, max_iqr=args.max_iqr,
                  pattern=args.pattern, cache_dir=args.cache_dir,
                  force_cache=args.force_cache, max_dim=args.max_dim,
-                 fullres_gaps=args.fullres_gaps)
+                 fullres_gaps=args.fullres_gaps,
+                 near_dup_area=args.near_dup_area, stall_ncc=args.stall_ncc)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ Examples:
 
 import argparse
 import os
+import re
 import sqlite3
 import sys
 
@@ -27,6 +28,33 @@ import cv2
 import numpy as np
 
 FLANN_INDEX_KDTREE = 1
+
+PURPLE = (160, 32, 240)  # BGR purple for page-boundary (black bar) markers
+
+# Near-duplicate verification.
+#
+# A SIFT "near-duplicate" verdict (a high-area overlap, area >
+# NEAR_DUP_AREA_PCT) is suspicious: repetitive newspaper structure (column
+# rules, text lines, repeated headings) can give a tight SIFT cluster at a
+# consistent but *wrong* shift, so SIFT reports a 90-100% overlap between
+# two DIFFERENT pages whose real overlap is only ~12-35%. We verify each
+# near-duplicate with full-frame NCC at the SIFT shift:
+#
+#   * genuine near-duplicate (a stall: the film barely advanced, so the two
+#     frames are near-identical)  -> NCC >= STALL_NCC (~0.97-1.0 observed);
+#     keep the SIFT verdict.
+#   * spurious cluster (two different pages)            -> NCC < STALL_NCC
+#     (<= ~0.89 observed, even with thousands of spurious matches);
+#     discard the SIFT dy and re-find the real (moderate) overlap with the
+#     thin-strip NCC, or report NO OVERLAP if NCC finds nothing.
+#
+# The full-frame NCC is computed over the rows that actually overlap at the
+# SIFT shift and DROPS featureless rows (the uniform frame margin / black
+# bars that are identical in every frame and would otherwise inflate the
+# score). On the test batches STALL_NCC=0.9 separates genuine stalls
+# (0.975-1.0) from spurious clusters (<=0.89) with margin on both sides.
+NEAR_DUP_AREA_PCT = 50.0
+STALL_NCC = 0.9
 
 
 def load_images(path_a, path_b):
@@ -396,27 +424,40 @@ def assess_overlap(kp_a, kp_b, good, min_matches=20, max_iqr=50.0,
     return is_real, n_cl, med_dx, med_dy, iqr_dy, keep
 
 
-def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.6,
-                      step=10, margin=300, dx_search=240):
+def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.5,
+                      step=10, uniform_thresh=8.0):
     # Fallback overlap detector for low-texture overlap regions (e.g. a mostly
-    # black microfilm page boundary) where SIFT finds too few matching features.
+    # black microfilm page boundary, or a thin newspaper strip SIFT can't
+    # match) where SIFT finds too few matching features. Only runs on pairs
+    # SIFT failed on, so it may be expensive.
     #
     # Sweeps a vertical shift s (A row r -> B row r+s) and computes the
-    # normalized cross-correlation of the OVERLAPPING pixel rows only (a central
-    # column band ignores the left/right frame borders). A real overlap appears
-    # as a high-NCC peak at a modest overlap extent L in [l_min, l_max]; the
-    # microfilm frame border produces a spurious peak at large L (near-full
-    # frame) with only moderate NCC, which the L cap ignores.
+    # normalized cross-correlation of the OVERLAPPING rows only, using the
+    # FULL image width at a fixed horizontal offset (dx = 0). The page corners
+    # and bottom-of-frame "fingers" sit at the frame edges and are distinctive
+    # match indicators that a central column margin would crop away, so the
+    # whole width is kept and no lateral shift is searched.
     #
-    # Returns (is_real, dy, dx, ncc, L). When real, dy/dx is the A->B
-    # translation (A row r -> B row r+dy) and L is the overlap height in rows.
+    # Featureless rows -- the white frame margin, a black page-boundary bar,
+    # blank film -- have pixel std below `uniform_thresh` and carry no match
+    # information, so any row that is featureless in EITHER image is dropped
+    # from the NCC for the shift it falls in. A real overlap's textured strip
+    # then correlates while uniform margins / blank frames do not. A real
+    # overlap shows up as a high-NCC peak at a modest overlap extent L in
+    # [l_min, l_max]; the near-full-frame extent is capped because a same-size
+    # frame border would otherwise correlate at any shift.
+    #
+    # Returns (is_real, dy, dx, ncc, L). When real, dy is the A->B vertical
+    # translation (A row r -> B row r+dy), dx is always 0, and L is the overlap
+    # height in rows.
     A = gray_a.astype(np.float32)
     B = gray_b.astype(np.float32)
     ha, wa = A.shape
     hb, wb = B.shape
-    c0, c1 = margin, min(wa, wb) - margin
-    Ab = A[:, c0:c1]
-    Bb = B[:, c0:c1]
+    w = min(wa, wb)
+    # Per-row "has features" flag: rows with enough pixel variance in each image.
+    feat_a = A.std(axis=1) >= uniform_thresh
+    feat_b = B.std(axis=1) >= uniform_thresh
 
     def ncc_at(s):
         a0 = max(0, -s)
@@ -424,8 +465,11 @@ def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.6,
         L = a1 - a0
         if L < l_min or L > l_max:
             return None
-        a = Ab[a0:a1]
-        b = Bb[a0 + s:a1 + s]
+        keep = feat_a[a0:a1] & feat_b[a0 + s:a1 + s]
+        if keep.sum() < l_min:
+            return None
+        a = A[a0:a1][keep][:, :w]
+        b = B[a0 + s:a1 + s][keep][:, :w]
         am = a - a.mean()
         bm = b - b.mean()
         d = np.sqrt((am * am).sum() * (bm * bm).sum())
@@ -453,31 +497,88 @@ def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.6,
             best = (v, s, L)
     if best[0] < ncc_min:
         return False, 0, 0, 0.0, 0
-    dy = best[1]
+    return True, best[1], 0, best[0], best[2]
 
-    # refine the lateral shift dx at this dy (full width, small range).
-    a0 = max(0, -dy)
-    a1 = min(ha, hb - dy)
-    a = A[a0:a1]
-    best_dx, best_dv = 0, -2.0
-    for dx in range(-dx_search, dx_search + 1, 4):
-        if dx >= 0:
-            seg_a = a[:, :wa - dx]
-            seg_b = B[a0 + dy:a1 + dy, dx:]
-        else:
-            seg_a = a[:, -dx:]
-            seg_b = B[a0 + dy:a1 + dy, :wb + dx]
-        if seg_a.shape != seg_b.shape or seg_a.shape[0] == 0:
+
+def near_duplicate_ncc(gray_a, gray_b, sift_dy, stall_ncc=STALL_NCC,
+                        refine=30, step=2, uniform_thresh=8.0):
+    # Test whether a high-area SIFT overlap is a GENUINE near-duplicate (a
+    # stall: the film barely advanced, so the two frames are near-identical) or
+    # a SPURIOUS cluster (repetitive newspaper structure matched two different
+    # pages at a consistent but wrong shift).
+    #
+    # Computes the full-frame normalized cross-correlation at shifts near the
+    # SIFT-reported `sift_dy`, over the rows that actually overlap at that
+    # shift, DROPPING featureless rows (the uniform frame margin / black bars
+    # that are identical in every frame and would otherwise inflate the score).
+    # A genuine stall has near-identical frames -> NCC ~0.97-1.0; two different
+    # newspaper pages share only the repetitive column layout -> NCC well
+    # below that (<= ~0.89 observed), even when SIFT found thousands of
+    # spurious matches. So `is_stall = (best NCC >= stall_ncc)`.
+    #
+    # Returns (is_stall, ncc, ncc_dy).
+    A = gray_a.astype(np.float32)
+    B = gray_b.astype(np.float32)
+    ha, wa = A.shape
+    hb, wb = B.shape
+    w = min(wa, wb)
+    fa = A.std(axis=1) >= uniform_thresh
+    fb = B.std(axis=1) >= uniform_thresh
+    s0 = int(round(sift_dy))
+    best = None  # (ncc, s)
+    for s in range(s0 - refine, s0 + refine + 1, step):
+        a0 = max(0, -s)
+        a1 = min(ha, hb - s)
+        L = a1 - a0
+        if L < 50:
             continue
-        am = seg_a - seg_a.mean()
-        bm = seg_b - seg_b.mean()
+        keep = fa[a0:a1] & fb[a0 + s:a1 + s]
+        if keep.sum() < 20:
+            continue
+        a = A[a0:a1][keep][:, :w]
+        b = B[a0 + s:a1 + s][keep][:, :w]
+        am = a - a.mean()
+        bm = b - b.mean()
         d = np.sqrt((am * am).sum() * (bm * bm).sum())
         if d <= 0:
             continue
         v = float((am * bm).sum() / d)
-        if v > best_dv:
-            best_dv, best_dx = v, dx
-    return True, dy, best_dx, best[0], best[2]
+        if best is None or v > best[0]:
+            best = (v, s)
+    if best is None:
+        return False, 0.0, int(round(sift_dy))
+    return best[0] >= stall_ncc, best[0], best[1]
+
+
+def verify_near_duplicate(gray_a, gray_b, sift_dx, sift_dy, ha, wa, hb, wb,
+                            stall_ncc=STALL_NCC, ncc_min=0.5, l_min=50,
+                            l_max=1500):
+    # Verify a SIFT-reported high-area overlap (a "near-duplicate"). Returns
+    # None to KEEP the SIFT verdict (it is a genuine near-duplicate / stall),
+    # or a replacement dict (status/area_pct/vert_pct/dx/dy/matches/via_ncc/
+    # is_stall) when the SIFT cluster is spurious -- either the real moderate
+    # overlap re-found by the thin-strip NCC, or NO OVERLAP if NCC finds
+    # nothing.
+    #
+    # See near_duplicate_ncc for the stall-vs-spurious test. The re-find uses
+    # the thin-strip NCC (overlap extent capped at [l_min, l_max]): the real
+    # overlap a spurious cluster hid is moderate (~12-35%), so the cap avoids
+    # re-latching onto the near-full-frame frame-border / column-structure
+    # correlation.
+    stall, _ncc, _ndy = near_duplicate_ncc(gray_a, gray_b, sift_dy, stall_ncc)
+    if stall:
+        return None  # genuine near-duplicate: keep the SIFT verdict
+    r = pixel_ncc_overlap(gray_a, gray_b, l_min=l_min, l_max=l_max,
+                          ncc_min=ncc_min)
+    if r[0]:
+        T = np.array([[1.0, 0.0, r[2]], [0.0, 1.0, r[1]], [0.0, 0.0, 1.0]])
+        m = compute_overlap(T, ha, wa, hb, wb)
+        return dict(status='ok', area_pct=m['overlap_area_pct'],
+                    vert_pct=m['vert_pct'], dx=float(r[2]), dy=float(r[1]),
+                    matches=r[4], via_ncc=True, is_stall=False)
+    return dict(status='no_overlap', area_pct=0.0, vert_pct=0.0,
+                dx=float(sift_dx), dy=float(sift_dy), matches=0,
+                via_ncc=False, is_stall=False)
 
 
 def compute_translation(kp_a, kp_b, good):
@@ -597,7 +698,9 @@ def compute_overlap(T, ha, wa, hb, wb):
 
 def reanalyze_pair_fullres(path_a, path_b, ratio=0.6, contrast=0.08,
                            min_size=3.0, max_dx=500.0, min_matches=20,
-                           max_iqr=500.0, kp_cache=None, gray_cache=None):
+                           max_iqr=500.0, near_dup_area=NEAR_DUP_AREA_PCT,
+                           stall_ncc=STALL_NCC, kp_cache=None,
+                           gray_cache=None):
     """
     Re-run the overlap detector for ONE pair at FULL resolution (no downscale,
     no on-disk cache), to recover overlaps the scaled pass missed.
@@ -641,13 +744,37 @@ def reanalyze_pair_fullres(path_a, path_b, ratio=0.6, contrast=0.08,
     is_real, n_good, med_dx, med_dy, iqr_dy, _ = assess_overlap(
         kp_a, kp_b, good, min_matches=min_matches, max_iqr=max_iqr)
     via_ncc = False
+
+    def get_gray(p):
+        if p not in gray_cache:
+            img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+            if img is not None:
+                gray_cache[p] = img
+        return gray_cache.get(p)
+
+    if is_real:
+        T0 = np.array([[1.0, 0.0, med_dx], [0.0, 1.0, med_dy], [0.0, 0.0, 1.0]])
+        area_pct = compute_overlap(T0, ha, wa, hb, wb)['overlap_area_pct']
+        # Verify a high-area SIFT verdict (a near-duplicate) at full res too:
+        # a genuine stall is kept; a spurious cluster is re-found by NCC.
+        if area_pct > near_dup_area:
+            ga, gb = get_gray(path_a), get_gray(path_b)
+            if ga is not None and gb is not None:
+                rep = verify_near_duplicate(ga, gb, med_dx, med_dy, ha, wa,
+                                            hb, wb, stall_ncc=stall_ncc)
+                if rep is None:
+                    pass  # genuine near-duplicate: keep SIFT verdict
+                elif rep['status'] == 'no_overlap':
+                    return dict(status='no_overlap', area_pct=0.0, vert_pct=0.0,
+                                dx=0.0, dy=float(rep['dy']), matches=0,
+                                via_ncc=False, vert_px_orig=0.0,
+                                area_px_orig=0.0)
+                else:
+                    med_dx, med_dy = rep['dx'], rep['dy']
+                    n_good = rep['matches']
+                    iqr_dy = 0.0
+                    via_ncc = True
     if not is_real:
-        def get_gray(p):
-            if p not in gray_cache:
-                img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
-                if img is not None:
-                    gray_cache[p] = img
-            return gray_cache.get(p)
         ga, gb = get_gray(path_a), get_gray(path_b)
         if ga is not None and gb is not None:
             r = pixel_ncc_overlap(ga, gb)
@@ -779,15 +906,48 @@ def write_overlapped_image(img_a_color, img_b_color, T, kp_a, kp_b, good, mask,
     cv2.imwrite(out_path, result)
 
 
+def _mark_boundary_bars(vis, img_a_color, img_b_color, canvas_w, oy_a, oy_b):
+    """Overlay purple bars on detected page boundaries (the black bars between
+    microfilm pages) in each panel. Detection is reused from extract_pages.
+    Drawn last so match lines don't obscure the markers.
+    """
+    from extract_pages import detect_bars
+    n_bars = 0
+    for img_color, oy in ((img_a_color, oy_a), (img_b_color, oy_b)):
+        gray = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
+        for (r0, r1) in detect_bars(gray):
+            cv2.rectangle(vis, (0, oy + r0), (canvas_w - 1, oy + r1),
+                          PURPLE, -1)
+            n_bars += 1
+    if n_bars:
+        print(f"  [vis] {n_bars} page-boundary bar(s) marked in purple")
+
+
+def _finish_viz(vis, img_a_color, img_b_color, canvas_w, oy_a, oy_b, out_path):
+    """Apply the purple page-boundary markers and write the vis image."""
+    _mark_boundary_bars(vis, img_a_color, img_b_color, canvas_w, oy_a, oy_b)
+    cv2.imwrite(out_path, vis)
+
+
+def image_label(path, panel):
+    """Panel label text: 'A: 0042' style, using the image's trailing sequence
+    number; falls back to the basename when the name carries no number."""
+    name = os.path.basename(path)
+    m = re.search(r"(?<!\d)(\d+)\D*$", name)
+    num = m.group(1) if m else name
+    return f"{panel}: {num}"
+
+
 def draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask, out_path,
-             color_mode="y"):
+             color_mode="y", label_a="A", label_b="B", reverse_stack=False):
     """
     Write a visualization of matches plus the projected overlap region.
 
-    The two images are stacked vertically (image A on top, image B below) so
-    that vertically-overlapping regions sit close together. Matching lines are
-    drawn between the two panels, and the projected image-A rectangle is
-    overlaid on the image B panel.
+    The two images are stacked vertically, both left-aligned, so that
+    vertically-overlapping regions sit close together: image A on top and
+    image B below by default, or B on top / A below with `reverse_stack`.
+    Matching lines are drawn between the two panels, and the projected
+    image-A rectangle is overlaid on the image B panel.
 
     color_mode:
       "y"     - color by the y position of the keypoint in image A
@@ -798,19 +958,31 @@ def draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask, out_path,
     ha, wa = img_a_color.shape[:2]
     hb, wb = img_b_color.shape[:2]
 
-    # Canvas: image A on top, image B directly below it, both left-aligned.
+    # Canvas: both images left-aligned; A on top and B below by default,
+    # or B on top and A below when reverse_stack is set.
     canvas_w = max(wa, wb)
     canvas_h = ha + hb
+    oy_a, oy_b = (hb, 0) if reverse_stack else (0, ha)
     vis = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
-    vis[0:ha, 0:wa] = img_a_color
-    vis[ha:ha + hb, 0:wb] = img_b_color
+    vis[oy_a:oy_a + ha, 0:wa] = img_a_color
+    vis[oy_b:oy_b + hb, 0:wb] = img_b_color
+
+    # Banner text naming each panel (black outline + yellow fill so it stays
+    # readable over both dark bars and bright page content).
+    fs = max(1.0, canvas_w / 1500.0)      # scale text with the canvas width
+    for text, oy in ((label_a, oy_a), (label_b, oy_b)):
+        org = (int(0.02 * canvas_w), oy + int(80 * fs))
+        cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, fs,
+                    (0, 0, 0), int(9 * fs), cv2.LINE_AA)
+        cv2.putText(vis, text, org, cv2.FONT_HERSHEY_SIMPLEX, fs,
+                    (0, 255, 255), int(3 * fs), cv2.LINE_AA)
 
     # Overlay the projected image-A rectangle on the image B panel.
     corners_a = np.array(
         [[0, 0], [wa, 0], [wa, ha], [0, ha]], dtype=np.float64
     ).reshape(-1, 1, 2)
     proj = cv2.perspectiveTransform(corners_a, T).reshape(-1, 2).astype(int)
-    proj = proj + [0, ha]  # shift to the image B panel (below image A)
+    proj = proj + [0, oy_b]  # shift to the image B panel
     cv2.polylines(vis, [proj], True, (0, 255, 255), 2)
 
     # Draw matching lines between the two panels.
@@ -823,14 +995,15 @@ def draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask, out_path,
         # No SIFT cluster (e.g. overlap found via the pixel-NCC fallback): just
         # save the projected-overlap view with no match lines.
         print("  [vis] 0 SIFT match lines (overlap via pixel-NCC fallback)")
-        cv2.imwrite(out_path, vis)
+        _finish_viz(vis, img_a_color, img_b_color, canvas_w, oy_a, oy_b,
+                    out_path)
         return
     pts_a = np.array([kp_a[good[k].queryIdx].pt for k in inlier_idx])
     pts_b = np.array([kp_b[good[k].trainIdx].pt for k in inlier_idx])
 
     if color_mode == "angle":
-        # Slope of each line in canvas coords (image B shifted down by ha).
-        angles = np.degrees(np.arctan2(pts_b[:, 1] + ha - pts_a[:, 1],
+        # Slope of each line in canvas coords (panel offsets oy_a / oy_b).
+        angles = np.degrees(np.arctan2(pts_b[:, 1] + oy_b - pts_a[:, 1] - oy_a,
                                        pts_b[:, 0] - pts_a[:, 0]))
         vals = angles
         label = "line angle (deg)"
@@ -845,17 +1018,17 @@ def draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask, out_path,
         hue = int(180 * (val - vmin) / vspan)
         color = tuple(int(c) for c in cv2.cvtColor(
             np.uint8([[[hue, 255, 255]]]), cv2.COLOR_HSV2BGR)[0][0])
-        pa_t = (int(round(pa[0])), int(round(pa[1])))
-        pb_t = (int(round(pb[0])), int(round(pb[1]) + ha))
+        pa_t = (int(round(pa[0])), int(round(pa[1])) + oy_a)
+        pb_t = (int(round(pb[0])), int(round(pb[1])) + oy_b)
         cv2.line(vis, pa_t, pb_t, color, 1, cv2.LINE_AA)
         cv2.circle(vis, pa_t, 2, color, -1)
         cv2.circle(vis, pb_t, 2, color, -1)
 
-    # Mark the matched-point centers of each image (A on top, B below).
+    # Mark the matched-point centers of each image.
     center_a = np.median(pts_a, axis=0)
     center_b = np.median(pts_b, axis=0)
-    ca = (int(round(center_a[0])), int(round(center_a[1])))
-    cb = (int(round(center_b[0])), int(round(center_b[1]) + ha))
+    ca = (int(round(center_a[0])), int(round(center_a[1])) + oy_a)
+    cb = (int(round(center_b[0])), int(round(center_b[1])) + oy_b)
     for c, color, name in ((ca, (0, 255, 0), "A"), (cb, (0, 0, 255), "B")):
         cv2.drawMarker(vis, c, color, cv2.MARKER_CROSS, 40, 3)
         cv2.circle(vis, c, 20, color, 2)
@@ -866,7 +1039,7 @@ def draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask, out_path,
           f"({vmin:.1f} to {vals.max():.1f})")
     print(f"  [vis] matched center A=({center_a[0]:.1f},{center_a[1]:.1f}) "
           f"B=({center_b[0]:.1f},{center_b[1]:.1f})")
-    cv2.imwrite(out_path, vis)
+    _finish_viz(vis, img_a_color, img_b_color, canvas_w, oy_a, oy_b, out_path)
 
 
 def main():
@@ -925,6 +1098,24 @@ def main():
         "--no-blend", action="store_true",
         help="In the stitch, do not average the overlap (last image wins)",
     )
+    parser.add_argument(
+        "--near-dup-area", type=float, default=NEAR_DUP_AREA_PCT,
+        help="SIFT area %% above which the verdict is a near-duplicate and is "
+             "verified with full-frame NCC (default %.0f). A genuine stall "
+             "(NCC >= --stall-ncc) is kept; a spurious cluster is discarded "
+             "and the real overlap re-found by the thin-strip NCC."
+             % NEAR_DUP_AREA_PCT,
+    )
+    parser.add_argument(
+        "--reverse-stack", action="store_true",
+        help="In the --vis image, stack image B on top and image A below "
+             "(default: A on top, B below).",
+    )
+    parser.add_argument(
+        "--stall-ncc", type=float, default=STALL_NCC,
+        help="Full-frame NCC at the SIFT shift above which a near-duplicate is "
+             "a genuine stall and is kept (default %.1f)." % STALL_NCC,
+    )
     args = parser.parse_args()
 
     img_a_color, img_b_color, gray_a, gray_b = load_images(args.image_a, args.image_b)
@@ -962,7 +1153,8 @@ def main():
             n_good = ncc_L
             iqr_dy = 0.0
             via_ncc = True
-            mask = np.zeros(len(good), dtype=bool)  # no SIFT cluster to draw
+            mask = None  # keep drawing the SIFT matches, even though the
+                         # final translation came from pixel-NCC
     if not is_real:
         if n_good == 0:
             reason = "0 matches"
@@ -973,6 +1165,39 @@ def main():
         print(f"NO OVERLAP: {reason}; dominant cluster does not indicate an overlap.")
         sys.exit(0)
 
+    is_stall = False
+    if is_real:
+        # Verify a high-area SIFT verdict (a near-duplicate): a genuine stall
+        # (near-identical frames) is kept; a spurious cluster (repetitive
+        # structure on two different pages) is discarded and the real
+        # (moderate) overlap is re-found by the thin-strip NCC.
+        T_probe = np.array([[1.0, 0.0, med_dx], [0.0, 1.0, med_dy],
+                            [0.0, 0.0, 1.0]])
+        if compute_overlap(T_probe, ha, wa, hb, wb)['overlap_area_pct'] > \
+                args.near_dup_area:
+            rep = verify_near_duplicate(gray_a, gray_b, med_dx, med_dy, ha, wa,
+                                        hb, wb, stall_ncc=args.stall_ncc)
+            if rep is None:
+                is_stall = True
+                print(f"Near-duplicate verified as a genuine stall "
+                      f"(near-identical frames); keeping SIFT verdict.")
+            elif rep['status'] == 'no_overlap':
+                print(f"NO OVERLAP: SIFT near-duplicate was spurious; NCC did "
+                      f"not confirm a real overlap.")
+                sys.exit(0)
+            else:
+                print(f"SIFT near-duplicate was spurious; real overlap "
+                      f"re-found by pixel-NCC: dy={rep['dy']:+.0f} "
+                      f"dx={rep['dx']:+.0f} ({rep['area_pct']:.1f}% area)")
+                med_dx, med_dy = rep['dx'], rep['dy']
+                n_good = rep['matches']
+                iqr_dy = 0.0
+                via_ncc = True
+                # The SIFT matches belong to the rejected (spurious) cluster,
+                # but keep drawing them so the viz shows what SIFT locked
+                # onto; they will not agree with the NCC-found translation.
+                mask = None
+
     T = np.array([[1.0, 0.0, med_dx],
                   [0.0, 1.0, med_dy],
                   [0.0, 0.0, 1.0]])
@@ -980,6 +1205,9 @@ def main():
     if via_ncc:
         print(f"Translation (A->B): ({T[0,2]:+.1f}, {T[1,2]:+.1f}) px "
               f"[via pixel-NCC]")
+    elif is_stall:
+        print(f"Translation (A->B): ({T[0,2]:+.1f}, {T[1,2]:+.1f}) px "
+              f"[stall: genuine near-duplicate]")
     else:
         mcenter_a = np.median([kp_a[m.queryIdx].pt for m, k in zip(good, mask) if k], axis=0)
         mcenter_b = np.median([kp_b[m.trainIdx].pt for m, k in zip(good, mask) if k], axis=0)
@@ -1003,8 +1231,22 @@ def main():
 
     if args.vis:
         draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask,
-                 args.vis, color_mode=args.color_mode)
+                 args.vis, color_mode=args.color_mode,
+                 label_a=image_label(args.image_a, "A"),
+                 label_b=image_label(args.image_b, "B"),
+                 reverse_stack=args.reverse_stack)
         print(f"\nVisualization saved to: {args.vis}")
+
+        # Also render the reversed stacking (B on top / A below, or the
+        # original order when --reverse-stack was given).
+        root, ext = os.path.splitext(args.vis)
+        rev_path = f"{root}_reversed{ext}"
+        draw_viz(img_a_color, img_b_color, kp_a, kp_b, good, T, mask,
+                 rev_path, color_mode=args.color_mode,
+                 label_a=image_label(args.image_a, "A"),
+                 label_b=image_label(args.image_b, "B"),
+                 reverse_stack=not args.reverse_stack)
+        print(f"Reversed visualization saved to: {rev_path}")
 
     if args.stitch:
         write_overlapped_image(

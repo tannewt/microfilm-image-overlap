@@ -11,23 +11,49 @@ Output:
     overlap_viz/overlap_0001_B.png  - second image with overlap region highlighted
     overlap_viz/overlap_0001_side.png - side-by-side comparison with lines drawn
 
+Pairs whose overlap falls below the boundary threshold are detected as page
+boundaries (shared logic with stitch_pages.py) and marked with purple bars.
+
 Usage:
     python visualize_overlap.py [--scan-dir DIR] [--output-dir DIR] [--max-pairs N]
 """
 
 import argparse
 import os
-import re
 import sys
 import time
 
 import cv2
 import numpy as np
 
+from page_detection import (
+    DEFAULT_BOUNDARY_THRESHOLD,
+    is_page_boundary,
+    list_scan_files,
+)
 
-def natural_sort_key(filename):
-    match = re.search(r"Auto-Scan(\d+)", filename)
-    return int(match.group(1)) if match else 0
+PURPLE = (160, 32, 240)  # BGR purple for page boundary markers
+BOUNDARY_BAR_PX = 12  # thickness of the purple bars in the visualizations
+
+
+def draw_boundary_bar(img, y_start, y_end, x_start=0, x_end=None, color=PURPLE):
+    """
+    Draw a filled horizontal purple bar marking a detected page boundary.
+
+    Args:
+        img: BGR image to draw on
+        y_start, y_end: row range for the bar (clamped to the image)
+        x_start, x_end: column range for the bar (default: full width)
+        color: BGR color
+    """
+    if x_end is None:
+        x_end = img.shape[1]
+    y_start = max(0, y_start)
+    y_end = min(img.shape[0], y_end)
+    x_end = min(img.shape[1], x_end)
+    if y_end <= y_start or x_end <= x_start:
+        return
+    cv2.rectangle(img, (x_start, y_start), (x_end - 1, y_end - 1), color, -1)
 
 
 def compute_shift(path_a, path_b):
@@ -109,7 +135,8 @@ def create_overlay_image(img, overlap_start, overlap_end, color=(255, 150, 0), a
     return result
 
 
-def create_side_by_side(img_a, img_b, shift, overlap_a_start, overlap_a_end, overlap_b_start, overlap_b_end):
+def create_side_by_side(img_a, img_b, shift, overlap_a_start, overlap_a_end, overlap_b_start, overlap_b_end,
+                        is_boundary=False):
     """
     Create a side-by-side visualization with lines connecting matching regions.
 
@@ -118,6 +145,7 @@ def create_side_by_side(img_a, img_b, shift, overlap_a_start, overlap_a_end, ove
         shift: signed shift (positive = img_b is below img_a)
         overlap_a_start, overlap_a_end: overlap region in img_a
         overlap_b_start, overlap_b_end: overlap region in img_b
+        is_boundary: if True, mark the page boundary between A and B in purple
     """
     ha, wa = img_a.shape
     hb, wb = img_b.shape
@@ -162,16 +190,30 @@ def create_side_by_side(img_a, img_b, shift, overlap_a_start, overlap_a_end, ove
             x_b = wa + 3  # after separator
             cv2.line(combined, (x_a, y_a), (x_b, y_b), (255, 100, 0), 1)
 
+    # Mark a detected page boundary with purple bars at the seam
+    # (bottom of image A and top of image B)
+    if is_boundary:
+        draw_boundary_bar(combined, max_h - BOUNDARY_BAR_PX, max_h, 0, wa)
+        draw_boundary_bar(combined, 0, BOUNDARY_BAR_PX, wa + 3, combined.shape[1])
+
     # Add labels
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(combined, f"Image A", (10, 30), font, 0.7, (0, 0, 0), 2)
     cv2.putText(combined, f"Image B", (wa + 13, 30), font, 0.7, (0, 0, 0), 2)
     cv2.putText(combined, f"Shift: {shift:+d}px", (10, 60), font, 0.5, (0, 0, 0), 1)
+    if is_boundary:
+        label = "PAGE BOUNDARY"
+        (tw, _), _ = cv2.getTextSize(label, font, 0.7, 2)
+        tx = (combined.shape[1] - tw) // 2
+        ty = max_h - BOUNDARY_BAR_PX - 10
+        cv2.putText(combined, label, (tx, ty), font, 0.7, (0, 0, 0), 4)
+        cv2.putText(combined, label, (tx, ty), font, 0.7, PURPLE, 2)
 
     return combined
 
 
-def visualize_pair(path_a, path_b, name_a, name_b, output_dir, pair_idx, save_full=False, jpeg_quality=85):
+def visualize_pair(path_a, path_b, name_a, name_b, output_dir, pair_idx, save_full=False, jpeg_quality=85,
+                   boundary_threshold=DEFAULT_BOUNDARY_THRESHOLD):
     """
     Create overlap visualizations for a pair of scans.
     """
@@ -218,19 +260,33 @@ def visualize_pair(path_a, path_b, name_a, name_b, output_dir, pair_idx, save_fu
     # Determine if this pair is problematic
     is_problematic = (overlap_pct_a < 20) or (confidence < 0.3)
 
+    # Page boundary detection (shared with stitch_pages.py)
+    is_boundary = is_page_boundary(overlap_pct_a, boundary_threshold)
+
     # Save full-resolution A/B images if requested or if problematic
     if save_full or is_problematic:
         img_a_overlay = create_overlay_image(img_a_orig, overlap_a_start, overlap_a_end, color=(255, 180, 0))
         img_b_overlay = create_overlay_image(img_b_orig, overlap_b_start, overlap_b_end, color=(255, 180, 0))
 
+        # Mark the page boundary in purple: seam is at bottom of A / top of B
+        if is_boundary:
+            draw_boundary_bar(img_a_overlay, overlap_a_end - BOUNDARY_BAR_PX, overlap_a_end)
+            draw_boundary_bar(img_b_overlay, overlap_b_start, overlap_b_start + BOUNDARY_BAR_PX)
+
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(img_a_overlay, f"{name_a}", (10, 30), font, 0.6, (0, 0, 0), 2)
         cv2.putText(img_a_overlay, f"Overlap: {overlap_pct_a:.1f}% ({overlap_a_end - overlap_a_start}px)", (10, 55), font, 0.5, (0, 0, 0), 1)
         cv2.putText(img_a_overlay, f"Shift: {shift:+d}px conf={confidence:.3f}", (10, 80), font, 0.5, (0, 0, 0), 1)
+        if is_boundary:
+            cv2.putText(img_a_overlay, "PAGE BOUNDARY", (10, 105), font, 0.6, (0, 0, 0), 3)
+            cv2.putText(img_a_overlay, "PAGE BOUNDARY", (10, 105), font, 0.6, PURPLE, 2)
 
         cv2.putText(img_b_overlay, f"{name_b}", (10, 30), font, 0.6, (0, 0, 0), 2)
         cv2.putText(img_b_overlay, f"Overlap: {overlap_pct_b:.1f}% ({overlap_b_end - overlap_b_start}px)", (10, 55), font, 0.5, (0, 0, 0), 1)
         cv2.putText(img_b_overlay, f"Shift: {shift:+d}px conf={confidence:.3f}", (10, 80), font, 0.5, (0, 0, 0), 1)
+        if is_boundary:
+            cv2.putText(img_b_overlay, "PAGE BOUNDARY", (10, 105), font, 0.6, (0, 0, 0), 3)
+            cv2.putText(img_b_overlay, "PAGE BOUNDARY", (10, 105), font, 0.6, PURPLE, 2)
 
         # Save as JPEG to save space
         cv2.imwrite(os.path.join(output_dir, f"overlap_{pair_idx:04d}_A.jpg"), img_a_overlay,
@@ -249,7 +305,7 @@ def visualize_pair(path_a, path_b, name_a, name_b, output_dir, pair_idx, save_fu
     obs = int(overlap_b_start * scale_side)
     obe = int(overlap_b_end * scale_side)
 
-    side_img = create_side_by_side(img_a_small, img_b_small, shift, oas, oae, obs, obe)
+    side_img = create_side_by_side(img_a_small, img_b_small, shift, oas, oae, obs, obe, is_boundary=is_boundary)
     cv2.imwrite(os.path.join(output_dir, f"overlap_{pair_idx:04d}_side.png"), side_img)
 
     return {
@@ -260,6 +316,7 @@ def visualize_pair(path_a, path_b, name_a, name_b, output_dir, pair_idx, save_fu
         "overlap_pct_a": overlap_pct_a,
         "overlap_pct_b": overlap_pct_b,
         "is_problematic": is_problematic,
+        "is_boundary": is_boundary,
     }
 
 
@@ -272,6 +329,8 @@ def main():
     parser.add_argument("--max-pairs", type=int, default=0, help="Maximum number of pairs to process (0=all)")
     parser.add_argument("--start", type=int, default=0, help="Start at this pair index")
     parser.add_argument("--full", action="store_true", help="Save full-resolution A/B images for ALL pairs (default: only for problematic ones)")
+    parser.add_argument("--boundary-threshold", type=float, default=DEFAULT_BOUNDARY_THRESHOLD,
+                        help="Overlap %% below which a page boundary is marked in purple (default: 50%%)")
     parser.add_argument("--jpeg-quality", type=int, default=85, help="JPEG quality for full-resolution output (default: 85)")
     args = parser.parse_args()
 
@@ -280,10 +339,7 @@ def main():
         print(f"Error: directory '{scan_dir}' not found.")
         sys.exit(1)
 
-    files = sorted(
-        [f for f in os.listdir(scan_dir) if re.match(r"Auto-Scan\d+\.(jpg|tif)$", f)],
-        key=natural_sort_key,
-    )
+    files = list_scan_files(scan_dir)
 
     if len(files) < 2:
         print(f"Error: need at least 2 scan files, found {len(files)}")
@@ -296,6 +352,7 @@ def main():
     print(f"Found {len(files)} scan files in '{scan_dir}'")
     print(f"Processing {total_pairs} pairs (starting at {args.start})...")
     print(f"Full-resolution output: {'all pairs' if args.full else 'problematic pairs only'}")
+    print(f"Page boundary threshold: {args.boundary_threshold}% overlap (marked in purple)")
     print()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -313,11 +370,13 @@ def main():
 
         try:
             result = visualize_pair(path_a, path_b, files[i], files[i + 1], args.output_dir, pair_idx,
-                                   save_full=args.full, jpeg_quality=args.jpeg_quality)
+                                   save_full=args.full, jpeg_quality=args.jpeg_quality,
+                                   boundary_threshold=args.boundary_threshold)
             dt = time.time() - t0
             if result:
                 results.append(result)
-                print(f"overlap={result['overlap_pct_a']:.1f}%, shift={result['shift']:+d}, conf={result['confidence']:.3f} ({dt:.1f}s)")
+                boundary_flag = " [PAGE BOUNDARY]" if result["is_boundary"] else ""
+                print(f"overlap={result['overlap_pct_a']:.1f}%, shift={result['shift']:+d}, conf={result['confidence']:.3f}{boundary_flag} ({dt:.1f}s)")
             else:
                 print(f"failed ({dt:.1f}s)")
         except Exception as e:
@@ -344,6 +403,9 @@ def main():
         overlaps = [r["overlap_pct_a"] for r in results]
         print()
         print(f"Overlap stats: min={min(overlaps):.1f}%, max={max(overlaps):.1f}%, mean={np.mean(overlaps):.1f}%")
+        boundaries = [r["name_a"] for r in results if r["is_boundary"]]
+        if boundaries:
+            print(f"Page boundaries detected ({len(boundaries)}): before {', '.join(boundaries)}")
 
 
 if __name__ == "__main__":

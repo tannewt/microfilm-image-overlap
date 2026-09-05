@@ -21,6 +21,12 @@ sequence of scans back together. Three entry points:
   the most new content while staying stitchable), and an **unreadable-image
   flag** (squashed/stretched, blank). Uses the latest batch as the 600-dpi
   physical-size reference.
+- **`extract_pages.py`** — given an overlapping batch, write **one image per
+  microfilm page**. Reuses the SIFT/NCC overlap detection to lay every scan
+  and every black bar (the dark gap between pages) out in a shared film
+  coordinate frame, then cuts the content strips between bars and stitches
+  each (from the one or two scans that cover it) with a hard switch at the overlap.
+  Pages never span more than two scans; a page that would is flagged.
 
 Plus a helper:
 
@@ -263,22 +269,33 @@ detection failure.
 | `find_nonconsecutive_overlaps.py` | find the same source page scanned in multiple batches, via bag-of-visual-words retrieval over the cache |
 | `batch_report.py` | one-page per-batch summary: image count, no-overlap pairs, capture rate, 600-dpi overlap + unique-line coverage, unreadable-image flags |
 | `extract_anomalies.py` | summarize a run's no-overlap & near-duplicate pairs |
+| `extract_pages.py` | split an overlapping batch into one image per microfilm page |
 | `stitch_pages.py` | (separate) stitch pages using detected overlaps |
 | `visualize_overlap.py`, `check_overlap.py` | older overlap helpers |
 
 ## Tests (`pytest`)
 
 `tests/` guards the detector against regressions. The pure-function unit
-tests (`test_geometry.py`, `test_detection.py`) run anywhere with no data —
-they cover the overlap geometry, the 600-dpi conversion math, batch grouping,
-the SIFT dominant-cluster rule, and the pixel-NCC fallback on synthetic
-images. The integration tests (`test_pairs_integration.py`) lock in the
-*observed* verdicts on real `07227-6300_0.28` pairs and auto-skip when the
-scan data / SIFT cache aren't present, so they run locally and skip in CI.
+tests (`test_geometry.py`, `test_detection.py`, `test_extract_pages.py`)
+run anywhere with no data — they cover the overlap geometry, the 600-dpi
+conversion math, batch grouping, the SIFT dominant-cluster rule, the pixel-NCC
+fallback, bar-interval merging / page finding, and the light-seam DP. The
+integration tests (`test_pairs_integration.py`, `test_extract_pages_visual.py`)
+lock in the *observed* verdicts on real `07227-6300_0.28` scans and auto-skip
+when the scan data / SIFT cache aren't present, so they run locally and skip
+in CI.
+
+`test_extract_pages_visual.py` runs on **real scans** and writes debug images
+to `tests/debug_output/` so you can eyeball the page-extraction pipeline:
+black-bar / page-boundary detection on a scan, the overlap band with the
+jagged seam (the edge between the two scans) drawn over the hard-switch
+result plus a red/blue provenance mask, and the full assembled page. Run it
+with `-s` to see the paths:
 
 ```
 pip install -r requirements-dev.txt        # adds pytest
 pytest                                    # all tests (integration ones skip without data)
+pytest -s tests/test_extract_pages_visual.py   # writes tests/debug_output/*.png
 pytest -m "not slow"                      # skip the RAM-heavy full-res pair tests
 pytest -m "not integration"              # just the fast unit tests
 ```
@@ -506,4 +523,89 @@ python batch_report.py scans2/P81-4720/ --cache-dir sift_cache -o batch_report.t
 python check_overlap_sift.py scans2/P81-4720/07227-6300_0.28_0032.tif \
     scans2/P81-4720/07227-6300_0.28_0033.tif \
     --vis overlap_viz/0032-0033_vis.png --stitch overlap_viz/0032-0033_stitch.png
+
+# 7. Split the batch into one image per microfilm page (reuses the cache).
+python extract_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
+    --cache-dir sift_cache --output-dir pages/07227
 ```
+
+## Splitting a batch into page images (`extract_pages.py`)
+
+`extract_pages.py` turns an overlapping batch into one image per microfilm
+page. The pages on the film are separated by **black bars** (dark horizontal
+gaps); the script detects those bars in each scan, places every scan and every
+bar into a shared *film coordinate* frame using the per-pair overlap, and cuts
+the content strips between consecutive bars. Each page is assembled from the
+one or two scans that cover it, with a HARD switch at the overlap (no
+blending/feathering, since the pages are OCRed and averaging two captures of
+a text edge would gray and soften it). Instead a jagged seam -- found by
+dynamic programming, seam-carving style -- threads through the lightest pixels
+so the cut runs through white space, not through text. The per-pair horizontal
+shift is applied so the two scans' content aligns in the overlap; the scans'
+white frame border is cropped out of every page. Pages never span more than
+two scans; if one would (a missed bar or a stalled advance) the run log flags
+it. The small black triangles in two corners of a 2-scan page are genuinely
+uncaptured film margin (a side effect of the horizontal shift) and contain no
+page content.
+
+Anomalous pairs are handled automatically: a **no-overlap** pair starts a new
+independent run of scans (pages never cross a gap); a pair whose vertical
+advance is below `--stall-frac` of the scan height (a near-duplicate re-scan)
+ is treated as redundant and skipped.
+
+```
+# Dry run: list the pages detected and which scans each comes from, no output.
+python extract_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
+    --cache-dir sift_cache --dry-run
+
+# Write the page images (default: pages/page_NNNN.png).
+python extract_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
+    --cache-dir sift_cache --output-dir pages/07227
+
+# Keep the frame border; number pages bottom-of-film (capture order) first.
+python extract_pages.py scans2/P81-4720/ --pattern '^07227-' \
+    --cache-dir sift_cache --no-trim-border --reverse
+```
+
+| option | default | meaning |
+|---|---|---|
+| `--pattern` | — | regex selecting one batch (`^07227-`) |
+| `--output-dir` | `pages/` | where to write page images |
+| `--cache-dir` | — | shared SIFT cache (reuse the SIFT step) |
+| `--ext` | `png` | output format: `png` / `tif` |
+| `--dry-run` | off | detect & list pages only, write nothing |
+| `--stall-frac` | 0.3 | pairs advancing less than this fraction of the scan height are skipped as near-duplicate re-scans |
+| `--bar-gap-tol` | 200 | merge bar intervals within this many film-px (same bar captured in two scans) |
+| `--min-page-height` | 1000 | drop content strips shorter than this (bar-splitting misdetections) |
+| `--no-trim-border` | off | keep the scans' white frame border instead of cropping it |
+| `--reverse` | off | number pages bottom-of-film (capture order) first instead of top-of-film first |
+
+The overlap-detection options (`--ratio`, `--contrast`, `--min-size`,
+`--max-dx`, `--min-matches`, `--max-iqr`, `--max-dim`, `--force-cache`) are
+passed through to the SIFT/NCC detector and match `sequence_overlap.py`'s
+defaults, so the page cutter reaches the same overlap verdicts as the report.
+
+Page numbering runs in scan order through the batch's independent runs; within
+a run it goes top-of-film first by default (use `--reverse` for capture order).
+The run log prints each page's pixel height and the scan(s) it was assembled
+from, and flags any page spanning more than two scans.
+
+**As a library.** `run()` is a thin wrapper over `analyze_batch()` (phases
+1-3: per-scan bars/frame, per-pair overlap, film-coordinate layout) plus the
+assembly step, so you can drive the pipeline programmatically:
+
+```python
+import extract_pages as ep
+res = ep.analyze_batch("scans2/P81-4720/", pattern="^07227-6300_0.28",
+                       cache_dir="sift_cache", verbose=False)
+for (lo, hi, contrib, ri) in res["all_pages"]:
+    r0, r1 = res["runs"][ri]
+    img, _ = ep.assemble_page((lo, hi), list(range(r0, r1 + 1)),
+                              res["valid"], res["S_seed"], ep._LRU(4))
+    # img is the assembled page (uint8 grayscale).
+```
+`assemble_page(..., debug=True)` additionally returns the seam geometry
+(per-piece placement + per-column seam rows) for drawing overlays — see
+`tests/test_extract_pages_visual.py`. `build_layout()` is the pure-data core
+(`analyze_batch` without any image loading) reused by both `run()` and the
+tests.

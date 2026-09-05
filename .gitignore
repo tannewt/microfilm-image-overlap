@@ -18,3 +18,5 @@ scan_overlap_results.txt
 *_anomalies.txt
 *_run.txt
 batch_report.txt
+# Visual debug images from extract_pages tests.
+tests/debug_output/
