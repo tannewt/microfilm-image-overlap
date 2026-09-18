@@ -1,4 +1,4 @@
-"""Visual integration tests for `extract_pages` on REAL scans.
+"""Visual integration tests for the page pipeline on REAL scans.
 
 These run on the real `07227-6300_0.28` batch and, instead of asserting on
 synthetic pixels, **write debug images** you can open to eyeball:
@@ -23,7 +23,8 @@ import cv2
 import numpy as np
 import pytest
 
-import extract_pages as ep
+import plan_pages as pp
+import compose_pages as cp
 from conftest import REPO
 
 # Whole file needs the real scan data + the shared SIFT cache.
@@ -51,7 +52,7 @@ def _scan_path(idx):
 
 
 def _analyze():
-    return ep.analyze_batch(SCAN_DIR, pattern=PATTERN, cache_dir=CACHE,
+    return pp.analyze_batch(SCAN_DIR, pattern=PATTERN, cache_dir=CACHE,
                             verbose=False)
 
 
@@ -77,6 +78,18 @@ def _page_for_pair(res, ia, ib):
             r0, r1 = res["runs"][ri]
             return lo, hi, list(range(r0, r1 + 1)), ka, kb
     return None
+
+
+def _assemble(res, lo, hi, run_range):
+    """Assemble one page through the new plan-based API (the same data
+    plan_pages writes into a TOML plan's [auto] section)."""
+    contribs = pp.page_contribs((lo, hi), run_range, res["valid"],
+                                res["S_seed"])
+    for c in contribs:
+        c["path"] = os.path.join(SCAN_DIR, c["scan"])
+    img, contrib, geo = cp.assemble_page((lo, hi), contribs, cp._LRU(4),
+                                         debug=True)
+    return img, contrib, geo
 
 
 def _scale_to(img, width):
@@ -195,8 +208,7 @@ def test_debug_overlap_seam_between_two_scans(layout):
     page = _page_for_pair(res, A_IDX, B_IDX)
     assert page is not None, f"no single page holds scans {A_IDX} and {B_IDX}"
     lo, hi, run_range, ka, kb = page
-    img, contrib, geo = ep.assemble_page((lo, hi), run_range, res["valid"],
-                                         res["S_seed"], ep._LRU(4), debug=True)
+    img, contrib, geo = _assemble(res, lo, hi, run_range)
     assert img is not None and geo["seams"], "page assembled with a seam"
 
     seam = geo["seams"][0]
@@ -204,8 +216,8 @@ def test_debug_overlap_seam_between_two_scans(layout):
     olo, ohi = seam["ox_lo"], seam["ox_hi"]
     seam_rows = seam["seam_rows"]
     loaded = geo["loaded"]
-    upper = next(d for d in loaded if d["idx"] == seam["upper_idx"])
-    lower = next(d for d in loaded if d["idx"] == seam["lower_idx"])
+    upper = next(d for d in loaded if d["scan"] == seam["upper"])
+    lower = next(d for d in loaded if d["scan"] == seam["lower"])
 
     def band_of(d):
         return d["tile"][blo - d["y0"]:bhi - d["y0"] + 1,
@@ -240,8 +252,8 @@ def test_debug_overlap_seam_between_two_scans(layout):
         prov[max(0, s):, x] = (255, 128, 0)  # lower -> blue
 
     panels = [a_band, b_band, c, prov]
-    labels = [f"scan {seam['upper_idx']:04d} (above seam)",
-              f"scan {seam['lower_idx']:04d} (below seam)",
+    labels = [f"{seam['upper']} (above seam)",
+              f"{seam['lower']} (below seam)",
               "hard switch + seam (red)",
               "provenance (red=above, blue=below)"]
     for p, lb in zip(panels, labels):
@@ -268,8 +280,7 @@ def test_debug_assembled_page_with_seam(layout):
     page = _page_for_pair(res, A_IDX, B_IDX)
     assert page is not None
     lo, hi, run_range, ka, kb = page
-    img, contrib, geo = ep.assemble_page((lo, hi), run_range, res["valid"],
-                                         res["S_seed"], ep._LRU(4), debug=True)
+    img, contrib, geo = _assemble(res, lo, hi, run_range)
     assert img is not None and geo["seams"]
 
     seam = geo["seams"][0]

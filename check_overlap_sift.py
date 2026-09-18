@@ -166,6 +166,27 @@ def downscale_gray(gray, max_dim):
                       interpolation=cv2.INTER_AREA)
 
 
+# Full-resolution keypoints live in a SEPARATE table so they never evict the
+# cheap downscaled rows (the tables are keyed by path alone, so storing both
+# scales of the same scan in one table would require a composite key and would
+# break every consumer that assumes one row per path).
+_FULLRES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS images_fullres (
+    image_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    path       TEXT UNIQUE NOT NULL,
+    name       TEXT,
+    h          INTEGER,
+    w          INTEGER,
+    contrast   REAL,
+    min_size   REAL,
+    max_dim    INTEGER DEFAULT 0,
+    n_kp       INTEGER,
+    kp         BLOB,        -- float32, n_kp x 3 (x, y, size)
+    des        BLOB         -- uint8,   n_kp x 128
+);
+"""
+
+
 def _open_cache(db_path):
     """Open (creating if needed) the SQLite feature store and its schema."""
     new = not os.path.exists(db_path)
@@ -198,11 +219,15 @@ def _open_cache(db_path):
             con.execute(
                 "ALTER TABLE images ADD COLUMN max_dim INTEGER DEFAULT 0")
             con.commit()
+    # Migration for caches created before the full-res table existed (no-op if
+    # already present).
+    con.executescript(_FULLRES_SCHEMA)
+    con.commit()
     return con
 
 
 def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
-                             max_dim=0, force=False):
+                             max_dim=0, force=False, table="images"):
     """
     Detect SIFT keypoints for `path`, reusing a single on-disk SQLite store
     under `cache_dir` when given (and when the cache matches the requested
@@ -211,6 +236,10 @@ def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
     `max_dim` (>0) downscales the image so its largest dimension is <= this
     many pixels before SIFT (see `downscale_gray`). The stored `h, w` is the
     *scaled* shape SIFT saw, so overlap geometry is consistent.
+
+    `table` selects the cache table: 'images' (the default) holds the
+    downscaled rows; 'images_fullres' holds full-resolution rows (max_dim=0)
+    alongside them, so the two scales never evict each other.
 
     Returns (kp, des, shape). `shape` is the (scaled) image's (h, w). On a
     failed load returns ([], None, (0, 0)).
@@ -221,8 +250,8 @@ def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
         con = _open_cache(sift_cache_db_path(cache_dir))
         if not force:
             row = con.execute(
-                "SELECT n_kp, kp, des, h, w, contrast, min_size, max_dim "
-                "FROM images WHERE path = ?", (abspath,)
+                f"SELECT n_kp, kp, des, h, w, contrast, min_size, max_dim "
+                f"FROM {table} WHERE path = ?", (abspath,)
             ).fetchone()
             if row is not None:
                 n_kp, kp_blob, des_blob, h, w, c, ms, md = row
@@ -237,7 +266,7 @@ def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
     if img is None:
         if con:
             con.execute(
-                "INSERT OR REPLACE INTO images (path, name, h, w, contrast, "
+                f"INSERT OR REPLACE INTO {table} (path, name, h, w, contrast, "
                 "min_size, max_dim, n_kp, kp, des) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (abspath, os.path.basename(path), 0, 0,
                  float(contrast), float(min_size), int(max_dim or 0), 0,
@@ -252,7 +281,7 @@ def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
     if con:
         kp_blob, n_kp = _keypoints_to_blob(kp)
         con.execute(
-            "INSERT OR REPLACE INTO images (path, name, h, w, contrast, "
+            f"INSERT OR REPLACE INTO {table} (path, name, h, w, contrast, "
             "min_size, max_dim, n_kp, kp, des) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (abspath, os.path.basename(path), shape[0], shape[1],
              float(contrast), float(min_size), int(max_dim or 0), n_kp, kp_blob,
@@ -425,7 +454,8 @@ def assess_overlap(kp_a, kp_b, good, min_matches=20, max_iqr=50.0,
 
 
 def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.5,
-                      step=10, uniform_thresh=8.0):
+                      step=10, uniform_thresh=8.0,
+                      exclude_a=None, exclude_b=None):
     # Fallback overlap detector for low-texture overlap regions (e.g. a mostly
     # black microfilm page boundary, or a thin newspaper strip SIFT can't
     # match) where SIFT finds too few matching features. Only runs on pairs
@@ -447,6 +477,15 @@ def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.5,
     # [l_min, l_max]; the near-full-frame extent is capped because a same-size
     # frame border would otherwise correlate at any shift.
     #
+    # `exclude_a` / `exclude_b` additionally drop explicit row masks (e.g. the
+    # detected black-bar rows, passed by callers that have them). Bar rows are
+    # NOT featureless on real scans (dust + the scanner's column fixed-pattern
+    # pushes their row std above the threshold), and that fixed pattern is the
+    # same in every frame -- so WITHOUT dropping them, any shift that aligns
+    # any bar of A onto any bar of B produces a high-NCC phantom peak that can
+    # beat the true overlap's peak. Passing the bar masks makes the NCC rank
+    # shifts by their TEXT rows only.
+    #
     # Returns (is_real, dy, dx, ncc, L). When real, dy is the A->B vertical
     # translation (A row r -> B row r+dy), dx is always 0, and L is the overlap
     # height in rows.
@@ -466,6 +505,10 @@ def pixel_ncc_overlap(gray_a, gray_b, l_min=50, l_max=1500, ncc_min=0.5,
         if L < l_min or L > l_max:
             return None
         keep = feat_a[a0:a1] & feat_b[a0 + s:a1 + s]
+        if exclude_a is not None:
+            keep &= ~exclude_a[a0:a1]
+        if exclude_b is not None:
+            keep &= ~exclude_b[a0 + s:a1 + s]
         if keep.sum() < l_min:
             return None
         a = A[a0:a1][keep][:, :w]
@@ -908,10 +951,10 @@ def write_overlapped_image(img_a_color, img_b_color, T, kp_a, kp_b, good, mask,
 
 def _mark_boundary_bars(vis, img_a_color, img_b_color, canvas_w, oy_a, oy_b):
     """Overlay purple bars on detected page boundaries (the black bars between
-    microfilm pages) in each panel. Detection is reused from extract_pages.
+    microfilm pages) in each panel. Detection is reused from plan_pages.
     Drawn last so match lines don't obscure the markers.
     """
-    from extract_pages import detect_bars
+    from plan_pages import detect_bars
     n_bars = 0
     for img_color, oy in ((img_a_color, oy_a), (img_b_color, oy_b)):
         gray = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)

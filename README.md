@@ -21,17 +21,40 @@ sequence of scans back together. Three entry points:
   the most new content while staying stitchable), and an **unreadable-image
   flag** (squashed/stretched, blank). Uses the latest batch as the 600-dpi
   physical-size reference.
-- **`extract_pages.py`** — given an overlapping batch, write **one image per
-  microfilm page**. Reuses the SIFT/NCC overlap detection to lay every scan
-  and every black bar (the dark gap between pages) out in a shared film
-  coordinate frame, then cuts the content strips between bars and stitches
-  each (from the one or two scans that cover it) with a hard switch at the overlap.
+- **`plan_pages.py`** — given an overlapping batch, write **one TOML plan per
+  microfilm page** (the EXPENSIVE half). Reuses the SIFT/NCC overlap detection
+  to lay every scan and every black bar (the dark gap between pages) out in a
+  shared film coordinate frame, then records per page — under an `[auto]`
+  section in a TOML file — which scans contribute and at what offsets.
   Pages never span more than two scans; a page that would is flagged.
+- **`compose_pages.py`** — turn the plans into **one image per microfilm page**
+  (the CHEAP half). Loads the scans a plan names (originals, or a
+  post-processed twin with identical dimensions — e.g. the "flat"
+  `flatten_lighting.py` versions) and stitches each page with a hard switch at
+  the overlap, honoring any `[manual]` overrides in the plan. No SIFT here, so
+  the input scans can be iterated on without re-planning.
 
-Plus a helper:
+Plus helpers:
 
 - **`extract_anomalies.py`** — turn a `sequence_overlap.py` text run into a
   short report of the *no-overlap* and *near-duplicate* pairs.
+- **`flatten_lighting.py`** — remove the scanner's constant uneven lighting
+  (vignette, dark spots, fog) from every scan of a batch by flat-field
+  division. A batch's scans share the illumination defects but hold the film
+  content at different positions, so a bar-masked average over the batch
+  (only pixels above `--bar-threshold` contribute — the black page-gap bars
+  never darken the field) yields the lighting field; dividing each scan by
+  it flattens the background and evens out faint text contrast:
+
+  ```
+  python flatten_lighting.py scans2/P81-4720/ --pattern '^07227-' \\
+      --outdir scans2/P81-4720/flat/
+  ```
+
+  With no `--pattern`, every distinct filename prefix in the directory is
+  its own batch (fields need ≥3 scans; one-off test shots are skipped).
+  `--save-field 'out/%s-field.png'` writes each batch's field for
+  inspection. Requires Pillow (like `batch_report.py`).
 
 ## Requirements
 
@@ -67,6 +90,26 @@ start of the filename). Files are sorted by the **last** number in the name
 (the per-image index), which is the correct key for this naming scheme. (The
 old "first number in the name" logic would collapse a whole batch to one
 entry, since every file shares the leading prefix number.)
+
+### Roll defaults (`roll.json`)
+
+A roll directory (e.g. `20260826-newspaper-scans/P81-4720/`) may carry a
+`roll.json` storing the default start/end image numbers per batch. The film
+leader and the START/END title cards at each end of a roll are not pages, and
+it isn't helpful extracting pages from the blank end of a roll —
+`plan_pages.py` drops scans outside the ranges when `--only` is not given:
+
+```json
+{
+  "07278-6300_0.2720": {"start": 1, "end": 933},
+  "17278-6300_0.2720": {"start": 937, "end": 947}
+}
+```
+
+Keys are scan filename prefixes (everything up to the trailing four-digit
+index); ranges are inclusive image numbers; `*` is a fallback range for
+prefixes without their own entry. An explicit `--only` selection overrides
+the defaults entirely.
 
 ## Quick start
 
@@ -269,7 +312,8 @@ detection failure.
 | `find_nonconsecutive_overlaps.py` | find the same source page scanned in multiple batches, via bag-of-visual-words retrieval over the cache |
 | `batch_report.py` | one-page per-batch summary: image count, no-overlap pairs, capture rate, 600-dpi overlap + unique-line coverage, unreadable-image flags |
 | `extract_anomalies.py` | summarize a run's no-overlap & near-duplicate pairs |
-| `extract_pages.py` | split an overlapping batch into one image per microfilm page |
+| `plan_pages.py` | plan one page per microfilm page: per-page TOML ([auto] contributors + offsets) |
+| `compose_pages.py` | composite the plans into page images (honors [manual] overrides; accepts flat scans) |
 | `stitch_pages.py` | (separate) stitch pages using detected overlaps |
 | `visualize_overlap.py`, `check_overlap.py` | older overlap helpers |
 
@@ -524,55 +568,132 @@ python check_overlap_sift.py scans2/P81-4720/07227-6300_0.28_0032.tif \
     scans2/P81-4720/07227-6300_0.28_0033.tif \
     --vis overlap_viz/0032-0033_vis.png --stitch overlap_viz/0032-0033_stitch.png
 
-# 7. Split the batch into one image per microfilm page (reuses the cache).
-python extract_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
-    --cache-dir sift_cache --output-dir pages/07227
+# 7. Plan the batch's pages (reuses the cache; one TOML per page).
+python plan_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
+    --cache-dir sift_cache --output-dir plans/07227
+
+# 8. Composite the plans into page images (cheap; rerun any time).
+python compose_pages.py plans/07227 --output-dir pages/07227
+
+# ...or composite from the flat scans instead (identical dimensions):
+python flatten_lighting.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
+    --outdir flat/07227
+python compose_pages.py plans/07227 --scan-dir flat/07227 \
+    --output-dir pages/07227-flat
 ```
 
-## Splitting a batch into page images (`extract_pages.py`)
+## Splitting a batch into pages: `plan_pages.py` + `compose_pages.py`
 
-`extract_pages.py` turns an overlapping batch into one image per microfilm
-page. The pages on the film are separated by **black bars** (dark horizontal
-gaps); the script detects those bars in each scan, places every scan and every
-bar into a shared *film coordinate* frame using the per-pair overlap, and cuts
-the content strips between consecutive bars. Each page is assembled from the
-one or two scans that cover it, with a HARD switch at the overlap (no
-blending/feathering, since the pages are OCRed and averaging two captures of
-a text edge would gray and soften it). Instead a jagged seam -- found by
+`plan_pages.py` plans an overlapping batch into one image per microfilm
+page, without rendering anything: it writes **one TOML file per page**. The
+pages on the film are separated by **black bars** (dark horizontal gaps); the
+script detects those bars in each scan, places every scan and every bar into
+a shared *film coordinate* frame using the per-pair overlap, and cuts the
+content strips between consecutive bars. Each page plan records, under
+`[auto]`, the contributing scans (indices, filenames), their film offsets
+(vertical) and dx (horizontal), the page's film range and each scan's content
+bbox/size.
+
+`compose_pages.py` then composites each plan into a page image, assembling it
+from the one or two scans that cover it, with a HARD switch at the overlap
+(no blending/feathering, since the pages are OCRed and averaging two captures
+of a text edge would gray and soften it). Instead a jagged seam -- found by
 dynamic programming, seam-carving style -- threads through the lightest pixels
 so the cut runs through white space, not through text. The per-pair horizontal
 shift is applied so the two scans' content aligns in the overlap; the scans'
 white frame border is cropped out of every page. Pages never span more than
-two scans; if one would (a missed bar or a stalled advance) the run log flags
+two scans; if one would (a missed bar or a stalled advance) the plan log flags
 it. The small black triangles in two corners of a 2-scan page are genuinely
 uncaptured film margin (a side effect of the horizontal shift) and contain no
 page content.
+
+Because compositing is cheap and reads only the plans, the expensive planning
+(SIFT) runs once; the input scans can then be iterated on -- most usefully
+swapped for their "flat" twins (`flatten_lighting.py` writes identical-dimension
+`<stem>_flat.png` files) -- and the pages re-rendered in seconds.
 
 Anomalous pairs are handled automatically: a **no-overlap** pair starts a new
 independent run of scans (pages never cross a gap); a pair whose vertical
 advance is below `--stall-frac` of the scan height (a near-duplicate re-scan)
  is treated as redundant and skipped.
 
+### Two-bar pairs and the bar-constrained NCC fallback
+
+The hardest consecutive pairs are the ones where **both scans hold two bars**
+(a full page apiece): their shared strip is a black page-boundary bar plus
+only a few hundred rows of page-margin texture, too little for SIFT to reach
+`--min-matches`. The plain pixel-NCC sweep fails here too, and worse: bar rows
+are NOT featureless on real scans (dust + the scanner's column fixed-pattern
+pushes their row std above the threshold), and that fixed pattern is the same
+in every frame -- so ANY shift aligning a bar of A onto a bar of B scores
+~0.9 NCC. Those black-on-black phantoms can beat the true overlap's peak, and
+they exist in SIFT too (bar-dust keypoints match across different bars).
+
+When both scans' bars are known, `plan_pages.py` therefore replaces the
+plain NCC fallback with a **bar-constrained NCC**
+(`bar_constrained_ncc`), in two stages:
+
+1. Text stage: candidates are restricted to dy > 0 (the film always advances
+   the same direction, so the overlap is A's top rows <-> B's bottom rows)
+   and to the shared-boundary-bar pairing (A's first bar <-> B's last bar,
+   start-to-start / end-to-end). Each candidate is scored by the NCC of its
+   overlapping rows EXCLUDING both images' bar rows, so the score reflects
+   text / margin-texture only (`pixel_ncc_overlap` takes optional
+   `exclude_a` / `exclude_b` row masks). The winner must clear `ncc-min`,
+   form a SHARP peak (its NCC beats the median of its own +/-30-row window
+   by 0.08 -- the column-pattern plateaus are flat, real alignments are
+   peaks), and be bar-consistent.
+2. Bar-anchored fallback (only when the text stage finds nothing -- the
+   strip is too bar-dominated for even the margin texture): for the
+   monotonic two-bar layout the shared strip ALWAYS contains that shared
+   boundary bar, so the pairing plus the film-direction prior is itself the
+   evidence that the pair overlaps; the strip is simply too dark for pixel
+   correlation to confirm it (the bars look alike frame-to-frame, and the
+   margin texture around a bar correlates at ANY bar-to-bar shift -- the
+   film's left edge, vertical rules and gray gradients sit at fixed x in
+   every frame). The bar rows are then used only to REFINE the offset: the
+   column-detrended NCC of the overlapping bar rows peaks where the bars'
+   fade/edge structure aligns, pinning dy far better than the detected bar
+   edges (whose extents wobble tens of rows between frames). The search
+   covers the start-start..end-end offset range; the peak must clear a low
+   sanity floor (`min-dust` 0.15) over at least 100 common bar rows.
+
+The extent cap ([50, 1500] scaled rows) still rejects stalled
+near-duplicates and single-mid-frame-bar pairs (07227's 0025 -> 0026 stays a
+genuine gap). In these two-bar stretches every scan holds a complete page
+between its own two bars, so each page is still attributed to the single
+scan that owns it -- even if a pair stays unlinked, page extraction is
+unaffected; the links keep the film-coordinate chain (and the advance
+statistics) continuous.
+
 ```
 # Dry run: list the pages detected and which scans each comes from, no output.
-python extract_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
+python plan_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
     --cache-dir sift_cache --dry-run
 
-# Write the page images (default: pages/page_NNNN.png).
-python extract_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
-    --cache-dir sift_cache --output-dir pages/07227
+# Write the page plans (default: plans/page_NNNN.toml).
+python plan_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
+    --cache-dir sift_cache --output-dir plans/07227
+
+# Then composite the plans into page images.
+python compose_pages.py plans/07227 --output-dir pages/07227
+
+# ...or from the flat scans, and/or a label subset.
+python compose_pages.py plans/07227 --scan-dir flat/07227 \
+    --output-dir pages/07227-flat --pattern '^page_0010'
 
 # Keep the frame border; number pages bottom-of-film (capture order) first.
-python extract_pages.py scans2/P81-4720/ --pattern '^07227-' \
+python plan_pages.py scans2/P81-4720/ --pattern '^07227-' \
     --cache-dir sift_cache --no-trim-border --reverse
 ```
+
+### `plan_pages.py` options
 
 | option | default | meaning |
 |---|---|---|
 | `--pattern` | — | regex selecting one batch (`^07227-`) |
-| `--output-dir` | `pages/` | where to write page images |
+| `--output-dir` | `plans/` | where to write the per-page TOML plans |
 | `--cache-dir` | — | shared SIFT cache (reuse the SIFT step) |
-| `--ext` | `png` | output format: `png` / `tif` |
 | `--dry-run` | off | detect & list pages only, write nothing |
 | `--stall-frac` | 0.3 | pairs advancing less than this fraction of the scan height are skipped as near-duplicate re-scans |
 | `--bar-gap-tol` | 200 | merge bar intervals within this many film-px (same bar captured in two scans) |
@@ -585,23 +706,80 @@ The overlap-detection options (`--ratio`, `--contrast`, `--min-size`,
 passed through to the SIFT/NCC detector and match `sequence_overlap.py`'s
 defaults, so the page cutter reaches the same overlap verdicts as the report.
 
+### `compose_pages.py` options
+
+| option | default | meaning |
+|---|---|---|
+| `plans_dir` | — | directory of per-page TOML plans (positional) |
+| `--scan-dir` | plan's `source_dir` | directory holding the scans named in the plans; point it at a post-processed twin with IDENTICAL dimensions (e.g. `flat/`'s `_flat` versions) |
+| `--output-dir` | `pages/` | where to write page images |
+| `--ext` | `png` | output format: `png` / `tif` |
+| `--pattern` | — | regex on the page label selecting which plans to composite |
+| `--lru` | 4 | how many full-res scans stay in memory while assembling |
+
+### Plan file format and `[manual]` overrides
+
+Each plan (`plans/<label>.toml`) has a `[page]` header (label, kind,
+source_dir), the computed data under `[auto]`, and an (initially empty)
+`[manual]` table where hand edits override `[auto]`:
+
+```toml
+[page]
+label = "page_0008-0009"
+kind = "page"
+source_dir = "/abs/path/to/scans2/P81-4720"
+
+[auto]
+film = [1023.0, 7455.0]
+contribs = [
+    { index = 8, scan = "07227-6300_0.28_0008.tif", film_offset = 0.0,
+      dx = 0.0, bbox = [12, 6287, 40, 6289], size = [6300, 6330] },
+    { index = 9, scan = "07227-6300_0.28_0009.tif", film_offset = -5231.0,
+      dx = 3.0, bbox = [12, 6287, 40, 6289], size = [6300, 6330] },
+]
+
+[manual]
+# Override [auto] here to fine-tune this page without re-planning.
+#   film = [lo, hi]                      replace the page's film range
+#   [manual.contribs."07227-6300_0.28_0009.tif"]
+#     film_offset = -5235.0             new vertical film offset
+#     dx = 0.0                          new horizontal film offset
+#     skip = true                       drop this scan from the page
+```
+
+`scan` is resolved against `source_dir` (or `--scan-dir`): the exact filename
+first, then any image whose filename stem extends the plan's stem (`<stem>_flat.png`),
+with the plan's recorded `size` verified against the loaded image. Three plan
+kinds exist: `page` (the normal strip between bars), `gap_join` (a page
+re-joined across a no-overlap gap, stacked from two `sections` with an
+optional `red` filler band), and `missing` (a solid red placeholder for an
+absent frame). `kind = "gap_join"` plans carry `sections = [...]` in `[auto]`
+and are fine-tuned via `[manual.sections.N]` (see the comments inside the
+plan).
+
 Page numbering runs in scan order through the batch's independent runs; within
 a run it goes top-of-film first by default (use `--reverse` for capture order).
-The run log prints each page's pixel height and the scan(s) it was assembled
-from, and flags any page spanning more than two scans.
+The plan log prints each page's pixel height and the scan(s) that contribute
+to it, and flags any page spanning more than two scans.
 
-**As a library.** `run()` is a thin wrapper over `analyze_batch()` (phases
-1-3: per-scan bars/frame, per-pair overlap, film-coordinate layout) plus the
-assembly step, so you can drive the pipeline programmatically:
+**As a library.** `plan_pages.run()` is a thin wrapper over
+`analyze_batch()` (phases 1-3: per-scan bars/frame, per-pair overlap,
+film-coordinate layout) plus the plan-writing step, so you can drive the
+pipeline programmatically:
 
 ```python
-import extract_pages as ep
-res = ep.analyze_batch("scans2/P81-4720/", pattern="^07227-6300_0.28",
+import plan_pages as pp
+import compose_pages as cp
+import os
+res = pp.analyze_batch("scans2/P81-4720/", pattern="^07227-6300_0.28",
                        cache_dir="sift_cache", verbose=False)
 for (lo, hi, contrib, ri) in res["all_pages"]:
     r0, r1 = res["runs"][ri]
-    img, _ = ep.assemble_page((lo, hi), list(range(r0, r1 + 1)),
-                              res["valid"], res["S_seed"], ep._LRU(4))
+    contribs = pp.page_contribs((lo, hi), list(range(r0, r1 + 1)),
+                                res["valid"], res["S_seed"])
+    for c in contribs:
+        c["path"] = os.path.join("scans2/P81-4720/", c["scan"])
+    img, _ = cp.assemble_page((lo, hi), contribs, cp._LRU(4))
     # img is the assembled page (uint8 grayscale).
 ```
 `assemble_page(..., debug=True)` additionally returns the seam geometry
