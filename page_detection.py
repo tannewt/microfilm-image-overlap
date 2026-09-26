@@ -2,8 +2,8 @@
 """
 Shared page-boundary detection logic.
 
-Used by stitch_pages.py (to group scans into pages) and visualize_overlap.py
-(to mark detected page boundaries in the visualizations).
+Used by visualize_overlap.py (to mark detected page boundaries in the
+visualizations).
 
 A page boundary is detected between two consecutive scans when their overlap
 falls below a threshold percentage of the frame height.

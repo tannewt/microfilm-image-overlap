@@ -106,7 +106,7 @@ def main():
             # missing-file red pages inside this subset
             for seq in spec['missing']:
                 if lo <= seq <= hi:
-                    made = g1(f'page_{seq:04d}-{seq:04d}')
+                    made = g1(f'page*-scans{seq:03d}-{seq:03d}')
                     if made:
                         shutil.copy2(made[0], pages)
                         print(f'  {tag}: red page for missing {seq:04d} copied')
@@ -126,12 +126,12 @@ def main():
                     print(f'  {tag}: junction {a:04d}->{b:04d} missing_frame '
                           f'(red page only; pieces kept)')
                     continue
-                joined = g1(f'page_{a:04d}-{b:04d}')
+                joined = g1(f'page*-scans{a:03d}-{b:03d}-gap.*')
                 if joined:
                     for stale in (glob.glob(os.path.join(
-                            pages, f'page_{a:04d}-{a:04d}.*')) +
+                            pages, f'page*-scans{a:03d}-{a:03d}.*')) +
                             glob.glob(os.path.join(
-                            pages, f'page_{b:04d}-{b:04d}.*'))):
+                            pages, f'page*-scans{b:03d}-{b:03d}.*'))):
                         os.remove(stale)
                     for j in joined:
                         shutil.copy2(j, pages)

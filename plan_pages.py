@@ -1706,13 +1706,12 @@ def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
     return merges
 
 
-def page_label(contrib, valid):
-    """Output filename stem for a page, derived from the scans that contributed
-    to it: the range of their sequence numbers (the trailing four-digit integer
-    in each scan's filename), e.g. `page_0000-0002`; a single-scan page keeps
-    the range form, e.g. `page_0059-0059`. Returns None for a page whose
-    contributing scans don't all carry a four-digit number -- such pages are
-    skipped by `run()`.
+def scan_range(contrib, valid):
+    """(lo, hi) sequence numbers of the scans that contributed to a page
+    (the trailing four-digit integer in each scan's filename), e.g.
+    `(0, 2)` for scans 0000-0002; a single-scan page keeps the range form,
+    `(59, 59)`. Returns None for a page whose contributing scans don't all
+    carry a four-digit number -- such pages are skipped by `run()`.
     """
     if not contrib:
         return None
@@ -1722,8 +1721,7 @@ def page_label(contrib, valid):
         if not m:
             return None
         nums.append(int(m.group(1)))
-    lo, hi = min(nums), max(nums)
-    return f"page_{lo:04d}-{hi:04d}"
+    return min(nums), max(nums)
 
 
 def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
@@ -1771,14 +1769,45 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     if merges and verbose:
         print(f"  gap fallback: {len(merges)} gap junction(s) to re-join")
 
-    labels = []
-    used = set()
+    # Page labels: `pageNNN-scansLLL-HHH` -- a 1-based page number in scan
+    # order, then the range of sequence numbers of the scans that contributed
+    # to it, e.g. `page001-scans0006-0007`. Every page (normal pages,
+    # gap-join junction pages, and missing-file placeholders alike) takes its
+    # number at its place in the scan sequence (sorted by the contributing
+    # scans' sequence range), so page images sort in page order.
+    page_no = {}
+    finals = []                   # (scan lo, hi, kind, key) per written page
     for pi, (lo, hi, contrib, ri) in enumerate(all_pages):
-        label = page_label(contrib, valid)
-        if label is not None:
-            while label in used:           # de-dup (two runs can both hold 0001)
-                label += "b" if not label.endswith("b") else "c"
-            used.add(label)
+        if id(all_pages[pi]) in merged_piece_ids:
+            continue              # joined into a gap-fallback page below
+        rng = scan_range(contrib, valid)
+        if rng is not None:
+            finals.append((rng[0], rng[1], "page", pi))
+    for mi, m in enumerate(merges):
+        rng = scan_range([m["a_idx"], m["b_idx"]], valid)
+        if rng is not None:
+            finals.append((rng[0], rng[1], "join", mi))
+    seen = set()
+    for sq in missing_seqs:
+        if sq in seen:
+            continue
+        seen.add(sq)
+        finals.append((sq, sq, "missing", sq))
+    finals.sort(key=lambda e: (e[0], e[1]))
+    for n, (_, _, kind, key) in enumerate(finals, 1):
+        page_no[(kind, key)] = n
+
+    labels = []
+    for pi, (lo, hi, contrib, ri) in enumerate(all_pages):
+        rng = scan_range(contrib, valid)
+        if ("page", pi) in page_no:
+            label = (f"page{page_no[('page', pi)]:03d}-"
+                     f"scans{rng[0]:03d}-{rng[1]:03d}")
+        elif id(all_pages[pi]) in merged_piece_ids:
+            label = (f"scans{rng[0]:03d}-{rng[1]:03d}" if rng
+                     else None)      # absorbed into a gap-join page below
+        else:
+            label = None
         labels.append(label)
         names = [valid[k].name for k in contrib]
         span = " ".join(names)
@@ -1788,6 +1817,8 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                    "sequence number)"
         elif len(contrib) > 2:
             flag = "  <-- spans >2 scans (check for a missed bar / stall)"
+        elif id(all_pages[pi]) in merged_piece_ids:
+            flag = "  <-- joined into a gap-fallback junction page"
         if verbose:
             print(f"  {label or '(unnamed)'}: {hi - lo:6.0f} px tall, "
                   f"{len(contrib)} scan(s) [{span}]{flag}")
@@ -1815,14 +1846,13 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         written += 1
 
     # Gap-junction fallback plans: re-join the page split by each gap.
-    for m in merges:
+    for mi, m in enumerate(merges):
         a_piece, b_piece = m["a_piece"], m["b_piece"]
-        label = page_label([m["a_idx"], m["b_idx"]], valid)
-        if label is None:
+        rng = scan_range([m["a_idx"], m["b_idx"]], valid)
+        if rng is None:
             continue
-        while label in used:
-            label += "b" if not label.endswith("b") else "c"
-        used.add(label)
+        label = (f"page{page_no[('join', mi)]:03d}-"
+                 f"scans{rng[0]:03d}-{rng[1]:03d}-gap")
         sections = [dict(film=[float(b_piece[0]), float(b_piece[1])],
                          contribs=page_contribs(
                              b_piece[0:2], list(b_piece[2]), valid, S_seed))]
@@ -1848,10 +1878,8 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         ws = sorted(s.bbox[3] - s.bbox[2] + 1 for s in valid)
         pw = int(ws[len(ws) // 2])
         for seq in missing_seqs:
-            label = f"page_{seq:04d}-{seq:04d}"
-            while label in used:
-                label += "b" if not label.endswith("b") else "c"
-            used.add(label)
+            label = (f"page{page_no[('missing', seq)]:03d}-"
+                     f"scans{seq:03d}-{seq:03d}")
             path = os.path.join(output_dir, f"{label}.toml")
             write_plan_toml(path, label, "missing", source_dir,
                             dict(size=[int(ph), int(pw)]))

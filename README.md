@@ -33,6 +33,10 @@ sequence of scans back together. Three entry points:
   `flatten_lighting.py` versions) and stitches each page with a hard switch at
   the overlap, honoring any `[manual]` overrides in the plan. No SIFT here, so
   the input scans can be iterated on without re-planning.
+- **`compare_pages.py`** — QC the plans: compare neighboring page plans to flag
+  **duplicates** (the same page planned twice) and **match up** pairs whose
+  edges share SIFT points (adjacent in the original book). See
+  "Checking neighboring page plans" below.
 
 Plus helpers:
 
@@ -314,7 +318,7 @@ detection failure.
 | `extract_anomalies.py` | summarize a run's no-overlap & near-duplicate pairs |
 | `plan_pages.py` | plan one page per microfilm page: per-page TOML ([auto] contributors + offsets) |
 | `compose_pages.py` | composite the plans into page images (honors [manual] overrides; accepts flat scans) |
-| `stitch_pages.py` | (separate) stitch pages using detected overlaps |
+| `compare_pages.py` | QC the plans: flag duplicate neighboring pages and pairs whose edges share SIFT points |
 | `visualize_overlap.py`, `check_overlap.py` | older overlap helpers |
 
 ## Tests (`pytest`)
@@ -671,7 +675,7 @@ statistics) continuous.
 python plan_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
     --cache-dir sift_cache --dry-run
 
-# Write the page plans (default: plans/page_NNNN.toml).
+# Write the page plans (default: plans/pageNNN-scansLLL-HHH.toml).
 python plan_pages.py scans2/P81-4720/ --pattern '^07227-6300_0.28' \
     --cache-dir sift_cache --output-dir plans/07227
 
@@ -680,7 +684,7 @@ python compose_pages.py plans/07227 --output-dir pages/07227
 
 # ...or from the flat scans, and/or a label subset.
 python compose_pages.py plans/07227 --scan-dir flat/07227 \
-    --output-dir pages/07227-flat --pattern '^page_0010'
+    --output-dir pages/07227-flat --pattern '^page010'
 
 # Keep the frame border; number pages bottom-of-film (capture order) first.
 python plan_pages.py scans2/P81-4720/ --pattern '^07227-' \
@@ -725,7 +729,7 @@ source_dir), the computed data under `[auto]`, and an (initially empty)
 
 ```toml
 [page]
-label = "page_0008-0009"
+label = "page003-scans008-009"
 kind = "page"
 source_dir = "/abs/path/to/scans2/P81-4720"
 
@@ -759,6 +763,13 @@ plan).
 
 Page numbering runs in scan order through the batch's independent runs; within
 a run it goes top-of-film first by default (use `--reverse` for capture order).
+Each page is named `pageNNN-scansLLL-HHH`: its 1-based number, assigned by
+each page's place in the scan sequence (sorted by the range of sequence
+numbers of the scans that contributed to it, so gap-join junction pages and
+missing-file placeholders land where they belong), then that scans range --
+e.g. `page001-scans0006-0007`, so page images sort in page order.
+Gap-join junction pages carry a `-gap` suffix
+(`page001-scans0006-0007-gap.png`).
 The plan log prints each page's pixel height and the scan(s) that contribute
 to it, and flags any page spanning more than two scans.
 
@@ -766,7 +777,6 @@ to it, and flags any page spanning more than two scans.
 `analyze_batch()` (phases 1-3: per-scan bars/frame, per-pair overlap,
 film-coordinate layout) plus the plan-writing step, so you can drive the
 pipeline programmatically:
-
 ```python
 import plan_pages as pp
 import compose_pages as cp
@@ -787,3 +797,71 @@ for (lo, hi, contrib, ri) in res["all_pages"]:
 `tests/test_extract_pages_visual.py`. `build_layout()` is the pure-data core
 (`analyze_batch` without any image loading) reused by both `run()` and the
 tests.
+
+## Checking neighboring page plans: `compare_pages.py`
+
+`compare_pages.py` reads a plans directory (the output of `plan_pages.py`) and
+compares every **neighboring** pair of page plans — pages next to each other
+in capture order — to catch two kinds of problems:
+
+1. **Duplicate pages** — two neighboring plans holding the SAME content: their
+   SIFT points match all over (the dominant match cluster spans a large
+   fraction of both pages). This happens when a page was planned twice: a
+   stalled film advance that escaped the `--stall-frac` check, or a false
+   no-overlap gap that split one page across a run boundary.
+2. **Edge matches** — neighboring plans whose meeting edges share SIFT points:
+   the strip around the black bar between them holds the same content in both
+   (an imprecise bar cut put a thin strip of page content in both plans),
+   evidence the two pages really were next to each other in the original book.
+   These pairs are reported as matched up, with the shared strip's row range
+   in each page image.
+
+Both checks load the cached SIFT keypoints of each contributing scan, map them
+into the shared film-coordinate frame (`row * scale + film_offset`), clip
+them to the overlap (the intersection of the two plans' film ranges, or a
+`--pad`-wide strip around the bar that separates cleanly-cut neighbors; pairs
+separated by more than `--max-tiling-gap` are compared over their full
+extent, since a run boundary's film coordinates are unrelated), and match.
+
+Because repetitive page furniture (text lines, column rules, syndicated ads on
+same-layout pages) produces PHANTOM clusters that span whole pages of two
+DIFFERENT pages at a consistent wrong offset, every candidate cluster is
+verified on the pixels before it is flagged: both plans are composited and
+the NCC of the overlapping page rows is swept around the cluster's offset
+(dark rows and page edges excluded — the scanner's fixed pattern there
+correlates at any shift). A real shared strip peaks far above the furniture
+plateau (~0.3-0.6 for phantoms on real scans); unverified clusters are listed
+as UNCERTAIN for eyeballing rather than flagged.
+
+```
+# QC one batch's plans (reuses the shared SIFT cache; ~10 s matching):
+python compare_pages.py plans/P81-4720 --cache-dir sift_cache
+
+# Point at a different scan dir (e.g. the flat twins) and save a report:
+python compare_pages.py plans/P81-4720 --cache-dir sift_cache \
+    --scan-dir flat/07227 --json report.json -o report.txt
+
+# Only some pages; trust SIFT clusters without pixel verification:
+python compare_pages.py plans/P81-4720 --cache-dir sift_cache \
+    --pattern '^page01' --no-verify
+```
+
+Output: a DUPLICATE / EDGE MATCH / UNCERTAIN listing plus counts; `--json`
+writes the full per-pair details (match counts, offsets, strip extents,
+verification NCC).
+
+| option | default | meaning |
+|---|---|---|
+| `plans_dir` | — | directory of per-page TOML plans (positional) |
+| `--scan-dir` | plan's `source_dir` | directory holding the scans named in the plans |
+| `--cache-dir` | — | shared SIFT cache (detection params must match the cache rows) |
+| `--pattern` | — | regex on the page label selecting which plans to load |
+| `--pad` | 400 | film px of each page's edge included in the boundary strip for edge matching |
+| `--max-tiling-gap` | 1500 | neighbor pairs separated by more film px than this are run-boundary pairs (compared over their full extent) |
+| `--dup-frac` | 0.35 | inlier extent as a fraction of the smaller page's height that marks a duplicate |
+| `--dup-matches` | 20 | min cluster matches for a duplicate |
+| `--edge-min` | 8 | min cluster matches for an edge match |
+| `--dy-tol` | 120 | max \|dy\| (film px) of an edge-match cluster (shared content must sit at the same film coordinate) |
+| `--verify-ncc` | 0.65 | min page-NCC peak for a verified cluster |
+| `--no-verify` | off | flag on SIFT clusters alone (noisy — phantoms WILL be flagged) |
+| `--json` / `-o` | — | write the JSON / text report to a file |

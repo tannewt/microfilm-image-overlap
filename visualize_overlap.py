@@ -12,7 +12,7 @@ Output:
     overlap_viz/overlap_0001_side.png - side-by-side comparison with lines drawn
 
 Pairs whose overlap falls below the boundary threshold are detected as page
-boundaries (shared logic with stitch_pages.py) and marked with purple bars.
+boundaries (shared logic with page_detection.py) and marked with purple bars.
 
 Usage:
     python visualize_overlap.py [--scan-dir DIR] [--output-dir DIR] [--max-pairs N]
@@ -260,7 +260,7 @@ def visualize_pair(path_a, path_b, name_a, name_b, output_dir, pair_idx, save_fu
     # Determine if this pair is problematic
     is_problematic = (overlap_pct_a < 20) or (confidence < 0.3)
 
-    # Page boundary detection (shared with stitch_pages.py)
+    # Page boundary detection (shared with page_detection.py)
     is_boundary = is_page_boundary(overlap_pct_a, boundary_threshold)
 
     # Save full-resolution A/B images if requested or if problematic
