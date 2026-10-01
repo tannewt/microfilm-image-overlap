@@ -611,6 +611,18 @@ it. The small black triangles in two corners of a 2-scan page are genuinely
 uncaptured film margin (a side effect of the horizontal shift) and contain no
 page content.
 
+Dark spots are also dodged where possible. Fog, shadows and smudges belong to
+one CAPTURE, not to the film -- the film sits at a different place on the
+scanner for every scan, so a defect baked into one scan is usually clean
+paper in another. Each scan gets a large-scale darkness field (a ~41 px box
+average; thin detail like text is present in both scans and cancels), and the
+seam DP then also minimizes the darkness the composite would inherit from the
+seam's position -- the upper scan owns above the seam, the lower below -- so
+spotted regions are handed to whichever scan is clean there. Defects on the
+film itself (a fingerprint, a page-edge shadow) show in every covering scan
+and stay, as do spots in rows only one scan covers. `--spot-weight 0`
+recovers the plain lightest-path seam.
+
 Because compositing is cheap and reads only the plans, the expensive planning
 (SIFT) runs once; the input scans can then be iterated on -- most usefully
 swapped for their "flat" twins (`flatten_lighting.py` writes identical-dimension
@@ -620,6 +632,33 @@ Anomalous pairs are handled automatically: a **no-overlap** pair starts a new
 independent run of scans (pages never cross a gap); a pair whose vertical
 advance is below `--stall-frac` of the scan height (a near-duplicate re-scan)
  is treated as redundant and skipped.
+
+### Horizontal batches (`--horizontal`)
+
+Some scans advance the film HORIZONTALLY: the film strip runs left-right
+through each frame, pages are separated by **vertical** black bars, and
+successive frames are shifted along columns. The 20260929 `uncat212` scans
+move right-to-left (each later frame shows the same content shifted left;
+new content enters at the frame's right edge, so a frame pair overlaps on
+the strip A's right edge <-> B's left edge). Plan such a batch with:
+
+    python plan_pages.py scans/20260929/ --pattern '^006876200_' \
+        --horizontal --cache-dir sift_cache2 --output-dir plans/0929
+
+The film's advance direction is detected from the data (the dominant SIFT
+cluster over the first few full-frame matches; the repeated page-margin
+furniture carries no keypoints and cannot fool it), then every scan is
+TRANSPOSED so the entire vertical pipeline -- bar detection, pair overlap,
+film layout, gap merges -- runs unchanged. Because such frames advance a
+fraction of the frame per capture instead of ~a full page, the stall
+threshold defaults to a much smaller `--stall-frac 0.05` here (pass your
+own value to override).
+
+The written plans record `axis = "x"` in `[page]`: their `film` ranges and
+`film_offset`s are film COLUMNS (scan column `c` sits at film column
+`film_offset + c`), while `bbox`/`size` stay in the scans' on-disk
+orientation. `compose_pages.py` reads `axis` and composites identically,
+returning each page in the scans' reading orientation.
 
 ### Two-bar pairs and the bar-constrained NCC fallback
 
@@ -720,6 +759,8 @@ defaults, so the page cutter reaches the same overlap verdicts as the report.
 | `--ext` | `png` | output format: `png` / `tif` |
 | `--pattern` | — | regex on the page label selecting which plans to composite |
 | `--lru` | 4 | how many full-res scans stay in memory while assembling |
+| `--spot-blur` | 41 | width of the box average defining the large-scale darkness field the seam uses to dodge dark spots |
+| `--spot-weight` | 1.0 | how strongly the seam DP avoids handing dark spots to the scan that has them; `0` recovers the plain lightest-path seam |
 
 ### Plan file format and `[manual]` overrides
 

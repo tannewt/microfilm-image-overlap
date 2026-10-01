@@ -31,9 +31,31 @@ Anomalous pairs are handled gracefully: a pair the detector reports as
 gap); a pair whose vertical advance is tiny (a near-duplicate / stalled
 advance) is treated as a redundant re-scan and skipped.
 
+**Horizontal batches.** Some scans advance the film HORIZONTALLY: the film
+strip runs left-right through each frame, pages are separated by
+**vertical** black bars, and successive frames are shifted along columns
+(the 20260929 `uncat212` scans move right-to-left: each later frame
+shows the same film content shifted LEFT, `dx = B - A < 0`, so new
+content enters at every frame's right edge). `--horizontal` handles these:
+the film's advance direction is detected from the data (the dominant
+SIFT cluster over the first few full-frame matches), then each scan is
+TRANSPOSED (for a right-to-left batch: new row = width - 1 - original
+column, new col = original row) so the whole
+vertical pipeline -- bar detection, pair overlap, film layout -- works
+unchanged in transposed coordinates. The written plans convert back:
+`axis = "x"` marks film coordinates as film COLUMNS (a scan's ORIGINAL
+column c sits at film column `film_offset + c`, and `film = [lo, hi]` is
+column range), while `bbox`/`size` are given in the scans' on-disk
+orientation so compositing can crop without transformation.
+
 Usage:
     python plan_pages.py scans2/P81-4720/ --pattern '^07227-' \
         --cache-dir sift_cache --output-dir plans/07227
+
+    # A horizontal batch (pages separated by vertical bars, film content
+    # drifting right-to-left -- the 20260929 uncat212 scans):
+    python plan_pages.py scans/20260929/ --pattern '^006876200_' \
+        --horizontal --cache-dir sift_cache2 --output-dir plans/0929
 
     # Only a subset of the batch (1-based indices or names in sorted order):
     python plan_pages.py scans2/P81-4720/ --pattern '^07227-' --only 5-8
@@ -59,6 +81,7 @@ from check_overlap_sift import (
     filter_matches,
     assess_overlap,
     pixel_ncc_overlap,
+    detect_keypoints,
 )
 
 
@@ -142,13 +165,129 @@ def detect_bars(gray, win=51, thr_frac=0.5, thr_min=50, thr_max=100,
 
 
 # --------------------------------------------------------------------------- #
+# Horizontal batches: orientation handling
+# --------------------------------------------------------------------------- #
+
+def _transpose_frame(img, orient):
+    """Turn a horizontally-advancing scan so the film axis is its rows.
+
+    `orient` is the mapping from original frame to transposed frame,
+    chosen by `detect_film_direction`:
+
+    'T'  -- new row = original column, new col = original row (a plain
+        transpose). The right choice when the film's content drifts RIGHT
+        frame-to-frame (`dx = B - A > 0` on the original frames: later
+        frames show the same content shifted right, new content entering
+        at each frame's left edge): the pair overlap becomes A's
+        transposed TOP rows <-> B's BOTTOM rows with positive advance,
+        exactly the geometry the vertical pipeline assumes.
+    'R'  -- new row = (width - 1 - column), new col = original row, the
+        mirrored mapping for content drifting LEFT (`dx < 0` -- the
+        20260929 uncat212 scans).
+    None -- no transform (a vertical batch; identity).
+    """
+    if orient == "T":
+        return cv2.transpose(img)
+    if orient == "R":
+        return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return img
+
+
+def _transpose_keypoints(kp, shape, orient):
+    """Map SIFT keypoints the same way `_transpose_frame` maps pixels.
+
+    Keypoint coordinates only -- descriptors are left alone: SIFT descriptors
+    are invariant under a 90-degree remap of the pixel grid (gradients
+    rotate identically, dominant orientation and the descriptor rotate with
+    it), and matching cares only about descriptor vectors and point
+    positions. `shape` is the pre-transpose (h, w) of the image the
+    keypoints were detected on. Both mappings are a row/column swap that
+    keeps the transposed col = original row; 'R' additionally mirrors the
+    film axis (new row = width-1-original column).
+    """
+    if orient is None:
+        return kp
+    _, w_s = shape
+    out = []
+    for k in kp:
+        x, y = k.pt
+        if orient == "T":
+            nk = cv2.KeyPoint(y, x, k.size, k.angle, k.response,
+                              k.octave, k.class_id)     # row <- col swap
+        else:
+            nk = cv2.KeyPoint(y, w_s - 1.0 - x, k.size, k.angle, k.response,
+                              k.octave, k.class_id)     # ... + film mirror
+        out.append(nk)
+    return out
+
+
+def detect_film_direction(scans_paths, max_pairs=10, max_dim=1600,
+                          min_matches=15, verbose=False):
+    """Decide how `--horizontal` scans must be transposed, from the data.
+
+    The film advance direction shows up in the CONTENT: consecutive frames
+    overlap on a strip along one frame edge, and the SAME PHYSICAL FILM
+    appears in both. Match full frames of the first few consecutive pairs
+    (SIFT at reduced resolution, one dominant cluster each -- the pipeline's
+    stage-4 logic) and read the direction off the winning cluster's
+    `dx = B - A` sign:
+
+      dx > 0  -- later frames show the same content shifted RIGHT, new
+                 content entering at each frame's LEFT edge -> plain
+                 transposition, orientation 'T'
+                 (new row = original column).
+      dx < 0  -- content shifted LEFT, new content entering at the frame's
+                 RIGHT edge (the 20260929 uncat212 scans, moving
+                 right-to-left) -> orientation 'R'
+                 (new row = width - 1 - original column).
+
+    NCC/template matching is NOT used here: the repeated page-margin
+    furniture (white film leader + black bar, pixel-identical on every
+    frame) aligns as strongly as ~0.99 at a WRONG offset while carrying no
+    SIFT keypoints, so the SIFT cluster (real overlap text only) is the
+    decider. Pairs with too few or unclustered matches are skipped; a
+    batch whose first pairs are all blank leader keeps trying. If no pair
+    decides, the ambiguous default is 'T' and the uncertainty is reported.
+    """
+    prev = None                      # (path, kp, des) at reduced resolution
+    for p in scans_paths[:max_pairs + 1]:
+        img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            prev = None
+            continue
+        if max_dim and max(img.shape) > max_dim:
+            s = max_dim / max(img.shape)
+            img = cv2.resize(img, (round(img.shape[1] * s),
+                                   round(img.shape[0] * s)),
+                             interpolation=cv2.INTER_AREA)
+        if prev is not None:
+            _, kpa, desa = prev
+            kpb, desb = detect_keypoints(img, 0.08, 3.0)
+            good = match_keypoints(desa, desb, 0.6)
+            real, n, mdx, mdy, iqr, _ = assess_overlap(
+                kpa, kpb, good, min_matches=min_matches, max_iqr=500.0)
+            if real:
+                if verbose:
+                    print(f"  direction check: {n} matches, "
+                          f"advance {mdx:+.0f} px "
+                          f"(content drifts "
+                          f"{'right' if mdx > 0 else 'left'})")
+                return "T" if mdx > 0 else "R"
+        kpa, desa = detect_keypoints(img, 0.08, 3.0)
+        prev = (p, kpa, desa)
+    print("WARNING: could not measure the film's horizontal advance "
+          "direction from the first pairs; assuming right-to-left")
+    return "T"
+
+
+# --------------------------------------------------------------------------- #
 # Overlap detection (reuses the working SIFT + NCC pipeline)
 # --------------------------------------------------------------------------- #
 
 def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
                      min_y_b=None, max_y_a=None, min_ncc=0.65, min_prom=0.10,
                      win=150, reach=600, margin=40, band=220, step=60,
-                     twin=1700, max_dx_abs=100):
+                     twin=1700, max_dx_abs=100, orient=None):
     """Independently verify a small SIFT cluster on the pixels.
 
     A very thin overlap strip (~250-400 px at 600 dpi) yields only a handful
@@ -184,11 +323,18 @@ def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
 
     Returns (dx, dy, score) on success, None otherwise. Both shifts are
     full-resolution pixels (B - A).
+
+    A horizontal (`--horizontal`) batch stores its scans rotated, so both
+    frames are loaded through `_transpose_frame` (all coordinates are in
+    the transposed film axis).
     """
     a = cv2.imread(path_a, cv2.IMREAD_GRAYSCALE)
     b = cv2.imread(path_b, cv2.IMREAD_GRAYSCALE)
     if a is None or b is None or not pts_a:
         return None
+    if orient is not None:
+        a = _transpose_frame(a, orient)
+        b = _transpose_frame(b, orient)
     ha, wa = a.shape
     hb, wb = b.shape
     dy, dx = int(round(med_dy)), int(round(med_dx))
@@ -290,7 +436,8 @@ def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
 
 
 def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
-                         params, full_cache=None, bars_a=None, bars_b=None):
+                         params, full_cache=None, bars_a=None, bars_b=None,
+                         orient=None):
     """Full-resolution A->B translation for one consecutive pair.
 
     Reuses the SIFT dominant-cluster detector (and the pixel-NCC fallback),
@@ -308,6 +455,13 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
     match keeps A's rows at/above `max_y_a` (its last bar's start) and B's
     rows at/below `min_y_b` (its first bar's end), which drops distracting
     matches from the other pages each frame contains.
+
+    A horizontal batch (`--horizontal`) works on TRANSPOSED frames: the
+    scans' bars/bbox/`params['shapes']` arrive already transposed and the
+    keypoint getters + every pixel loader here read the images through
+    `_transpose_frame` / `_transpose_keypoints` (via `orient`, the
+    'T'/'R' mapping from `detect_film_direction`), so this function's
+    overlap math runs unchanged.
 
     Detection order:
 
@@ -372,6 +526,9 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
             kp, des, shape = get_or_compute_keypoints(
                 path, cache_dir, contrast, min_size, max_dim=max_dim,
                 force=force)
+            if orient is not None:
+                kp = _transpose_keypoints(kp, shape, orient)
+                shape = (shape[1], shape[0])
             cache[path] = (kp, des, shape)
         return cache[path]
 
@@ -382,13 +539,21 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         # caller-owned (persists across the whole batch); a missing one just
         # means the disk cache absorbs the reuse.
         if full_cache is None:
-            return get_or_compute_keypoints(
+            kp, des, shape = get_or_compute_keypoints(
                 path, cache_dir, contrast, min_size, max_dim=0, force=force,
                 table="images_fullres")
+            if orient is not None:
+                kp = _transpose_keypoints(kp, shape, orient)
+                shape = (shape[1], shape[0])
+            return kp, des, shape
         if path not in full_cache:
-            full_cache[path] = get_or_compute_keypoints(
+            kp, des, shape = get_or_compute_keypoints(
                 path, cache_dir, contrast, min_size, max_dim=0, force=force,
                 table="images_fullres")
+            if orient is not None:
+                kp = _transpose_keypoints(kp, shape, orient)
+                shape = (shape[1], shape[0])
+            full_cache[path] = (kp, des, shape)
         return full_cache[path]
 
     kp_a, des_a, sa = get_kd(path_a)
@@ -470,7 +635,8 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                 # --min-matches but internally consistent; confirm it on the
                 # pixels before trusting it (see ncc_verify_strip).
                 v = ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
-                                     min_y_b=min_y_b, max_y_a=max_y_a)
+                                     min_y_b=min_y_b, max_y_a=max_y_a,
+                                     orient=orient)
                 if v is not None:
                     med_dx, med_dy, _ = v
                     is_real = True
@@ -484,8 +650,8 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         #    from the bars and every shift is scored on text rows only (bar
         #    rows excluded -- see bar_constrained_ncc); otherwise fall back to
         #    the plain sweep.
-        ga = _load_scaled_gray(path_a, max_dim)
-        gb = _load_scaled_gray(path_b, max_dim)
+        ga = _load_scaled_gray(path_a, max_dim, orient)
+        gb = _load_scaled_gray(path_b, max_dim, orient)
         if ga is not None and gb is not None:
             if bars_a and bars_b:
                 # bar_constrained_ncc wants scaled-per-orig factors (original
@@ -590,7 +756,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         fk_b, fdes_b, fb_shape = get_full_kd(path_b)
         if fa_shape[0] and fb_shape[0] and fk_a and fk_b:
             real, band_dy, _, band_ncc, band_L = featureless_band_overlap(
-                path_a, path_b, fk_a, fk_b)
+                path_a, path_b, fk_a, fk_b, orient=orient)
             if real:
                 is_real = True
                 med_dx, med_dy = 0.0, float(band_dy)
@@ -612,12 +778,15 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                 status="ok")
 
 
-def _load_scaled_gray(path, max_dim):
-    """Load a grayscale image downscaled to `max_dim` (for the NCC fallback)."""
+def _load_scaled_gray(path, max_dim, orient=None):
+    """Load a grayscale image downscaled to `max_dim` (for the NCC fallback);
+    a horizontal batch's scans come in through `_transpose_frame`."""
     from check_overlap_sift import downscale_gray
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         return None
+    if orient is not None:
+        img = _transpose_frame(img, orient)
     return downscale_gray(img, max_dim)
 
 
@@ -898,7 +1067,7 @@ def featureless_band_overlap(path_a, path_b, kp_a, kp_b,
                              l_min=50, l_max=1500, step=1, frac=0.08,
                              density_win=151, band_slack=150,
                              dark_thresh=100.0, dust_rows_min=20,
-                             min_dust=0.15):
+                             min_dust=0.15, orient=None):
     """Link a pair whose only possible overlap strip is SIFT-blind.
 
     When the strip the two frames could share is dominated by the black
@@ -940,12 +1109,18 @@ def featureless_band_overlap(path_a, path_b, kp_a, kp_b,
        stays a gap.
 
     Returns (is_real, dy, dx, ncc, L) like bar_constrained_ncc; dy is in
-    the keypoints' pixel scale (full-resolution rows for the caller).
+    the keypoints' pixel scale (full-resolution rows for the caller). A
+    horizontal (`--horizontal`) batch's keypoints and frames both come in
+    through the transposed film axis (`orient`), so all coordinates stay
+    consistent.
     """
     ia = cv2.imread(path_a, cv2.IMREAD_GRAYSCALE)
     ib = cv2.imread(path_b, cv2.IMREAD_GRAYSCALE)
     if ia is None or ib is None or not len(kp_a) or not len(kp_b):
         return False, 0, 0, 0.0, 0
+    if orient is not None:
+        ia = _transpose_frame(ia, orient)
+        ib = _transpose_frame(ib, orient)
     ha, hb = ia.shape[0], ib.shape[0]
 
     # Scale the density smoothing / minimum band thickness to the frame
@@ -1137,7 +1312,7 @@ def find_pages(merged_bars, fmin, fmax, min_page_height):
 # Page plans (TOML: what contributes to each page and at what offset)
 # --------------------------------------------------------------------------- #
 
-def page_contribs(film, contrib_idx, valid, S_seed):
+def page_contribs(film, contrib_idx, valid, S_seed, axis=None, orient=None):
     """Contributor records for one page, in run (scan) order.
 
     Each record is a plain dict -- serialized under the page plan's
@@ -1145,10 +1320,14 @@ def page_contribs(film, contrib_idx, valid, S_seed):
 
       index       the scan's index in the analyzed batch (valid[]),
       scan        the scan's filename (in source_dir, or its "flat" twin),
-      film_offset the scan's vertical offset in film coordinates (S_seed):
-                  scan row r sits at film row film_offset + r,
+      film_offset the scan's offset in film coordinates: scan row r sits at
+                  film row film_offset + r (a horizontal batch's film
+                  coordinates are film COLUMNS: original column c sits at
+                  film column film_offset + c; see `axis = "x"` in the plan),
       dx          the scan's cumulative horizontal film offset (dx_cum);
-                  only the DELTA between contributors matters for compositing,
+                  only the DELTA between contributors matters for compositing
+                  (it is the across-film shift, i.e. frame rows on a
+                  horizontal batch),
       bbox        (top, bottom, left, right) content rows/cols (frame
                   border excluded),
       size        (height, width) of the scan, so compose_pages.py can
@@ -1157,12 +1336,40 @@ def page_contribs(film, contrib_idx, valid, S_seed):
 
     `contrib_idx` lists the contributing scan indices; `film` is the page's
     film range (lo, hi).
+
+    A horizontal batch (`axis='x'`) computes everything in transposed
+    coordinates (transposed row = original column). The written plan
+    describes film COLUMNS in a scan-col-ascending mapping (scan col c sits
+    at film col film_offset + c) and keeps bbox/size in the scans' on-disk
+    orientation, so compositing crops the original scans directly. Under
+    the mirrored orientation ('R', content drifting left) the transposed
+    film axis runs column-descending, so the offsets/ranges are flipped:
+    film col offset = -S_seed - (w - 1), page film = [-hi, -lo].
     """
-    return [dict(index=int(k), scan=valid[k].name,
-                 film_offset=float(S_seed[k]), dx=float(valid[k].dx_cum),
-                 bbox=[int(v) for v in valid[k].bbox],
-                 size=[int(valid[k].h), int(valid[k].w)])
-            for k in contrib_idx]
+    recs = []
+    for k in contrib_idx:
+        sm = valid[k]
+        bbox = [int(v) for v in sm.bbox]
+        size = [int(sm.h), int(sm.w)]
+        off = S_seed[k]
+        if axis == "x":
+            bbox = [bbox[2], bbox[3], bbox[0], bbox[1]]   # orig rows/cols
+            size = [size[1], size[0]]
+            if orient == "R":
+                off = -off - (size[1] - 1.0)
+        recs.append(dict(index=int(k), scan=sm.name,
+                         film_offset=float(off), dx=float(sm.dx_cum),
+                         bbox=bbox, size=size))
+    return recs
+
+
+def convert_film(film, orient):
+    """Convert a film range (lo, hi) in transposed coordinates to the plan's
+    written form (see `page_contribs`): unchanged for orientation 'T' / a
+    vertical batch; flipped to [-hi, -lo] for 'R' (column-descending film
+    axis)."""
+    lo, hi = film
+    return [-float(hi), -float(lo)] if orient == "R" else [float(lo), float(hi)]
 
 
 # --------------------------------------------------------------------------- #
@@ -1222,6 +1429,16 @@ Override [auto] here to fine-tune this page without re-planning.
     dx = 0.0
 """
 
+AXIS_X_DOC = """\
+axis = "x" (a --horizontal batch): the film coordinates here are film
+  COLUMNS -- the film strip runs horizontally through each frame, its
+  pages separated by vertical bars. `film = [lo, hi]` bounds the page in
+  film columns and each `film_offset` places the scan's ORIGINAL columns
+  (scan column c sits at film column film_offset + c); `dx` is the
+  across-film offset (frame rows). bbox/size describe the scans as stored
+  on disk (untransposed).
+"""
+
 MANUAL_DOC_GAP = """\
 Override [auto] here to fine-tune this page without re-planning.
   [manual.sections.0]                  tweak one section (0-based index)
@@ -1240,9 +1457,17 @@ Override [auto] here to fine-tune this page without re-planning.
 """
 
 
-def write_plan_toml(path, label, kind, source_dir, auto):
+def write_plan_toml(path, label, kind, source_dir, auto, axis=None,
+                    missing_note=None):
     """Write one page plan: `[auto]` holds the computed data, `[manual]`
-    (empty, self-documenting) is where hand edits override it."""
+    (empty, self-documenting) is where hand edits override it.
+
+    `axis` marks a horizontal batch's film axis in `[page]`: for
+    `axis = "x"` the page's `film` range and every `film_offset` are film
+    COLUMNS (scan column c sits at film column film_offset + c) while
+    bbox/size stay in the scans' on-disk orientation. `missing_note`
+    replaces the missing-page placeholder note.
+    """
     lines = [
         f"# Page plan for {label} -- generated by plan_pages.py.",
         "# compose_pages.py composites the scans in [auto] into a page image;",
@@ -1252,9 +1477,10 @@ def write_plan_toml(path, label, kind, source_dir, auto):
         f"label = {_toml_str(label)}",
         f"kind = {_toml_str(kind)}",
         f"source_dir = {_toml_str(source_dir)}",
-        "",
-        "[auto]",
     ]
+    if axis:
+        lines.append(f"axis = {_toml_str(axis)}")
+    lines += ["", "[auto]"]
     if kind == "page":
         lines.append(f"film = {_toml_val(auto['film'])}")
         lines.append("contribs = [")
@@ -1268,13 +1494,16 @@ def write_plan_toml(path, label, kind, source_dir, auto):
         manual_doc = MANUAL_DOC_GAP
     elif kind == "missing":
         lines.append(f"size = {_toml_val(auto['size'])}")
-        manual_doc = ("No scans contributed (a missing frame); compose_pages.py\n"
-                      "writes this page as a solid red placeholder.\n")
+        manual_doc = missing_note or (
+            "No scans contributed (a missing frame); compose_pages.py\n"
+            "writes this page as a solid red placeholder.\n")
     else:
         raise ValueError(kind)
+    if axis == "x":
+        manual_doc = manual_doc.rstrip("\n") + "\n\n" + AXIS_X_DOC
     lines += [""]
-    lines += ["# " + doc
-              for doc in manual_doc.split("\n") if doc]
+    lines += ["# " + note
+              for note in manual_doc.split("\n") if note]
 
     lines += ["[manual]", ""]
     with open(path, "w") as f:
@@ -1487,18 +1716,45 @@ def select_subset(scans_paths, only):
     return [scans_paths[i] for i in sorted(wanted)]
 
 
+def resolve_stall_frac(stall_frac, horizontal):
+    """Fill in the stall threshold when the caller didn't set one.
+
+    Vertical batches advance ~a full page per capture -- anything under 30%
+    of the (tall) frame height is a stalled/near-duplicate re-shoot. A
+    horizontal batch is different by nature: the frames advance a FRACTION
+    of the (wide) frame each capture (the 20260929 uncat212 batch advances
+    ~8-24% per pair), so the stalled-re-scan threshold must be far smaller
+    (default 0.05) or every real advance would be dropped as redundant.
+    An explicit `stall_frac` always wins.
+    """
+    if stall_frac is not None:
+        return stall_frac
+    return 0.05 if horizontal else 0.3
+
+
 def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                   contrast=0.08, min_size=3.0, max_dx=500.0, min_matches=20,
-                  max_iqr=500.0, max_dim=3200, force_cache=False, stall_frac=0.3,
-                  bar_gap_tol=200.0, min_page_height=1000.0, trim_border=True,
-                  verbose=True, only=None):
+                  max_iqr=500.0, max_dim=3200, force_cache=False,
+                  stall_frac=None, bar_gap_tol=200.0, min_page_height=1000.0,
+                  trim_border=True, verbose=True, only=None,
+                  horizontal=False):
     """Phases 1-3 of `run()` without writing anything: load per-scan metadata
     (black bars + frame border), compute the per-pair overlap (reusing the
     SIFT cache), and build the film-coordinate layout. `only` optionally
     restricts the batch to a subset (see `select_subset`). Returns a dict with
     `valid` (list[ScanMeta]), `pair_results`, `valid_idx`, `gap_after`, `nv`,
     `runs`, `S_seed`, `redundant`, `all_pages`. Used by `run()` and the tests.
+
+    `horizontal=True` marks a batch whose film strip runs HORIZONTALLY
+    through each frame (pages separated by vertical black bars; see the
+    module docstring): the film's advance direction is detected from the
+    data (detect_film_direction) and every scan is TRANSPOSED so the
+    vertical pipeline works on the transposed frames. All ScanMeta
+    dimensions/bars/bbox are then in transposed coordinates, and the
+    returned dict gains `axis` ("x" under --horizontal, else "y") --
+    the axis the written plans describe (see `run`).
     """
+    stall_frac = resolve_stall_frac(stall_frac, horizontal)
     scans_paths = list_scans(scan_dir, pattern=pattern)
     if only:
         total = len(scans_paths)
@@ -1527,6 +1783,18 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         if cache_dir:
             print(f"SIFT cache: {cache_dir}")
         print(f"Scans found: {n}")
+
+    orient = None
+    if horizontal:
+        orient = detect_film_direction(scans_paths, verbose=verbose)
+        if verbose:
+            drift = "right" if orient == "T" else "left"
+            print(f"Horizontal batch: content drifts {drift} frame-to-frame "
+                  f"(new content enters at the "
+                  f"{'left' if orient == 'T' else 'right'} edge); "
+                  f"transposing scans so the film axis is the frame rows")
+
+    if verbose:
         print("\n[1/3] Detecting black bars and frame borders in each scan...")
 
     scans = []
@@ -1537,6 +1805,8 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                 print(f"  WARNING: failed to load {p}; skipping")
             scans.append(None)
             continue
+        if horizontal:
+            img = _transpose_frame(img, orient)
         h, w = img.shape
         bbox = content_bbox(img) if trim_border else (0, h - 1, 0, w - 1)
         scans.append(ScanMeta(p, os.path.basename(p), h, w, detect_bars(img),
@@ -1593,7 +1863,8 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         res = compute_pair_overlap(a.path, max_y_a, b.path, min_y_b,
                                    kp_cache, cache_dir, params,
                                    full_cache=full_kp_cache,
-                                   bars_a=a.bars, bars_b=b.bars)
+                                   bars_a=a.bars, bars_b=b.bars,
+                                   orient=orient)
         res["__h_a"] = a.h
         if res['status'] != "ok" or res.get("via_ncc") or res.get("via_band"):
             tag = (f"  full dy={res['full_dy']:+.0f} dx={res['full_dx']:+.0f}"
@@ -1614,7 +1885,8 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
     return dict(valid=valid, pair_results=pair_results, valid_idx=valid_idx,
                 gap_after=gap_after, nv=nv, runs=runs, S_seed=S_seed,
                 redundant=redundant, all_pages=all_pages,
-                missing_seqs=missing_seqs)
+                missing_seqs=missing_seqs, axis="x" if horizontal else "y",
+                orient=orient)
 
 
 def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
@@ -1726,12 +1998,18 @@ def scan_range(contrib, valid):
 
 def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         ratio=0.6, contrast=0.08, min_size=3.0, max_dx=500.0, min_matches=20,
-        max_iqr=500.0, max_dim=3200, force_cache=False, stall_frac=0.3,
+        max_iqr=500.0, max_dim=3200, force_cache=False, stall_frac=None,
         bar_gap_tol=200.0, min_page_height=1000.0, dry_run=False,
-        trim_border=True, reverse=False, only=None, verbose=True):
+        trim_border=True, reverse=False, only=None, horizontal=False,
+        verbose=True):
     """Run the page PLANNING: analyze the batch (phases 1-3 via
     `analyze_batch`), then write one TOML plan per page under `[auto]`
     (phase 4). Compositing the plans into images is `compose_pages.py`'s job.
+
+    `horizontal=True` marks a horizontally-advancing batch (see
+    `analyze_batch`); all its plans are written with `axis = "x"`, i.e. film
+    coordinates are film COLUMNS and the contributors' bbox/size are in the
+    scans' on-disk orientation.
     """
     res = analyze_batch(scan_dir, pattern=pattern, cache_dir=cache_dir,
                         ratio=ratio, contrast=contrast, min_size=min_size,
@@ -1739,10 +2017,14 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                         max_dim=max_dim, force_cache=force_cache,
                         stall_frac=stall_frac, bar_gap_tol=bar_gap_tol,
                         min_page_height=min_page_height,
-                        trim_border=trim_border, verbose=verbose, only=only)
+                        trim_border=trim_border, verbose=verbose, only=only,
+                        horizontal=horizontal)
     valid = res["valid"]; runs = res["runs"]; S_seed = res["S_seed"]
     all_pages = res["all_pages"]
     missing_seqs = res["missing_seqs"]
+    axis = res["axis"]
+    orient = res["orient"]
+    horizontal = axis == "x"
 
     # Order pages: runs in scan order, and within each run by film coordinate.
     # Ascending film coord = top-of-film first; --reverse flips the within-run
@@ -1838,11 +2120,12 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
             continue                   # joined into a gap-fallback page below
         if not contrib or labels[pi] is None:
             continue                   # nothing contributes / unnamed page
-        auto = dict(film=[float(lo), float(hi)],
+        auto = dict(film=convert_film((lo, hi), orient),
                     contribs=page_contribs((lo, hi), list(contrib), valid,
-                                           S_seed))
+                                           S_seed, axis=axis, orient=orient))
         path = os.path.join(output_dir, f"{labels[pi]}.toml")
-        write_plan_toml(path, labels[pi], "page", source_dir, auto)
+        write_plan_toml(path, labels[pi], "page", source_dir, auto,
+                        axis="x" if horizontal else None)
         written += 1
 
     # Gap-junction fallback plans: re-join the page split by each gap.
@@ -1853,18 +2136,27 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
             continue
         label = (f"page{page_no[('join', mi)]:03d}-"
                  f"scans{rng[0]:03d}-{rng[1]:03d}-gap")
-        sections = [dict(film=[float(b_piece[0]), float(b_piece[1])],
+        # Stack the sections in the plan's film-axis order (compose_pages
+        # vstacks them as written): on a vertical batch the later-run piece
+        # (smaller film rows) comes first: [B, red, A]. Under the mirrored
+        # column-descending 'R' mapping the written (converted) film columns
+        # run the other way, so the order flips too: [A, red, B].
+        first, second = (b_piece, a_piece) if orient != "R" else (a_piece,
+                                                                 b_piece)
+        sections = [dict(film=convert_film(first[0:2], orient),
                          contribs=page_contribs(
-                             b_piece[0:2], list(b_piece[2]), valid, S_seed))]
+                             first[0:2], list(first[2]), valid, S_seed,
+                             axis=axis, orient=orient))]
         if m["red"] > 0:
             sections.append(dict(red=int(m["red"])))
-        sections.append(dict(film=[float(a_piece[0]), float(a_piece[1])],
+        sections.append(dict(film=convert_film(second[0:2], orient),
                              contribs=page_contribs(
-                                 a_piece[0:2], list(a_piece[2]), valid,
-                                 S_seed)))
+                                 second[0:2], list(second[2]), valid,
+                                 S_seed, axis=axis, orient=orient)))
         path = os.path.join(output_dir, f"{label}.toml")
         write_plan_toml(path, label, "gap_join", source_dir,
-                        dict(sections=sections))
+                        dict(sections=sections),
+                        axis="x" if horizontal else None)
         written += 1
         if verbose:
             note = f", red band {m['red']} px" if m["red"] > 0 else ""
@@ -1877,12 +2169,25 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         ph = int(spans[len(spans) // 2]) if spans else valid[0].h
         ws = sorted(s.bbox[3] - s.bbox[2] + 1 for s in valid)
         pw = int(ws[len(ws) // 2])
+        missing_note = None
+        if horizontal:
+            # The placeholder renders in the scans' (reading) orientation:
+            # across-film rows first, film columns (page length) second.
+            ph, pw = pw, ph
+            missing_note = (
+                "No scans contributed (a missing frame); compose_pages.py\n"
+                "writes this page as a solid red placeholder.\n\n"
+                "axis = \"x\": `size` is the output page's (height, width)\n"
+                "in the scans' reading orientation -- across-film rows first,\n"
+                "the page's film-column length second.\n")
         for seq in missing_seqs:
             label = (f"page{page_no[('missing', seq)]:03d}-"
                      f"scans{seq:03d}-{seq:03d}")
             path = os.path.join(output_dir, f"{label}.toml")
             write_plan_toml(path, label, "missing", source_dir,
-                            dict(size=[int(ph), int(pw)]))
+                            dict(size=[int(ph), int(pw)]),
+                            axis="x" if horizontal else None,
+                            missing_note=missing_note)
             written += 1
             if verbose:
                 print(f"  missing file: red placeholder plan {label} "
@@ -1921,10 +2226,11 @@ def main():
     ap.add_argument("--force-cache", action="store_true")
 
     # Page-planning params.
-    ap.add_argument("--stall-frac", type=float, default=0.3,
+    ap.add_argument("--stall-frac", type=float, default=None,
                     help="Pairs whose vertical advance is below this fraction "
                          "of the scan height are treated as stalled "
-                         "(near-duplicate) re-scans and skipped (default 0.3).")
+                         "(near-duplicate) re-scans and skipped (default 0.3, "
+                         "or 0.05 under --horizontal).")
     ap.add_argument("--bar-gap-tol", type=float, default=200.0,
                     help="Merge bar intervals within this many film-px "
                          "(same bar captured in two scans) (default 200).")
@@ -1937,6 +2243,16 @@ def main():
     ap.add_argument("--reverse", action="store_true",
                     help="Number pages bottom-of-film first (capture order) "
                          "instead of top-of-film first.")
+    ap.add_argument("--horizontal", action="store_true",
+                    help="The batch advances the film HORIZONTALLY (film "
+                         "strip runs left-right through each frame, pages "
+                         "separated by vertical black bars; the 20260929 "
+                         "uncat212 scans, advancing right-to-left). The "
+                         "advance direction is detected from the data and "
+                         "the scans are transposed internally; the plans "
+                         "record axis = \"x\". Note: such batches advance "
+                         "a fraction of a frame per capture, so the stall "
+                         "threshold defaults to --stall-frac 0.05 here.")
     ap.add_argument("--only", default=None,
                     help="Process only a subset of the batch: comma-separated "
                          "1-based indices or ranges in sorted order (e.g. "
@@ -1950,7 +2266,8 @@ def main():
         max_iqr=args.max_iqr, max_dim=args.max_dim, force_cache=args.force_cache,
         stall_frac=args.stall_frac, bar_gap_tol=args.bar_gap_tol,
         min_page_height=args.min_page_height, dry_run=args.dry_run,
-        trim_border=args.trim_border, reverse=args.reverse, only=args.only)
+        trim_border=args.trim_border, reverse=args.reverse, only=args.only,
+        horizontal=args.horizontal)
 
 
 if __name__ == "__main__":

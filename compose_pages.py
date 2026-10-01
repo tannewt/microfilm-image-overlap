@@ -23,6 +23,12 @@ the delta between contributors matters); `bbox` is the content rows/cols with
 the white frame border excluded; `size` lets the loader verify that a
 replacement scan (the flat twin) has identical dimensions.
 
+Horizontally-advancing batches (`plan_pages.py --horizontal`) write plans
+with `axis = "x"` in the `[page]` table: film coordinates are film COLUMNS
+(scan column c -> film column film_offset + c) and the compositing
+transposes the scans internally, returning each page in the scans' reading
+orientation; `bbox`/`size` are the scans' on-disk values.
+
 A `[manual]` section may override any `[auto]` value to fine-tune a page
 without re-planning -- see the comments inside each plan file and
 apply_manual() below.
@@ -67,17 +73,57 @@ class _LRU(OrderedDict):
         self.max_len = max_len
 
 
-def _load_gray_cached(path, lru):
-    """Tiny LRU cache for full-resolution grayscale loads during assembly."""
-    if path in lru:
-        lru.move_to_end(path)
-        return lru[path]
+def _load_gray_cached(path, lru, key=None, transpose=False):
+    """Tiny LRU cache for full-resolution grayscale loads during assembly.
+
+    `key` overrides the cache key and `transpose` selects the cached form:
+    an axis="x" plan composites from TRANSPOSED scans (the film axis
+    becomes the rows' axis), so a scan's transposed form is cached under
+    its own key, separate from any untransposed use of the same file."""
+    key = key or path
+    if key in lru:
+        lru.move_to_end(key)
+        return lru[key]
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     if img is not None:
-        lru[path] = img
+        if transpose:
+            img = cv2.transpose(img)
+        lru[key] = img
         if len(lru) > lru.max_len:
             lru.popitem(last=False)
     return img
+
+
+def _dark_field(img, blur):
+    """Large-scale darkness field of a scan: a `blur`-wide box average.
+
+    Thin detail (text strokes, halftone dots) averages out -- and it is the
+    SAME film content in every scan covering the area, so it cancels when
+    two scans' fields are compared. What survives is the large-scale
+    darkness that differs between captures: fog, edge shadows and smudges
+    on the scanner glass, which land on different film content per scan.
+    """
+    return cv2.blur(img, (blur, blur))
+
+
+def _dark_field_cached(path, blur, lru, field_lru, key=None, transpose=False):
+    """_dark_field of the full scan at `path` (transposed first under the
+    same key when `transpose` is set, i.e. an axis="x" plan's form)."""
+    key = key or path
+    if field_lru is None:
+        img = _load_gray_cached(path, lru, key=key, transpose=transpose)
+        return None if img is None else _dark_field(img, blur)
+    if key in field_lru:
+        field_lru.move_to_end(key)
+        return field_lru[key]
+    img = _load_gray_cached(path, lru, key=key, transpose=transpose)
+    if img is None:
+        return None
+    field = _dark_field(img, blur)
+    field_lru[key] = field
+    if len(field_lru) > field_lru.max_len:
+        field_lru.popitem(last=False)
+    return field
 
 
 class ScanResolver:
@@ -175,6 +221,14 @@ def _merge_contribs(auto_contribs, manual_contribs, where):
                      "tables or a table keyed by scan filename.")
 
 
+def _plan_axis(page):
+    """The plan's film axis: "y" (a vertical batch, the default) or "x" (a
+    horizontally-advancing batch written with `plan_pages --horizontal`:
+    film coordinates are film COLUMNS and the page composites from
+    transposed scans, coming back in the scans' reading orientation)."""
+    return page.get("page", {}).get("axis", "y")
+
+
 def apply_manual(page):
     """Merge a page's `[manual]` overrides onto its `[auto]` data.
 
@@ -198,7 +252,7 @@ def apply_manual(page):
             raise SystemExit(f"ERROR: {where}: no film range in [auto] or "
                              "[manual].")
         return dict(kind="page", label=label, film=[float(v) for v in film],
-                    contribs=contribs)
+                    contribs=contribs, axis=_plan_axis(page))
 
     if kind == "gap_join":
         sections = [dict(sec) for sec in auto.get("sections", [])]
@@ -236,7 +290,8 @@ def apply_manual(page):
                             "(it has no contribs).")
                     sec["contribs"] = _merge_contribs(
                         sec["contribs"], ov["contribs"], where)
-        return dict(kind="gap_join", label=label, sections=sections)
+        return dict(kind="gap_join", label=label, sections=sections,
+                    axis=_plan_axis(page))
 
     if kind == "missing":
         size = manual.get("size", auto.get("size"))
@@ -250,7 +305,7 @@ def apply_manual(page):
 # Page assembly (stitch the one or two scans covering a page, with a hard switch)
 # --------------------------------------------------------------------------- #
 
-def _light_seam(a_band, b_band):
+def _light_seam(a_band, b_band, a_field=None, b_field=None, spot_weight=1.0):
     """Find a jagged horizontal seam through a vertical overlap band that avoids
     dark (ink / text) pixels, so the hard scan-to-scan switch cuts through white
     space instead of through text.
@@ -261,6 +316,18 @@ def _light_seam(a_band, b_band):
     tracing the lightest connected path. The path moves at most one row
     up/down between adjacent columns (seam-carving style), which is what makes
     it "jagged".
+
+    With `a_field` / `b_field` (the scans' large-scale darkness fields over
+    the same band, from _dark_field) the DP also carries a COMPOSITE term:
+    how much large-scale darkness the composite would inherit if the seam ran
+    here -- the upper scan owns the rows above the seam, the lower scan the
+    rows below -- so a fog / smudge region is handed to whichever scan is
+    clean there. Fog, shadows and smudges belong to one CAPTURE, not to the
+    film, so this dodges them whenever the other scan covers them cleanly;
+    defects on the film itself show in both fields and don't move the seam.
+    Because the term compares the two scans' fields, text (identical in both)
+    cancels and only capture defects steer the seam. `spot_weight` scales the
+    term; 0 (or fields of None) recovers the plain lightest-path seam.
     """
     Hb, Wb = a_band.shape
     if Wb == 0:
@@ -271,6 +338,15 @@ def _light_seam(a_band, b_band):
     # same page twice, so the average is stable and the lightest path threads
     # between text lines.
     cost = 255.0 - (a_band.astype(np.float64) + b_band.astype(np.float64)) / 2.0
+    if a_field is not None and b_field is not None and spot_weight:
+        # Composite darkness for a seam at row r: the upper scan owns rows
+        # < r (prefix of its field darkness), the lower scan rows >= r
+        # (suffix of its field darkness).
+        dark_a = 255.0 - a_field.astype(np.float64)
+        dark_b = 255.0 - b_field.astype(np.float64)
+        comp = np.cumsum(dark_a, axis=0) - dark_a          # exclusive prefix
+        comp += np.cumsum(dark_b[::-1], axis=0)[::-1]      # inclusive suffix
+        cost += spot_weight * comp
     M = cost.copy()
     # DP left -> right; from each cell you may come from the row above, same
     # row, or row below in the previous column.
@@ -297,9 +373,20 @@ def _light_seam(a_band, b_band):
     return seam
 
 
-def assemble_page(film, contribs, lru, debug=False):
+def assemble_page(film, contribs, lru, debug=False, field_lru=None,
+                  spot_blur=41, spot_weight=1.0, axis="y"):
     """Build the page image for the plan's `film` = (lo, hi) and contributor
     list.
+
+    `axis = "y"` (default) composites a vertically-advancing batch's scans
+    (film axis = scan rows). `axis = "x"` composites a horizontally-
+    advancing batch (film coordinates are film COLUMNS; scan column c sits
+    at film column film_offset + c -- see plan_pages.page_contribs): each
+    scan is TRANSPOSED at load time so the identical row-based assembly
+    runs on the transposed frame, and the caller maps the resulting canvas
+    back to the scans' reading orientation (see compose_page). A plan's
+    contrib bbox/film/film_offset/dx for axis="x" are already converted to
+    these terms by plan_pages.
 
     Each contributor record carries the scan's resolved path, its content
     bbox (top, bottom, left, right), its film_offset and its dx (see
@@ -315,6 +402,17 @@ def assemble_page(film, contribs, lru, debug=False):
     the seam, the other below. The per-pair horizontal shift (dx) is applied so
     the two scans' content aligns in the band and the switch is invisible; the
     dx slivers (where only one scan reaches a column) take that scan's content.
+
+    The seam also avoids dark spots when it can: the DP additionally
+    minimizes the large-scale darkness the composite would inherit from the
+    seam's position, so fog / shadows / smudges -- defects of one CAPTURE,
+    not of the film -- are handed to whichever scan is clean there (see
+    _light_seam). Defects on the film itself, and spots in rows only one
+    scan covers, cannot be avoided.
+
+    `spot_blur` is the darkness field's box-average width and `spot_weight`
+    scales its term in the seam DP; `spot_weight = 0` recovers the plain
+    lightest-path seam.
 
     Returns (image, contributing_scan_names), or (None, []) if nothing
     covered the page range. When `debug` is True, returns a third value: a
@@ -363,12 +461,20 @@ def assemble_page(film, contribs, lru, debug=False):
     # Load each piece's tile and its canvas placement.
     loaded = []
     for (c, r_lo, r_hi, x0) in pieces:
-        img = _load_gray_cached(c["path"], lru)
+        if axis == "x":
+            key = c["path"] + "|x"
+            img = _load_gray_cached(c["path"], lru, key=key, transpose=True)
+        else:
+            key = c["path"]
+            img = _load_gray_cached(c["path"], lru)
         if img is None:
             print(f"  WARNING: failed to load {c['path']}; skipping its part "
                   "of this page")
             continue
         _, _, cleft, cright = c["bbox"]
+        # axis="x" already swapped the film axis onto the image's rows, so
+        # both cases crop the identical way: [r_lo, r_hi] along the film
+        # axis, [cleft, cright] across it (with the film borders trimmed).
         tile = img[r_lo:r_hi + 1, cleft:cright + 1]
         th, tw = tile.shape
         if th <= 0 or tw <= 0:
@@ -376,8 +482,10 @@ def assemble_page(film, contribs, lru, debug=False):
         y0 = int(round((c["film_offset"] + r_lo) - f_lo))
         cx0 = x0 - x_min
         # Per-column ownership bounds (inclusive canvas rows). Defaults: the
-        # piece owns its full vertical span; seams below trim these.
-        d = dict(scan=c["scan"], tile=tile, th=th, tw=tw, y0=y0, cx0=cx0,
+        # piece owns its full vertical span; seams below trim these. r0/c0
+        # place the tile inside its full scan (for cropping the dark field).
+        d = dict(scan=c["scan"], path=c["path"], tile=tile, th=th, tw=tw,
+                 y0=y0, cx0=cx0, r0=r_lo, c0=cleft, ckey=key,
                  UB=np.full(tw, y0, dtype=int),
                  LB=np.full(tw, y0 + th - 1, dtype=int))
         loaded.append(d)
@@ -391,12 +499,17 @@ def assemble_page(film, contribs, lru, debug=False):
     # seam, the full-page scan (large bottom) owns everything below it.
     loaded.sort(key=lambda d: d["y0"] + d["th"])
 
-    # For each adjacent pair (by bottom order), cut a light-following seam
+    # For each overlapping pair (in bottom order), cut a light-following seam
     # inside their overlap band. The earlier piece (smaller bottom) owns above
-    # the seam; the later piece owns below it.
+    # the seam; the later piece owns below it. With three contributing scans
+    # the outer pair may overlap without being adjacent in bottom order, so
+    # every pair gets its own seam; ownership updates are order-independent
+    # (a piece's lower bound only moves UP, its upper bound only moves DOWN),
+    # and rows no seam hands to a piece are recovered by the backfill below.
     seams = []
-    for j in range(len(loaded) - 1):
-        P, Q = loaded[j], loaded[j + 1]        # P bottom <= Q bottom
+    for i in range(len(loaded) - 1):
+        for j in range(i + 1, len(loaded)):
+            P, Q = loaded[i], loaded[j]        # P bottom <= Q bottom
         band_lo = max(P["y0"], Q["y0"])
         band_hi = min(P["y0"] + P["th"] - 1, Q["y0"] + Q["th"] - 1)
         if band_hi <= band_lo:
@@ -412,12 +525,31 @@ def assemble_page(film, contribs, lru, debug=False):
         if p_band.shape[0] < 2 or p_band.shape[1] < 2:
             seam_rows = np.full(ox_hi - ox_lo + 1, band_lo, dtype=int)
         else:
-            seam_rows = _light_seam(p_band, q_band) + band_lo
-        # P (ends sooner) owns down to seam-1; Q (extends lower) owns from seam.
+            a_field = b_field = None
+            if spot_weight:
+                # Crop the two scans' darkness fields to the band (the fields
+                # cover the full scans; the tiles sit at r0/c0 inside them).
+                f_p = _dark_field_cached(P["path"], spot_blur, lru, field_lru,
+                                         key=P.get("ckey"),
+                                         transpose=axis == "x")
+                f_q = _dark_field_cached(Q["path"], spot_blur, lru, field_lru,
+                                         key=Q.get("ckey"),
+                                         transpose=axis == "x")
+                if f_p is not None and f_q is not None:
+                    a_field = f_p[band_lo - P["y0"] + P["r0"]:band_hi - P["y0"] + 1 + P["r0"],
+                                  ox_lo - P["cx0"] + P["c0"]:ox_hi - P["cx0"] + 1 + P["c0"]]
+                    b_field = f_q[band_lo - Q["y0"] + Q["r0"]:band_hi - Q["y0"] + 1 + Q["r0"],
+                                  ox_lo - Q["cx0"] + Q["c0"]:ox_hi - Q["cx0"] + 1 + Q["c0"]]
+            seam_rows = _light_seam(p_band, q_band, a_field, b_field,
+                                    spot_weight) + band_lo
+        # P (ends sooner) owns down to seam-1; Q (extends lower) owns from
+        # seam. Multiple seams may trim the same piece: keep the tightest.
         p_lo, p_hi = ox_lo - P["cx0"], ox_hi - P["cx0"]
-        P["LB"][p_lo:p_hi + 1] = seam_rows - 1
+        P["LB"][p_lo:p_hi + 1] = np.minimum(P["LB"][p_lo:p_hi + 1],
+                                            seam_rows - 1)
         q_lo, q_hi = ox_lo - Q["cx0"], ox_hi - Q["cx0"]
-        Q["UB"][q_lo:q_hi + 1] = seam_rows
+        Q["UB"][q_lo:q_hi + 1] = np.maximum(Q["UB"][q_lo:q_hi + 1],
+                                            seam_rows)
         seams.append(dict(upper=P["scan"], lower=Q["scan"],
                           band_lo=int(band_lo), band_hi=int(band_hi),
                           ox_lo=int(ox_lo), ox_hi=int(ox_hi),
@@ -517,12 +649,18 @@ def check_sizes(contribs, resolver):
                 "identical dimensions to the planned scans.")
 
 
-def compose_page(plan, resolvers, lru, default_dir):
+def compose_page(plan, resolvers, lru, default_dir, field_lru=None,
+                 spot_blur=41, spot_weight=1.0):
     """Render one effective plan to an image (grayscale or BGR for red bands).
+
+    The page image is in the scans' (reading) orientation: for an axis="x"
+    plan, assemble_page builds the page on transposed scans and this routine
+    maps the canvas/section stack back before returning.
 
     Returns (image, label) or (None, label) when nothing contributed.
     """
     label = plan["label"]
+    axis = plan.get("axis", "y")
     if plan["kind"] == "missing":
         size = plan.get("size")
         if not size:
@@ -532,10 +670,13 @@ def compose_page(plan, resolvers, lru, default_dir):
         return img, label
 
     if plan["kind"] == "page":
-        contribs = resolve_contribs(plan["contribs"], resolvers, default_dir)
+        contribs = resolve_contribs(_axis_bbox(plan["contribs"], axis),
+                                    resolvers, default_dir)
         check_sizes(contribs, resolvers)
-        img, _ = assemble_page(plan["film"], contribs, lru)
-        return img, label
+        img, _ = assemble_page(plan["film"], contribs, lru,
+                               field_lru=field_lru, spot_blur=spot_blur,
+                               spot_weight=spot_weight, axis=axis)
+        return _axis_canvas(img, axis), label
 
     # gap_join: stack the sections (each its own film frame), with the red
     # bands the plan inserts between them. The later scan's piece comes first
@@ -549,9 +690,12 @@ def compose_page(plan, resolvers, lru, default_dir):
                 parts.append(("red", red))
                 red_present = True
             continue
-        contribs = resolve_contribs(sec["contribs"], resolvers, default_dir)
+        contribs = resolve_contribs(_axis_bbox(sec["contribs"], axis),
+                                    resolvers, default_dir)
         check_sizes(contribs, resolvers)
-        img, _ = assemble_page(sec["film"], contribs, lru)
+        img, _ = assemble_page(sec["film"], contribs, lru,
+                               field_lru=field_lru, spot_blur=spot_blur,
+                               spot_weight=spot_weight, axis=axis)
         if img is None:
             return None, label
         parts.append(("img", img))
@@ -572,7 +716,33 @@ def compose_page(plan, resolvers, lru, default_dir):
     if red_present:                            # need 3 channels for red
         pieces = [cv2.cvtColor(p, cv2.COLOR_GRAY2BGR) if p.ndim == 2 else p
                   for p in pieces]
-    return np.vstack(pieces), label
+    return _axis_canvas(np.vstack(pieces), axis), label
+
+
+def _axis_bbox(contribs, axis):
+    """Permit an axis="x" plan's contribs for assembly: the plan keeps
+    bbox in the scans' on-disk orientation, but assemble_page works in the
+    transposed frame, so its (top, bottom) bounds are the scan's content
+    COLUMNS (film axis) and (left, right) its content rows."""
+    if axis != "x":
+        return contribs
+    out = []
+    for c in contribs:
+        c = dict(c)
+        top, bottom, left, right = (int(v) for v in c["bbox"])
+        c["bbox"] = (left, right, top, bottom)
+        out.append(c)
+    return out
+
+
+def _axis_canvas(img, axis):
+    """Map an axis="x" page's transposed assembly back to the scans'
+    reading orientation (a plain transpose -- the assembly's film axis is
+    the scan columns in ascending order). cv2.transpose works on 2-D and
+    3-D (BGR) arrays alike."""
+    if axis == "x" and img is not None:
+        return cv2.transpose(img)
+    return img
 
 
 def plan_label(path):
@@ -611,6 +781,14 @@ def main():
     ap.add_argument("--lru", type=int, default=4,
                     help="How many full-resolution scans to keep in memory "
                          "while assembling (default: 4).")
+    ap.add_argument("--spot-blur", type=int, default=41,
+                    help="Width of the box average defining the large-scale "
+                         "darkness field the seam uses to dodge dark spots "
+                         "(default: 41 px).")
+    ap.add_argument("--spot-weight", type=float, default=1.0,
+                    help="How strongly the seam DP avoids handing dark spots "
+                         "to the scan that has them (default: 1.0); 0 "
+                         "recovers the plain lightest-path seam.")
     args = ap.parse_args()
 
     if not os.path.isdir(args.plans_dir):
@@ -634,6 +812,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     resolvers = {}                 # scan_dir -> ScanResolver
     lru = _LRU(max_len=args.lru)
+    field_lru = _LRU(max_len=args.lru)   # per-scan darkness fields
     written = 0
     for pi, fname in enumerate(paths):
         path = os.path.join(args.plans_dir, fname)
@@ -653,7 +832,9 @@ def main():
             print(f"  {label}: plan has no source_dir and no --scan-dir "
                   "given; skipped")
             continue
-        img, _ = compose_page(plan, resolvers, lru, default_dir)
+        img, _ = compose_page(plan, resolvers, lru, default_dir,
+                              field_lru=field_lru, spot_blur=args.spot_blur,
+                              spot_weight=args.spot_weight)
         if img is None:
             print(f"  {label}: nothing to composite, skipped")
             continue

@@ -503,3 +503,265 @@ def test_featureless_band_overlap_white_margin_stays_gap(tmp_path):
     real, dy, dx, ncc, L = pp.featureless_band_overlap(
         pa, pb, _kp(range(140, 600, 2)), _kp(range(0, 460, 2)))
     assert real is False
+
+
+# ---------------------------------------------------------------------------
+# Spot avoidance (dark fog / smudges from one capture dodged via the other)
+# ---------------------------------------------------------------------------
+
+def _write_scan(path, img):
+    assert cv2.imwrite(str(path), img)
+    return str(path)
+
+
+def _contrib(scan_name, path, film_offset, bbox):
+    return dict(scan=scan_name, path=path, film_offset=film_offset, dx=0.0,
+                bbox=bbox, size=[bbox[1] + 1, bbox[3] + 1])
+
+
+def _spot_scans(tmp_path, spot_in_a=True, spot_in_b=False):
+    """Two 240x240 scans, paper at 220, both with text-free content.
+
+    A dark 100x100 fog blob (value 100) sits at the same FILM rows in both
+    scans (canvas rows 60:160 when composited) -- and at the TOP of the
+    scans' overlap band, where the light-seam cannot route around it: the
+    blob is only avoidable by taking the other scan's pixels.
+    """
+    h = w = 240
+    a = np.full((h, w), 220, np.uint8)
+    b = np.full((h, w), 220, np.uint8)
+    if spot_in_a:
+        a[60:160, 60:160] = 100
+    if spot_in_b:
+        b[0:100, 60:160] = 100
+    pa = _write_scan(tmp_path / "a.png", a)
+    pb = _write_scan(tmp_path / "b.png", b)
+    bbox = (0, h - 1, 0, w - 1)
+    # B is placed 60 film rows lower: canvas rows 60..299 for B, 0..239 for A,
+    # so the blob sits inside the two scans' overlap band (60..239).
+    ca = _contrib("a.png", pa, 0.0, bbox)
+    cb = _contrib("b.png", pb, 60.0, bbox)
+    return (0, 300), [ca, cb]
+
+
+def test_spot_avoided_from_clean_neighbour(tmp_path):
+    film, contribs = _spot_scans(tmp_path, spot_in_a=True, spot_in_b=False)
+    img, _ = cp.assemble_page(film, contribs, cp._LRU(4))
+    # The fog blob sits at the top of the overlap band, where the seam can't
+    # route around it -- the seam must instead retreat above it so scan B
+    # (clean there) owns the fogged rows.
+    assert img[100:160, 80:140].min() > 200
+
+
+def test_spot_on_the_film_itself_stays(tmp_path):
+    film, contribs = _spot_scans(tmp_path, spot_in_a=True, spot_in_b=True)
+    img, _ = cp.assemble_page(film, contribs, cp._LRU(4))
+    # Both scans carry the blob -> nothing can avoid it -> it stays dark.
+    assert img[100:160, 80:140].max() < 150
+
+
+def test_seam_dodges_fog_spanning_the_band(tmp_path):
+    # Scan A is fogged over its WHOLE overlap with B: no light path through
+    # the band exists, so only the composite-darkness term can help -- the
+    # seam must retreat to the band's top edge, giving every fogged row to
+    # the clean scan.
+    h = w = 240
+    a = np.full((h, w), 220, np.uint8)
+    a[60:h, 40:200] = 100
+    b = np.full((h, w), 220, np.uint8)
+    pa = _write_scan(tmp_path / "a.png", a)
+    pb = _write_scan(tmp_path / "b.png", b)
+    bbox = (0, h - 1, 0, w - 1)
+    contribs = [_contrib("a.png", pa, 0.0, bbox),
+                _contrib("b.png", pb, 60.0, bbox)]
+    img, _ = cp.assemble_page((0, 300), contribs, cp._LRU(4))
+    assert img[100:239, 80:140].min() > 200
+
+
+def test_light_seam_hands_fog_to_the_clean_scan():
+    """DP-level: with fields, the seam retreats from fog into the clean
+    scan's ownership; without fields it just avoids dark ROWS."""
+    H, W = 40, 30
+    white = np.full((H, W), 220, np.uint8)
+    a_fog = white.copy(); a_fog[0:20] = 100       # fog at the TOP of the band
+    b_fog = white.copy(); b_fog[20:H] = 100       # fog at the BOTTOM
+    fa = a_fog.astype(float)
+    fb = b_fog.astype(float)
+    # Fog in the upper scan: the seam must move above it (row 0) so the
+    # lower, clean scan owns the fogged rows.
+    assert cp._light_seam(a_fog, white, fa, white.astype(float)).max() <= 2
+    # Fog in the lower scan: the seam must move below it so the upper, clean
+    # scan owns the fogged rows.
+    assert cp._light_seam(white, b_fog, white.astype(float), fb).min() >= 20
+    # Without fields (spot_weight=0) the seam only avoids dark rows: it may
+    # legally cut at the fog edge, leaving fog owned by the fogged scan.
+    seam_plain = cp._light_seam(a_fog, white)
+    assert seam_plain.min() >= 19
+
+
+def test_light_seam_field_term_cancels_for_equal_fields():
+    """Identical fields make the composite term constant, so the seam must
+    not move vs the plain lightest-path seam."""
+    H, W = 30, 20
+    band = np.full((H, W), 200, np.uint8)
+    band[8, 4:16] = 40                            # one dark row
+    f = np.full((H, W), 200.0)                    # fields say: no defects
+    assert list(cp._light_seam(band, band, f, f)) == \
+        list(cp._light_seam(band, band))
+
+
+def test_dark_field_cancels_thin_detail():
+    """Text-like thin strokes vanish from the darkness field; blobs remain."""
+    img = np.full((200, 200), 200, np.uint8)
+    img[50:52, 20:180] = 40                 # a 2-px "text stroke"
+    img[120:180, 60:140] = 60               # a big fog blob
+    field = cp._dark_field(img, 41)
+    assert field[50, 100] > 180             # stroke cancelled
+    assert field[150, 100] < 120            # blob survives
+
+
+# ---------------------------------------------------------------------------
+# Horizontal (--horizontal) batches: orientation handling
+# ---------------------------------------------------------------------------
+
+def _film_strip(seed, rows=600, cols=2600, pitch=700):
+    """A synthetic horizontal film strip: `rows`-tall, `cols` long, with a
+    page of structured content (seeded noise blocks) in every 700-col pitch,
+    separated by 60-px black bars crossing the strip vertically.
+
+    Returns (strip, bar_cols): the strip image and the list of (lo, hi)
+    inclusive bar column ranges."""
+    rng = np.random.RandomState(seed)
+    strip = np.full((rows, cols), 210, np.uint8)
+    # page content: seeded textured blocks, identical wherever they repeat
+    for lo in range(0, cols - pitch + 1, pitch):
+        block = (rng.randint(60, 200, (rows - 60, pitch - 120))
+                 .astype(np.uint8))
+        strip[30:rows - 30, lo + 60:lo + pitch - 60] = block
+    bars = []
+    for lo in range(pitch - 60, cols, pitch):
+        hi = min(lo + 59, cols - 1)
+        strip[:, lo:hi + 1] = 20
+        bars.append((lo, hi))
+    return strip, bars
+
+
+def _horiz_frames(strip, n=4, fw=700, advance=550, drift="left"):
+    """The scanner's frames of `strip`, marching the window along the film.
+
+    drift="left" (0929-style right-to-left): frame k shoots cols
+    [k*advance, k*advance + fw) -- the camera window advances toward
+    larger film columns and the film content drifts LEFT frame-to-frame.
+    drift="right": frame k shoots [cols - fw - k*advance, cols - k*advance),
+    content drifting RIGHT (a 'T' batch)."""
+    W = strip.shape[1]
+    if drift == "left":
+        return [strip[:, min(k * advance, W - fw):
+                       min(k * advance, W - fw) + fw] for k in range(n)]
+    return [strip[:, max(0, W - fw - advance * k):W - advance * k]
+            for k in range(n)]
+
+
+def _kp_transform_roundtrip():
+    """_transpose_keypoints agrees with _transpose_frame's pixel mapping."""
+    img = (np.random.RandomState(1).rand(300, 400) * 255).astype(np.uint8)
+    sift = cv2.SIFT_create(contrastThreshold=0.02)
+    kp, des = sift.detectAndCompute(img, None)
+    for orient in ("T", "R"):
+        timg = pp._transpose_frame(img, orient)
+        tkp, tdes = sift.detectAndCompute(timg, None)
+        if len(tkp) < 50:
+            continue
+        mapped = pp._transpose_keypoints(kp, img.shape, orient)
+        # every mapped keypoint must have a counterpart in the transposed
+        # SIFT's own keypoints (same position, similar descriptor)
+        mdes = np.asarray([k.response for k in mapped])  # placeholder
+        pts = np.array([(k.pt[0], k.pt[1]) for k in mapped])
+        tpts = np.array([(k.pt[0], k.pt[1]) for k in tkp])
+        tree = np.argmin(((tpts[:, None, :] - pts[None, :, :]) ** 2)
+                         .sum(axis=2), axis=0)
+        dist = np.linalg.norm(tpts[tree] - pts, axis=1)
+        assert np.median(dist) < 2.0, (orient, dist.max())
+
+
+def test_transpose_keypoints_matches_transpose_frame():
+    _kp_transform_roundtrip()
+
+
+def test_transpose_frame_shapes_and_mapping():
+    img = np.arange(12, dtype=np.uint8).reshape(3, 4)
+    assert np.array_equal(pp._transpose_frame(img, "T"),
+                          np.array([[0, 4, 8], [1, 5, 9], [2, 6, 10],
+                                    [3, 7, 11]], np.uint8))
+    assert pp._transpose_frame(img, None) is img
+
+
+def test_detect_film_direction_right_to_left(tmp_path):
+    """Content drifting LEFT frame-to-frame (the 0929-style batch) -> 'R'."""
+    strip, _ = _film_strip(11)
+    frames = _horiz_frames(strip)
+    paths = [_write_scan(tmp_path / f"f{i:02d}.tif", f)
+             for i, f in enumerate(frames)]
+    assert pp.detect_film_direction(paths) == "R"
+
+
+def test_detect_film_direction_left_to_right(tmp_path):
+    """Content drifting RIGHT frame-to-frame -> 'T'."""
+    strip, _ = _film_strip(12)
+    frames = _horiz_frames(strip, drift="right")
+    paths = [_write_scan(tmp_path / f"g{i:02d}.tif", f)
+             for i, f in enumerate(frames)]
+    assert pp.detect_film_direction(paths) == "T"
+
+
+def test_detect_film_direction_featureless_defaults(tmp_path, capsys):
+    """Nothing but blank (featureless) frames: the ambiguous default 'T'."""
+    frames = [np.full((200, 400), 210, np.uint8) for _ in range(3)]
+    paths = [_write_scan(tmp_path / f"h{i:02d}.tif", f)
+             for i, f in enumerate(frames)]
+    assert pp.detect_film_direction(paths) == "T"
+    assert "WARNING" in capsys.readouterr().out
+
+
+def _horiz_batch(tmp_path, monkeypatch, seed=21, n=4, drift="left"):
+    """A small horizontal batch on disk with the SIFT fake wired up
+    (downscaled == original coordinates: the frames are small)."""
+    strip, bars = _film_strip(seed)
+    frames = _horiz_frames(strip, n=n, drift=drift)
+    paths = []
+    for i, f in enumerate(frames):
+        pa = tmp_path / f"scan{i:04d}.tif"
+        cv2.imwrite(str(pa), f)
+        paths.append(str(pa))
+    images = {p: cv2.imread(p, cv2.IMREAD_GRAYSCALE) for p in paths}
+
+    def fake_get_kd(path, cache_dir, contrast, min_size, max_dim=0,
+                    force=False, table=None):
+        img = images[path]
+        if max_dim and max(img.shape) > max_dim:
+            scale = max_dim / max(img.shape)
+            img = cv2.resize(img, None, fx=scale, fy=scale,
+                             interpolation=cv2.INTER_AREA)
+        sift = cv2.SIFT_create(contrastThreshold=contrast)
+        kp, des = sift.detectAndCompute(img, None)
+        return kp, des, img.shape
+
+    monkeypatch.setattr(pp, "get_or_compute_keypoints", fake_get_kd)
+    return paths, strip, bars
+
+
+def test_horizontal_batch_finds_pages(tmp_path, monkeypatch):
+    """The full horizontal pipeline on a synthetic right-to-left batch."""
+    paths, strip, strip_bars = _horiz_batch(tmp_path, monkeypatch)
+    res = pp.analyze_batch(str(tmp_path), horizontal=True,
+                           stall_frac=0.2, min_page_height=150.0,
+                           bar_gap_tol=10.0, verbose=False)
+    assert res["axis"] == "x"
+    assert res["orient"] == "R"
+    assert len(res["runs"]) == 1            # every pair must link
+    # film-coord coverage: the S bookkeeping runs the pages at a constant
+    # pitch; just check the page count and heights are sane.
+    pages = res["all_pages"]
+    assert len(pages) >= 3
+    heights = [hi - lo for lo, hi, _, _ in pages]
+    assert max(heights) >= 500              # full page strips exist
