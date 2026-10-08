@@ -1,0 +1,25 @@
+# OCR worker (onnx) env -- runs ocr_worker_onnx.py.
+# Same models as the paddle worker, served through onnxruntime so AMD
+# GPUs get hardware acceleration.
+#
+# CPU / CUDA boxes: plain pip install (this file, as-is).
+# AMD ROCm boxes (Arch): install the SYSTEM packages
+#     pacman -S python-onnxruntime-rocm rocm-hip-sdk
+# and let this worker import the system onnxruntime. Its GPU provider
+# is MIGraphXExecutionProvider (formerly ROCmExecutionProvider; older
+# releases) + DnnlExecutionProvider + CPU -- pip's onnxruntime does
+# NOT have the MIGraphX one. Simplest:
+# create the venv with --system-site-packages, or run the worker with
+# the system python and pip-installed deps. The worker picks the
+# ROCm provider automatically when present, else CPU.
+#
+# paddle2onnx + paddlepaddle are only needed to (re)export the models
+# in onnx_models/ -- workers only need inference deps.
+onnxruntime>=1.20
+opencv-python-headless
+pillow
+numpy
+pyyaml
+# export-time only:
+#   paddle2onnx>=1.2
+#   paddlepaddle==3.2.1     (the export converts det/rec; no GPU needed)
