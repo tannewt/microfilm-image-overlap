@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "directories": [
+    "pages/20260924/4722-9113-09974"
+  ],
+  "skip": [
+    "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page808-scans1688-1688.png",
+    "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page809-scans1688-1688.png",
+    "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page810-scans1690-1690.png",
+    "pages/20260924/4722-9113-09974/page808-scans1688-1688.png",
+    "pages/20260924/4722-9113-09974/page809-scans1688-1688.png",
+    "pages/20260924/4722-9113-09974/page810-scans1690-1690.png"
+  ],
+  "confirmed_pairs": [
+    [
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page799-scans1674-1674.png",
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page800-scans1675-1677.png"
+    ],
+    [
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page801-scans1677-1677.png",
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page802-scans1678-1680.png"
+    ],
+    [
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page803-scans1679-1681.png",
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page804-scans1681-1683.png"
+    ],
+    [
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page805-scans1682-1684.png",
+      "/home/tannewt/repos/image-overlap/pages/20260924/4722-9113-09974/page806-scans1684-1686.png"
+    ]
+  ],
+  "flagged_spreads": [],
+  "blank_pages": [],
+  "reverse": true
+}

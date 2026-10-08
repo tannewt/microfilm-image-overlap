@@ -118,7 +118,7 @@ def content_bbox(gray, white_thresh=250):
 
 
 def detect_bars(gray, win=51, thr_frac=0.5, thr_min=50, thr_max=100,
-                min_thick=30):
+                min_thick=30, col_win=31, col_frac=0.95):
     """Detect dark horizontal bands (the black bars between microfilm pages).
 
     Operates on the row projection of the scan's *content* columns (the white
@@ -129,6 +129,20 @@ def detect_bars(gray, win=51, thr_frac=0.5, thr_min=50, thr_max=100,
     brightness (clamped to [thr_min, thr_max]) -- microfilm bars sit at ~55-60
     while page content sits at ~150-190, so the threshold cleanly separates
     them and ignores the near-white frame border.
+
+    A row-projection dip alone is NOT proof of a black bar: page-level dark
+    content whose rows are dominated by a halftone photograph, a torn
+    too-dark page or a strong black rule (a full-page ad's box border) also
+    dips below the threshold. What makes a real film bar different is that
+    it is black ACROSS THE ENTIRE scan -- the film is black at both ends of
+    every bar row (outside the page too), and page margins/white film edges
+    stay bright beside dark PAGE content. So each candidate band must also
+    pass a column check: the per-column mean over the band's rows (smoothed
+    with `col_win`) is dark (< `thr`) for at least `col_frac` of the content
+    columns. On the 20260929 05671_6200 scans the separation is wide: real
+    bars pass at 0.994-1.00, while boxed-ad borders (scans 1321/1322) and
+    dark torn-page / dark-halftone-ad bands (scans 140, 1126, 1268) top out
+    at 0.87.
 
     Returns a list of (row_start, row_end) inclusive intervals in original
     pixel coordinates.
@@ -157,7 +171,17 @@ def detect_bars(gray, win=51, thr_frac=0.5, thr_min=50, thr_max=100,
             while j < n and dark[j]:
                 j += 1
             if j - i >= min_thick:
-                bars.append((i, j - 1))
+                # Column check: the dark rows must be dark across the whole
+                # scan width, not just on average. A real film bar is black
+                # along its entire length; dark page content always leaves
+                # bright columns (page margins, a torn edge, the other
+                # columns of the page).
+                strip = gray[i:j, left:right + 1]
+                colproj = strip.mean(axis=0)
+                csmooth = np.convolve(colproj, np.ones(col_win) / col_win,
+                                      mode="same")
+                if float((csmooth < thr).mean()) >= col_frac:
+                    bars.append((i, j - 1))
             i = j
         else:
             i += 1
@@ -530,6 +554,10 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                 kp = _transpose_keypoints(kp, shape, orient)
                 shape = (shape[1], shape[0])
             cache[path] = (kp, des, shape)
+            # Bounded (FIFO) eviction: an unbounded dict of full-batch
+            # keypoints OOMs an 800-scan batch (downscaled ~10 MB/image).
+            while len(cache) > 48:
+                cache.pop(next(iter(cache)))
         return cache[path]
 
     def get_full_kd(path):
@@ -554,6 +582,12 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                 kp = _transpose_keypoints(kp, shape, orient)
                 shape = (shape[1], shape[0])
             full_cache[path] = (kp, des, shape)
+            # Full-res SIFT is ~50-90 MB/image; keeping the whole batch in
+            # RAM is tens of GB (OOMs other jobs, fills swap). The rows
+            # already persist in the images_fullres SQLite table, so a
+            # bounded window is enough for the neighbor pairs to reuse.
+            while len(full_cache) > 32:
+                full_cache.pop(next(iter(full_cache)))
         return full_cache[path]
 
     kp_a, des_a, sa = get_kd(path_a)

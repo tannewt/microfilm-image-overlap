@@ -1,0 +1,1225 @@
+{
+  "version": 1,
+  "directories": [
+    "pages/20260929-05671-6200"
+  ],
+  "plans_dirs": [
+    "plans/20260929/05671-6200"
+  ],
+  "skip": [
+    "pages/20260929-05671-6200/page382-scans446-447-gap.png",
+    "pages/20260929-05671-6200/page429-scans500-501-gap.png",
+    "pages/20260929-05671-6200/page438-scans509-510.png",
+    "pages/20260929-05671-6200/page447-scans519-520.png",
+    "pages/20260929-05671-6200/page744-scans891-892.png",
+    "pages/20260929-05671-6200/page793-scans958-959.png",
+    "pages/20260929-05671-6200/page843-scans1031-1031.png"
+  ],
+  "confirmed_pairs": [
+    [
+      "pages/20260929-05671-6200/page003-scans001-002.png",
+      "pages/20260929-05671-6200/page004-scans003-003.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page007-scans006-008.png",
+      "pages/20260929-05671-6200/page008-scans007-009.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page013-scans014-015.png",
+      "pages/20260929-05671-6200/page014-scans015-017.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page017-scans019-020.png",
+      "pages/20260929-05671-6200/page018-scans020-022.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page019-scans022-023.png",
+      "pages/20260929-05671-6200/page020-scans023-024.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page021-scans024-026.png",
+      "pages/20260929-05671-6200/page022-scans026-027.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page025-scans029-031.png",
+      "pages/20260929-05671-6200/page026-scans031-032.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page027-scans032-033.png",
+      "pages/20260929-05671-6200/page028-scans033-034.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page029-scans034-035.png",
+      "pages/20260929-05671-6200/page030-scans035-037.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page033-scans039-040.png",
+      "pages/20260929-05671-6200/page034-scans041-041.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page035-scans042-043.png",
+      "pages/20260929-05671-6200/page036-scans043-044.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page039-scans047-048.png",
+      "pages/20260929-05671-6200/page040-scans048-049.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page059-scans071-072.png",
+      "pages/20260929-05671-6200/page060-scans072-073.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page063-scans076-077.png",
+      "pages/20260929-05671-6200/page064-scans077-078.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page067-scans080-082.png",
+      "pages/20260929-05671-6200/page068-scans082-083.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page081-scans097-098.png",
+      "pages/20260929-05671-6200/page082-scans098-100.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page085-scans102-103.png",
+      "pages/20260929-05671-6200/page086-scans103-104.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page089-scans107-108.png",
+      "pages/20260929-05671-6200/page090-scans108-109.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page093-scans111-112.png",
+      "pages/20260929-05671-6200/page094-scans112-114.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page097-scans116-117.png",
+      "pages/20260929-05671-6200/page098-scans117-118.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page101-scans121-122.png",
+      "pages/20260929-05671-6200/page102-scans122-123.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page103-scans123-124.png",
+      "pages/20260929-05671-6200/page104-scans124-125.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page105-scans125-127.png",
+      "pages/20260929-05671-6200/page106-scans127-128.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page160-scans191-192.png",
+      "pages/20260929-05671-6200/page161-scans192-193.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page164-scans196-197.png",
+      "pages/20260929-05671-6200/page165-scans197-198.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page168-scans200-201.png",
+      "pages/20260929-05671-6200/page169-scans201-202.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page172-scans205-206.png",
+      "pages/20260929-05671-6200/page173-scans206-207.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page176-scans209-211.png",
+      "pages/20260929-05671-6200/page177-scans211-212.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page180-scans214-215.png",
+      "pages/20260929-05671-6200/page181-scans216-216.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page186-scans221-223.png",
+      "pages/20260929-05671-6200/page187-scans223-224.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page192-scans229-230.png",
+      "pages/20260929-05671-6200/page193-scans230-231.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page194-scans231-233.png",
+      "pages/20260929-05671-6200/page195-scans233-234.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page196-scans234-235.png",
+      "pages/20260929-05671-6200/page197-scans235-236.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page200-scans239-240.png",
+      "pages/20260929-05671-6200/page201-scans240-241.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page202-scans241-242.png",
+      "pages/20260929-05671-6200/page203-scans242-243.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page204-scans243-245.png",
+      "pages/20260929-05671-6200/page205-scans245-246.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page208-scans248-249.png",
+      "pages/20260929-05671-6200/page209-scans249-250.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page210-scans250-252.png",
+      "pages/20260929-05671-6200/page211-scans252-253.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page212-scans253-254.png",
+      "pages/20260929-05671-6200/page213-scans254-255.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page216-scans258-258.png",
+      "pages/20260929-05671-6200/page217-scans259-260.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page226-scans269-270.png",
+      "pages/20260929-05671-6200/page227-scans270-271.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page234-scans278-279.png",
+      "pages/20260929-05671-6200/page235-scans280-280.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page236-scans281-282.png",
+      "pages/20260929-05671-6200/page237-scans282-283.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page240-scans285-286.png",
+      "pages/20260929-05671-6200/page241-scans287-287.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page242-scans288-289.png",
+      "pages/20260929-05671-6200/page243-scans289-290.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page244-scans290-291.png",
+      "pages/20260929-05671-6200/page245-scans291-292.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page250-scans297-298.png",
+      "pages/20260929-05671-6200/page251-scans298-299.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page252-scans299-300.png",
+      "pages/20260929-05671-6200/page253-scans300-302.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page256-scans304-305.png",
+      "pages/20260929-05671-6200/page257-scans305-306.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page258-scans306-308.png",
+      "pages/20260929-05671-6200/page259-scans307-309.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page260-scans309-310.png",
+      "pages/20260929-05671-6200/page261-scans310-311.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page264-scans313-314.png",
+      "pages/20260929-05671-6200/page265-scans314-316.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page266-scans316-317.png",
+      "pages/20260929-05671-6200/page267-scans317-318.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page268-scans318-319.png",
+      "pages/20260929-05671-6200/page269-scans319-320.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page272-scans323-324.png",
+      "pages/20260929-05671-6200/page273-scans324-325.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page274-scans325-326.png",
+      "pages/20260929-05671-6200/page275-scans326-327.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page276-scans328-328.png",
+      "pages/20260929-05671-6200/page277-scans329-330.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page290-scans344-345.png",
+      "pages/20260929-05671-6200/page291-scans345-347.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page294-scans349-350.png",
+      "pages/20260929-05671-6200/page295-scans350-351.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page296-scans351-352.png",
+      "pages/20260929-05671-6200/page297-scans352-354.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page300-scans356-357.png",
+      "pages/20260929-05671-6200/page301-scans357-358.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page304-scans361-362.png",
+      "pages/20260929-05671-6200/page305-scans362-363.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page310-scans368-369.png",
+      "pages/20260929-05671-6200/page311-scans369-370.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page312-scans370-371.png",
+      "pages/20260929-05671-6200/page313-scans371-373.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page316-scans375-376.png",
+      "pages/20260929-05671-6200/page317-scans376-377.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page318-scans377-378.png",
+      "pages/20260929-05671-6200/page319-scans378-380.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page320-scans380-381.png",
+      "pages/20260929-05671-6200/page321-scans381-382.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page324-scans384-385.png",
+      "pages/20260929-05671-6200/page325-scans385-386.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page348-scans412-413.png",
+      "pages/20260929-05671-6200/page349-scans413-414.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page352-scans416-417.png",
+      "pages/20260929-05671-6200/page353-scans417-418.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page354-scans418-419-gap.png",
+      "pages/20260929-05671-6200/page355-scans419-420.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page356-scans419-420.png",
+      "pages/20260929-05671-6200/page357-scans420-421-gap.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page358-scans421-422.png",
+      "pages/20260929-05671-6200/page359-scans422-423.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page362-scans425-426-gap.png",
+      "pages/20260929-05671-6200/page363-scans427-427.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page364-scans428-429.png",
+      "pages/20260929-05671-6200/page365-scans429-430.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page366-scans430-431.png",
+      "pages/20260929-05671-6200/page367-scans431-432.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page370-scans434-436.png",
+      "pages/20260929-05671-6200/page371-scans436-437.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page372-scans437-438.png",
+      "pages/20260929-05671-6200/page373-scans438-439.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page374-scans439-440.png",
+      "pages/20260929-05671-6200/page375-scans440-441.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page380-scans444-445.png",
+      "pages/20260929-05671-6200/page381-scans445-446.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page385-scans449-450.png",
+      "pages/20260929-05671-6200/page386-scans450-451.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page389-scans453-454.png",
+      "pages/20260929-05671-6200/page390-scans455-455.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page391-scans456-457.png",
+      "pages/20260929-05671-6200/page392-scans457-458.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page393-scans458-459.png",
+      "pages/20260929-05671-6200/page394-scans459-461.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page397-scans463-464.png",
+      "pages/20260929-05671-6200/page398-scans464-465.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page399-scans466-466.png",
+      "pages/20260929-05671-6200/page400-scans467-468.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page401-scans468-469.png",
+      "pages/20260929-05671-6200/page402-scans469-470.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page405-scans472-474.png",
+      "pages/20260929-05671-6200/page406-scans474-475.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page407-scans475-476.png",
+      "pages/20260929-05671-6200/page408-scans476-477.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page409-scans477-478.png",
+      "pages/20260929-05671-6200/page410-scans479-479.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page413-scans482-483.png",
+      "pages/20260929-05671-6200/page414-scans483-484.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page415-scans484-485.png",
+      "pages/20260929-05671-6200/page416-scans485-487.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page417-scans486-488.png",
+      "pages/20260929-05671-6200/page418-scans488-489.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page421-scans491-492.png",
+      "pages/20260929-05671-6200/page422-scans492-494.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page423-scans494-495.png",
+      "pages/20260929-05671-6200/page424-scans495-496.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page425-scans496-497.png",
+      "pages/20260929-05671-6200/page426-scans497-498.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page430-scans501-502.png",
+      "pages/20260929-05671-6200/page431-scans501-503.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page432-scans503-504.png",
+      "pages/20260929-05671-6200/page433-scans504-505.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page434-scans505-506.png",
+      "pages/20260929-05671-6200/page435-scans506-507.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page441-scans512-513.png",
+      "pages/20260929-05671-6200/page442-scans513-514.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page443-scans514-515.png",
+      "pages/20260929-05671-6200/page444-scans515-516.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page448-scans520-521.png",
+      "pages/20260929-05671-6200/page449-scans521-522.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page450-scans522-523.png",
+      "pages/20260929-05671-6200/page451-scans523-524.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page456-scans527-528.png",
+      "pages/20260929-05671-6200/page457-scans528-529.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page458-scans529-530.png",
+      "pages/20260929-05671-6200/page459-scans530-531.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page511-scans590-591.png",
+      "pages/20260929-05671-6200/page512-scans591-592.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page531-scans614-615.png",
+      "pages/20260929-05671-6200/page532-scans615-616.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page533-scans616-617.png",
+      "pages/20260929-05671-6200/page534-scans617-619.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page535-scans618-620.png",
+      "pages/20260929-05671-6200/page536-scans620-621.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page537-scans621-622.png",
+      "pages/20260929-05671-6200/page538-scans622-623.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page539-scans623-625.png",
+      "pages/20260929-05671-6200/page540-scans624-626.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page541-scans626-627.png",
+      "pages/20260929-05671-6200/page542-scans627-628.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page545-scans630-632.png",
+      "pages/20260929-05671-6200/page546-scans632-633.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page549-scans635-637.png",
+      "pages/20260929-05671-6200/page550-scans637-638.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page555-scans643-644.png",
+      "pages/20260929-05671-6200/page556-scans644-645.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page557-scans645-646.png",
+      "pages/20260929-05671-6200/page558-scans647-647.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page559-scans648-649.png",
+      "pages/20260929-05671-6200/page560-scans649-650.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page563-scans653-654.png",
+      "pages/20260929-05671-6200/page564-scans654-655.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page567-scans657-659.png",
+      "pages/20260929-05671-6200/page568-scans659-660.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page571-scans662-663.png",
+      "pages/20260929-05671-6200/page572-scans663-665.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page579-scans672-673.png",
+      "pages/20260929-05671-6200/page580-scans673-675.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page583-scans677-678.png",
+      "pages/20260929-05671-6200/page584-scans678-680.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page587-scans682-683.png",
+      "pages/20260929-05671-6200/page588-scans683-684.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page591-scans687-688.png",
+      "pages/20260929-05671-6200/page592-scans688-689.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page595-scans692-693.png",
+      "pages/20260929-05671-6200/page596-scans693-694.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page597-scans694-696.png",
+      "pages/20260929-05671-6200/page598-scans695-697.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page599-scans697-698.png",
+      "pages/20260929-05671-6200/page600-scans698-699.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page601-scans699-700.png",
+      "pages/20260929-05671-6200/page602-scans700-702.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page603-scans702-703.png",
+      "pages/20260929-05671-6200/page604-scans703-704.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page607-scans706-708.png",
+      "pages/20260929-05671-6200/page608-scans708-709.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page609-scans709-710.png",
+      "pages/20260929-05671-6200/page610-scans710-712.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page611-scans712-713.png",
+      "pages/20260929-05671-6200/page612-scans713-715.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page615-scans717-718.png",
+      "pages/20260929-05671-6200/page616-scans718-720.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page617-scans719-721.png",
+      "pages/20260929-05671-6200/page618-scans721-722.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page619-scans722-723.png",
+      "pages/20260929-05671-6200/page620-scans724-724.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page623-scans727-728.png",
+      "pages/20260929-05671-6200/page624-scans728-729.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page625-scans730-730.png",
+      "pages/20260929-05671-6200/page626-scans731-732-gap.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page627-scans732-733.png",
+      "pages/20260929-05671-6200/page628-scans733-734.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page631-scans736-738.png",
+      "pages/20260929-05671-6200/page632-scans738-739.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page633-scans739-740.png",
+      "pages/20260929-05671-6200/page634-scans740-741.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page635-scans742-742.png",
+      "pages/20260929-05671-6200/page636-scans743-744.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page639-scans746-748.png",
+      "pages/20260929-05671-6200/page640-scans748-749.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page643-scans752-754.png",
+      "pages/20260929-05671-6200/page644-scans753-755.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page647-scans757-759.png",
+      "pages/20260929-05671-6200/page648-scans759-760.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page651-scans763-764.png",
+      "pages/20260929-05671-6200/page652-scans764-765.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page695-scans822-824.png",
+      "pages/20260929-05671-6200/page696-scans824-825.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page697-scans825-826.png",
+      "pages/20260929-05671-6200/page698-scans827-827.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page699-scans828-829.png",
+      "pages/20260929-05671-6200/page700-scans829-831.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page711-scans844-846.png",
+      "pages/20260929-05671-6200/page712-scans845-847.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page733-scans876-878.png",
+      "pages/20260929-05671-6200/page734-scans878-879.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page741-scans887-889.png",
+      "pages/20260929-05671-6200/page742-scans888-890.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page746-scans893-895.png",
+      "pages/20260929-05671-6200/page747-scans894-896.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page750-scans898-900.png",
+      "pages/20260929-05671-6200/page751-scans900-901.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page756-scans907-908.png",
+      "pages/20260929-05671-6200/page757-scans908-910.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page760-scans912-914.png",
+      "pages/20260929-05671-6200/page761-scans914-915.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page768-scans923-925.png",
+      "pages/20260929-05671-6200/page769-scans924-926.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page770-scans926-927.png",
+      "pages/20260929-05671-6200/page771-scans928-928.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page772-scans929-930.png",
+      "pages/20260929-05671-6200/page773-scans930-931.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page776-scans934-936.png",
+      "pages/20260929-05671-6200/page777-scans936-937.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page778-scans937-938.png",
+      "pages/20260929-05671-6200/page779-scans938-940.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page780-scans939-941.png",
+      "pages/20260929-05671-6200/page781-scans941-942.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page784-scans945-947.png",
+      "pages/20260929-05671-6200/page785-scans946-948.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page786-scans948-950.png",
+      "pages/20260929-05671-6200/page787-scans949-951.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page788-scans951-952.png",
+      "pages/20260929-05671-6200/page789-scans953-953.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page795-scans960-962.png",
+      "pages/20260929-05671-6200/page796-scans962-963.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page797-scans963-964.png",
+      "pages/20260929-05671-6200/page798-scans964-966.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page801-scans968-970.png",
+      "pages/20260929-05671-6200/page802-scans969-971.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page803-scans971-972.png",
+      "pages/20260929-05671-6200/page804-scans972-974.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page805-scans974-975.png",
+      "pages/20260929-05671-6200/page806-scans975-977.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page809-scans980-982.png",
+      "pages/20260929-05671-6200/page810-scans981-983.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page811-scans983-985.png",
+      "pages/20260929-05671-6200/page812-scans984-986.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page813-scans986-988.png",
+      "pages/20260929-05671-6200/page814-scans987-989.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page817-scans992-994.png",
+      "pages/20260929-05671-6200/page818-scans993-995.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page819-scans995-996.png",
+      "pages/20260929-05671-6200/page820-scans996-998.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page821-scans998-1000.png",
+      "pages/20260929-05671-6200/page822-scans999-1001.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page825-scans1003-1005.png",
+      "pages/20260929-05671-6200/page826-scans1005-1007.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page827-scans1006-1008.png",
+      "pages/20260929-05671-6200/page828-scans1008-1010.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page829-scans1009-1011.png",
+      "pages/20260929-05671-6200/page830-scans1011-1013.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page833-scans1015-1017.png",
+      "pages/20260929-05671-6200/page834-scans1017-1018.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page835-scans1018-1020.png",
+      "pages/20260929-05671-6200/page836-scans1019-1021.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page837-scans1021-1023.png",
+      "pages/20260929-05671-6200/page838-scans1022-1024.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page841-scans1028-1028.png",
+      "pages/20260929-05671-6200/page842-scans1029-1030.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page844-scans1032-1033.png",
+      "pages/20260929-05671-6200/page845-scans1034-1034.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page846-scans1035-1036.png",
+      "pages/20260929-05671-6200/page847-scans1036-1038.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page850-scans1040-1042.png",
+      "pages/20260929-05671-6200/page851-scans1042-1043.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page852-scans1043-1044-gap.png",
+      "pages/20260929-05671-6200/page853-scans1044-1046.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page856-scans1048-1050.png",
+      "pages/20260929-05671-6200/page857-scans1050-1051.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page909-scans1128-1129.png",
+      "pages/20260929-05671-6200/page910-scans1130-1131.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page911-scans1131-1132.png",
+      "pages/20260929-05671-6200/page912-scans1133-1134.png"
+    ]
+  ],
+  "flagged_spreads": [
+    [
+      "pages/20260929-05671-6200/page115-scans138-139.png",
+      "pages/20260929-05671-6200/page116-scans139-140.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page743-scans890-891.png",
+      "pages/20260929-05671-6200/page744-scans891-892.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page792-scans956-958.png",
+      "pages/20260929-05671-6200/page793-scans958-959.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page876-scans1078-1078.png",
+      "pages/20260929-05671-6200/page877-scans1079-1079.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page907-scans1124-1127.png",
+      "pages/20260929-05671-6200/page908-scans1126-1128.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page989-scans1267-1270.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page1017-scans1320-1323.png",
+      "pages/20260929-05671-6200/page1018-scans1322-1325.png"
+    ],
+    [
+      "pages/20260929-05671-6200/page1017-scans1320-1323.png"
+    ]
+  ],
+  "page_roles": {
+    "pages/20260929-05671-6200/page002-scans000-001.png": "front",
+    "pages/20260929-05671-6200/page005-scans004-005.png": "back",
+    "pages/20260929-05671-6200/page006-scans005-006.png": "front",
+    "pages/20260929-05671-6200/page009-scans009-010.png": "back",
+    "pages/20260929-05671-6200/page012-scans013-014.png": "front",
+    "pages/20260929-05671-6200/page015-scans016-018.png": "back",
+    "pages/20260929-05671-6200/page016-scans018-019.png": "front",
+    "pages/20260929-05671-6200/page023-scans027-028.png": "back",
+    "pages/20260929-05671-6200/page024-scans028-029.png": "front",
+    "pages/20260929-05671-6200/page031-scans037-038.png": "back",
+    "pages/20260929-05671-6200/page032-scans038-039.png": "front",
+    "pages/20260929-05671-6200/page037-scans044-045.png": "back",
+    "pages/20260929-05671-6200/page038-scans045-047.png": "front",
+    "pages/20260929-05671-6200/page041-scans049-050.png": "back",
+    "pages/20260929-05671-6200/page042-scans050-052.png": "front",
+    "pages/20260929-05671-6200/page045-scans054-055.png": "back",
+    "pages/20260929-05671-6200/page046-scans055-056.png": "front",
+    "pages/20260929-05671-6200/page049-scans059-060.png": "back",
+    "pages/20260929-05671-6200/page050-scans060-061.png": "front",
+    "pages/20260929-05671-6200/page053-scans063-065.png": "back",
+    "pages/20260929-05671-6200/page054-scans065-066.png": "front",
+    "pages/20260929-05671-6200/page057-scans068-070.png": "back",
+    "pages/20260929-05671-6200/page058-scans070-071.png": "front",
+    "pages/20260929-05671-6200/page061-scans073-074.png": "back",
+    "pages/20260929-05671-6200/page062-scans075-075.png": "front",
+    "pages/20260929-05671-6200/page065-scans078-079.png": "back",
+    "pages/20260929-05671-6200/page066-scans079-081.png": "front",
+    "pages/20260929-05671-6200/page069-scans083-084.png": "back",
+    "pages/20260929-05671-6200/page070-scans084-085.png": "front",
+    "pages/20260929-05671-6200/page071-scans085-086.png": "back",
+    "pages/20260929-05671-6200/page072-scans086-088.png": "front",
+    "pages/20260929-05671-6200/page073-scans088-089.png": "back",
+    "pages/20260929-05671-6200/page074-scans089-090.png": "front",
+    "pages/20260929-05671-6200/page076-scans091-092.png": "back",
+    "pages/20260929-05671-6200/page079-scans095-096.png": "back",
+    "pages/20260929-05671-6200/page080-scans096-097.png": "front",
+    "pages/20260929-05671-6200/page083-scans099-101.png": "back",
+    "pages/20260929-05671-6200/page084-scans101-102.png": "front",
+    "pages/20260929-05671-6200/page087-scans104-105.png": "back",
+    "pages/20260929-05671-6200/page088-scans105-107.png": "front",
+    "pages/20260929-05671-6200/page091-scans109-110.png": "back",
+    "pages/20260929-05671-6200/page092-scans110-111.png": "front",
+    "pages/20260929-05671-6200/page095-scans114-115.png": "back",
+    "pages/20260929-05671-6200/page096-scans115-116.png": "front",
+    "pages/20260929-05671-6200/page099-scans118-120.png": "back",
+    "pages/20260929-05671-6200/page100-scans120-121-gap.png": "front",
+    "pages/20260929-05671-6200/page1001-scans1290-1292.png": "back",
+    "pages/20260929-05671-6200/page1002-scans1292-1294.png": "front",
+    "pages/20260929-05671-6200/page1009-scans1305-1307.png": "back",
+    "pages/20260929-05671-6200/page1010-scans1307-1309.png": "front",
+    "pages/20260929-05671-6200/page1013-scans1312-1315.png": "back",
+    "pages/20260929-05671-6200/page1014-scans1314-1317.png": "front",
+    "pages/20260929-05671-6200/page1026-scans1339-1342.png": "front",
+    "pages/20260929-05671-6200/page1029-scans1345-1348.png": "back",
+    "pages/20260929-05671-6200/page1030-scans1348-1351.png": "front",
+    "pages/20260929-05671-6200/page1033-scans1354-1357.png": "back",
+    "pages/20260929-05671-6200/page1034-scans1356-1359.png": "front",
+    "pages/20260929-05671-6200/page1037-scans1362-1365.png": "back",
+    "pages/20260929-05671-6200/page1038-scans1364-1367.png": "front",
+    "pages/20260929-05671-6200/page1041-scans1370-1373.png": "back",
+    "pages/20260929-05671-6200/page1042-scans1372-1375.png": "front",
+    "pages/20260929-05671-6200/page1045-scans1378-1381.png": "back",
+    "pages/20260929-05671-6200/page1046-scans1380-1383.png": "front",
+    "pages/20260929-05671-6200/page1049-scans1387-1390.png": "back",
+    "pages/20260929-05671-6200/page1050-scans1389-1392.png": "front",
+    "pages/20260929-05671-6200/page1053-scans1395-1398.png": "back",
+    "pages/20260929-05671-6200/page1054-scans1397-1400.png": "front",
+    "pages/20260929-05671-6200/page1057-scans1404-1407.png": "back",
+    "pages/20260929-05671-6200/page1058-scans1406-1409.png": "front",
+    "pages/20260929-05671-6200/page1061-scans1414-1414.png": "back",
+    "pages/20260929-05671-6200/page1062-scans1417-1420.png": "front",
+    "pages/20260929-05671-6200/page1065-scans1423-1426.png": "back",
+    "pages/20260929-05671-6200/page1066-scans1429-1434.png": "front",
+    "pages/20260929-05671-6200/page107-scans128-129.png": "back",
+    "pages/20260929-05671-6200/page1069-scans1440-1445.png": "back",
+    "pages/20260929-05671-6200/page1070-scans1444-1448.png": "front",
+    "pages/20260929-05671-6200/page1073-scans1455-1460.png": "back",
+    "pages/20260929-05671-6200/page1074-scans1459-1463.png": "front",
+    "pages/20260929-05671-6200/page1077-scans1469-1474.png": "back",
+    "pages/20260929-05671-6200/page108-scans129-130.png": "front",
+    "pages/20260929-05671-6200/page1078-scans1473-1478.png": "front",
+    "pages/20260929-05671-6200/page1081-scans1485-1490.png": "back",
+    "pages/20260929-05671-6200/page1082-scans1489-1494.png": "front",
+    "pages/20260929-05671-6200/page1085-scans1501-1507.png": "back",
+    "pages/20260929-05671-6200/page1086-scans1505-1511.png": "front",
+    "pages/20260929-05671-6200/page1089-scans1518-1523.png": "back",
+    "pages/20260929-05671-6200/page1090-scans1522-1527.png": "front",
+    "pages/20260929-05671-6200/page111-scans133-134.png": "back",
+    "pages/20260929-05671-6200/page112-scans134-135.png": "front",
+    "pages/20260929-05671-6200/page119-scans142-144.png": "back",
+    "pages/20260929-05671-6200/page120-scans143-145.png": "front",
+    "pages/20260929-05671-6200/page123-scans147-148.png": "back",
+    "pages/20260929-05671-6200/page124-scans148-150.png": "front",
+    "pages/20260929-05671-6200/page127-scans152-153.png": "back",
+    "pages/20260929-05671-6200/page128-scans153-154.png": "front",
+    "pages/20260929-05671-6200/page131-scans157-158.png": "back",
+    "pages/20260929-05671-6200/page134-scans161-162.png": "back",
+    "pages/20260929-05671-6200/page135-scans162-164.png": "front",
+    "pages/20260929-05671-6200/page138-scans166-167.png": "back",
+    "pages/20260929-05671-6200/page139-scans167-168.png": "front",
+    "pages/20260929-05671-6200/page142-scans171-171.png": "back",
+    "pages/20260929-05671-6200/page143-scans172-173.png": "front",
+    "pages/20260929-05671-6200/page146-scans175-176.png": "back",
+    "pages/20260929-05671-6200/page147-scans176-177.png": "front",
+    "pages/20260929-05671-6200/page150-scans180-181.png": "back",
+    "pages/20260929-05671-6200/page151-scans181-182.png": "front",
+    "pages/20260929-05671-6200/page154-scans184-185.png": "back",
+    "pages/20260929-05671-6200/page155-scans185-186.png": "front",
+    "pages/20260929-05671-6200/page158-scans189-190.png": "back",
+    "pages/20260929-05671-6200/page159-scans190-191.png": "front",
+    "pages/20260929-05671-6200/page162-scans193-194.png": "back",
+    "pages/20260929-05671-6200/page163-scans194-196.png": "front",
+    "pages/20260929-05671-6200/page166-scans198-199.png": "back",
+    "pages/20260929-05671-6200/page167-scans199-200.png": "front",
+    "pages/20260929-05671-6200/page170-scans203-204-gap.png": "back",
+    "pages/20260929-05671-6200/page171-scans204-205.png": "front",
+    "pages/20260929-05671-6200/page174-scans207-208.png": "back",
+    "pages/20260929-05671-6200/page175-scans208-210.png": "front",
+    "pages/20260929-05671-6200/page178-scans212-213.png": "back",
+    "pages/20260929-05671-6200/page179-scans213-214.png": "front",
+    "pages/20260929-05671-6200/page182-scans217-218.png": "back",
+    "pages/20260929-05671-6200/page183-scans218-219.png": "front",
+    "pages/20260929-05671-6200/page190-scans226-228.png": "back",
+    "pages/20260929-05671-6200/page191-scans228-229.png": "front",
+    "pages/20260929-05671-6200/page198-scans236-237.png": "back",
+    "pages/20260929-05671-6200/page199-scans238-238.png": "front",
+    "pages/20260929-05671-6200/page206-scans246-247.png": "back",
+    "pages/20260929-05671-6200/page207-scans247-248.png": "front",
+    "pages/20260929-05671-6200/page214-scans255-256.png": "back",
+    "pages/20260929-05671-6200/page215-scans256-257.png": "front",
+    "pages/20260929-05671-6200/page218-scans260-261.png": "back",
+    "pages/20260929-05671-6200/page219-scans261-262.png": "front",
+    "pages/20260929-05671-6200/page222-scans264-266.png": "back",
+    "pages/20260929-05671-6200/page223-scans265-267.png": "front",
+    "pages/20260929-05671-6200/page230-scans274-275.png": "back",
+    "pages/20260929-05671-6200/page231-scans275-276.png": "front",
+    "pages/20260929-05671-6200/page238-scans283-284.png": "back",
+    "pages/20260929-05671-6200/page239-scans284-285.png": "front",
+    "pages/20260929-05671-6200/page246-scans292-294.png": "back",
+    "pages/20260929-05671-6200/page247-scans294-295.png": "front",
+    "pages/20260929-05671-6200/page254-scans301-303.png": "back",
+    "pages/20260929-05671-6200/page255-scans303-304.png": "front",
+    "pages/20260929-05671-6200/page262-scans311-312.png": "back",
+    "pages/20260929-05671-6200/page263-scans312-313.png": "front",
+    "pages/20260929-05671-6200/page270-scans320-321.png": "back",
+    "pages/20260929-05671-6200/page271-scans322-322.png": "front",
+    "pages/20260929-05671-6200/page278-scans330-331.png": "back",
+    "pages/20260929-05671-6200/page279-scans331-332.png": "front",
+    "pages/20260929-05671-6200/page284-scans337-338.png": "back",
+    "pages/20260929-05671-6200/page285-scans338-340.png": "front",
+    "pages/20260929-05671-6200/page292-scans347-348.png": "back",
+    "pages/20260929-05671-6200/page293-scans348-349.png": "front",
+    "pages/20260929-05671-6200/page298-scans353-355.png": "back",
+    "pages/20260929-05671-6200/page299-scans355-356.png": "front",
+    "pages/20260929-05671-6200/page306-scans363-364.png": "back",
+    "pages/20260929-05671-6200/page307-scans364-366.png": "front",
+    "pages/20260929-05671-6200/page314-scans373-374.png": "back",
+    "pages/20260929-05671-6200/page315-scans374-375.png": "front",
+    "pages/20260929-05671-6200/page322-scans382-383.png": "back",
+    "pages/20260929-05671-6200/page323-scans383-384.png": "front",
+    "pages/20260929-05671-6200/page330-scans391-392.png": "back",
+    "pages/20260929-05671-6200/page331-scans392-393.png": "front",
+    "pages/20260929-05671-6200/page338-scans400-401.png": "back",
+    "pages/20260929-05671-6200/page339-scans401-402.png": "front",
+    "pages/20260929-05671-6200/page346-scans409-410.png": "back",
+    "pages/20260929-05671-6200/page347-scans411-411.png": "front",
+    "pages/20260929-05671-6200/page350-scans414-415.png": "back",
+    "pages/20260929-05671-6200/page351-scans415-416.png": "front",
+    "pages/20260929-05671-6200/page360-scans423-424.png": "back",
+    "pages/20260929-05671-6200/page361-scans424-425.png": "front",
+    "pages/20260929-05671-6200/page368-scans432-433.png": "back",
+    "pages/20260929-05671-6200/page369-scans433-434.png": "front",
+    "pages/20260929-05671-6200/page376-scans441-442-gap.png": "back",
+    "pages/20260929-05671-6200/page377-scans442-443.png": "front",
+    "pages/20260929-05671-6200/page378-scans442-443.png": "back",
+    "pages/20260929-05671-6200/page379-scans443-444-gap.png": "front",
+    "pages/20260929-05671-6200/page387-scans451-452.png": "back",
+    "pages/20260929-05671-6200/page388-scans452-453.png": "front",
+    "pages/20260929-05671-6200/page395-scans460-462.png": "back",
+    "pages/20260929-05671-6200/page396-scans462-463.png": "front",
+    "pages/20260929-05671-6200/page403-scans470-471.png": "back",
+    "pages/20260929-05671-6200/page404-scans471-473.png": "front",
+    "pages/20260929-05671-6200/page411-scans480-481-gap.png": "back",
+    "pages/20260929-05671-6200/page412-scans481-482.png": "front",
+    "pages/20260929-05671-6200/page419-scans489-490.png": "back",
+    "pages/20260929-05671-6200/page420-scans490-491.png": "front",
+    "pages/20260929-05671-6200/page427-scans498-499.png": "back",
+    "pages/20260929-05671-6200/page428-scans499-500.png": "front",
+    "pages/20260929-05671-6200/page436-scans507-508.png": "back",
+    "pages/20260929-05671-6200/page437-scans508-509-gap.png": "front",
+    "pages/20260929-05671-6200/page445-scans516-517-gap.png": "back",
+    "pages/20260929-05671-6200/page446-scans518-518.png": "front",
+    "pages/20260929-05671-6200/page452-scans524-525-gap.png": "back",
+    "pages/20260929-05671-6200/page453-scans525-526.png": "front",
+    "pages/20260929-05671-6200/page454-scans525-526.png": "back",
+    "pages/20260929-05671-6200/page455-scans526-527-gap.png": "front",
+    "pages/20260929-05671-6200/page480-scans553-554.png": "front",
+    "pages/20260929-05671-6200/page483-scans556-557.png": "back",
+    "pages/20260929-05671-6200/page484-scans557-558.png": "front",
+    "pages/20260929-05671-6200/page491-scans565-567.png": "back",
+    "pages/20260929-05671-6200/page492-scans567-568.png": "front",
+    "pages/20260929-05671-6200/page499-scans575-576.png": "back",
+    "pages/20260929-05671-6200/page500-scans576-577.png": "front",
+    "pages/20260929-05671-6200/page507-scans585-586.png": "back",
+    "pages/20260929-05671-6200/page508-scans586-587.png": "front",
+    "pages/20260929-05671-6200/page515-scans595-596.png": "back",
+    "pages/20260929-05671-6200/page516-scans596-597.png": "front",
+    "pages/20260929-05671-6200/page519-scans600-601.png": "back",
+    "pages/20260929-05671-6200/page520-scans601-602.png": "front",
+    "pages/20260929-05671-6200/page523-scans605-606.png": "back",
+    "pages/20260929-05671-6200/page524-scans606-607.png": "front",
+    "pages/20260929-05671-6200/page527-scans609-610.png": "back",
+    "pages/20260929-05671-6200/page528-scans610-611-gap.png": "front",
+    "pages/20260929-05671-6200/page543-scans628-629.png": "back",
+    "pages/20260929-05671-6200/page544-scans629-630.png": "front",
+    "pages/20260929-05671-6200/page547-scans633-634.png": "back",
+    "pages/20260929-05671-6200/page548-scans634-635.png": "front",
+    "pages/20260929-05671-6200/page551-scans638-639.png": "back",
+    "pages/20260929-05671-6200/page552-scans639-640.png": "front",
+    "pages/20260929-05671-6200/page561-scans650-651.png": "back",
+    "pages/20260929-05671-6200/page562-scans652-652.png": "front",
+    "pages/20260929-05671-6200/page565-scans655-656.png": "back",
+    "pages/20260929-05671-6200/page566-scans656-658.png": "front",
+    "pages/20260929-05671-6200/page569-scans660-661.png": "back",
+    "pages/20260929-05671-6200/page570-scans661-662.png": "front",
+    "pages/20260929-05671-6200/page573-scans665-666.png": "back",
+    "pages/20260929-05671-6200/page574-scans666-667.png": "front",
+    "pages/20260929-05671-6200/page577-scans670-671.png": "back",
+    "pages/20260929-05671-6200/page578-scans671-672.png": "front",
+    "pages/20260929-05671-6200/page581-scans675-676.png": "back",
+    "pages/20260929-05671-6200/page582-scans676-677.png": "front",
+    "pages/20260929-05671-6200/page585-scans679-681.png": "back",
+    "pages/20260929-05671-6200/page586-scans681-682.png": "front",
+    "pages/20260929-05671-6200/page589-scans685-685.png": "back",
+    "pages/20260929-05671-6200/page590-scans686-687.png": "front",
+    "pages/20260929-05671-6200/page593-scans689-691.png": "back",
+    "pages/20260929-05671-6200/page594-scans690-692.png": "front",
+    "pages/20260929-05671-6200/page605-scans704-705.png": "back",
+    "pages/20260929-05671-6200/page606-scans705-707.png": "front",
+    "pages/20260929-05671-6200/page613-scans714-716.png": "back",
+    "pages/20260929-05671-6200/page614-scans716-717.png": "front",
+    "pages/20260929-05671-6200/page621-scans725-726.png": "back",
+    "pages/20260929-05671-6200/page622-scans726-727.png": "front",
+    "pages/20260929-05671-6200/page629-scans734-735.png": "back",
+    "pages/20260929-05671-6200/page630-scans735-736.png": "front",
+    "pages/20260929-05671-6200/page637-scans744-745.png": "back",
+    "pages/20260929-05671-6200/page638-scans745-747.png": "front",
+    "pages/20260929-05671-6200/page641-scans750-750.png": "back",
+    "pages/20260929-05671-6200/page642-scans751-752.png": "front",
+    "pages/20260929-05671-6200/page645-scans755-756.png": "back",
+    "pages/20260929-05671-6200/page646-scans756-758.png": "front",
+    "pages/20260929-05671-6200/page649-scans760-761.png": "back",
+    "pages/20260929-05671-6200/page650-scans761-763.png": "front",
+    "pages/20260929-05671-6200/page653-scans765-767.png": "back",
+    "pages/20260929-05671-6200/page654-scans766-768.png": "front",
+    "pages/20260929-05671-6200/page657-scans770-771.png": "back",
+    "pages/20260929-05671-6200/page658-scans771-773.png": "front",
+    "pages/20260929-05671-6200/page661-scans775-776.png": "back",
+    "pages/20260929-05671-6200/page662-scans776-778.png": "front",
+    "pages/20260929-05671-6200/page665-scans780-782.png": "back",
+    "pages/20260929-05671-6200/page666-scans781-783.png": "front",
+    "pages/20260929-05671-6200/page669-scans785-787.png": "back",
+    "pages/20260929-05671-6200/page670-scans787-788.png": "front",
+    "pages/20260929-05671-6200/page673-scans791-792.png": "back",
+    "pages/20260929-05671-6200/page674-scans792-794.png": "front",
+    "pages/20260929-05671-6200/page677-scans796-798.png": "back",
+    "pages/20260929-05671-6200/page678-scans797-799.png": "front",
+    "pages/20260929-05671-6200/page681-scans802-803.png": "back",
+    "pages/20260929-05671-6200/page682-scans803-804.png": "front",
+    "pages/20260929-05671-6200/page685-scans807-809.png": "back",
+    "pages/20260929-05671-6200/page686-scans808-810.png": "front",
+    "pages/20260929-05671-6200/page689-scans812-814.png": "back",
+    "pages/20260929-05671-6200/page690-scans815-817.png": "front",
+    "pages/20260929-05671-6200/page693-scans820-821.png": "back",
+    "pages/20260929-05671-6200/page694-scans821-822.png": "front",
+    "pages/20260929-05671-6200/page701-scans830-832.png": "back",
+    "pages/20260929-05671-6200/page702-scans832-833.png": "front",
+    "pages/20260929-05671-6200/page709-scans841-843.png": "back",
+    "pages/20260929-05671-6200/page710-scans843-844.png": "front",
+    "pages/20260929-05671-6200/page713-scans847-848.png": "back",
+    "pages/20260929-05671-6200/page714-scans848-849.png": "front",
+    "pages/20260929-05671-6200/page717-scans852-854.png": "back",
+    "pages/20260929-05671-6200/page718-scans854-855.png": "front",
+    "pages/20260929-05671-6200/page719-scans855-856.png": "back",
+    "pages/20260929-05671-6200/page720-scans857-857.png": "front",
+    "pages/20260929-05671-6200/page723-scans860-862.png": "back",
+    "pages/20260929-05671-6200/page724-scans862-863.png": "front",
+    "pages/20260929-05671-6200/page727-scans866-867.png": "back",
+    "pages/20260929-05671-6200/page728-scans868-870.png": "front",
+    "pages/20260929-05671-6200/page731-scans873-875.png": "back",
+    "pages/20260929-05671-6200/page732-scans875-876.png": "front",
+    "pages/20260929-05671-6200/page735-scans879-880.png": "back",
+    "pages/20260929-05671-6200/page736-scans880-882.png": "front",
+    "pages/20260929-05671-6200/page739-scans884-886.png": "back",
+    "pages/20260929-05671-6200/page740-scans886-887.png": "front",
+    "pages/20260929-05671-6200/page748-scans896-897.png": "back",
+    "pages/20260929-05671-6200/page749-scans897-898.png": "front",
+    "pages/20260929-05671-6200/page752-scans901-903.png": "back",
+    "pages/20260929-05671-6200/page753-scans902-904.png": "front",
+    "pages/20260929-05671-6200/page754-scans904-906.png": "back",
+    "pages/20260929-05671-6200/page755-scans905-907.png": "front",
+    "pages/20260929-05671-6200/page758-scans910-911.png": "back",
+    "pages/20260929-05671-6200/page759-scans911-913.png": "front",
+    "pages/20260929-05671-6200/page762-scans915-917.png": "back",
+    "pages/20260929-05671-6200/page763-scans917-918.png": "front",
+    "pages/20260929-05671-6200/page766-scans920-922.png": "back",
+    "pages/20260929-05671-6200/page767-scans922-923.png": "front",
+    "pages/20260929-05671-6200/page774-scans931-933.png": "back",
+    "pages/20260929-05671-6200/page775-scans933-934.png": "front",
+    "pages/20260929-05671-6200/page782-scans942-944.png": "back",
+    "pages/20260929-05671-6200/page783-scans944-945.png": "front",
+    "pages/20260929-05671-6200/page790-scans954-955.png": "back",
+    "pages/20260929-05671-6200/page791-scans955-956.png": "front",
+    "pages/20260929-05671-6200/page799-scans966-967.png": "back",
+    "pages/20260929-05671-6200/page800-scans967-968.png": "front",
+    "pages/20260929-05671-6200/page807-scans977-979.png": "back",
+    "pages/20260929-05671-6200/page808-scans978-980.png": "front",
+    "pages/20260929-05671-6200/page815-scans989-991.png": "back",
+    "pages/20260929-05671-6200/page816-scans990-992.png": "front",
+    "pages/20260929-05671-6200/page823-scans1001-1002.png": "back",
+    "pages/20260929-05671-6200/page824-scans1002-1004.png": "front",
+    "pages/20260929-05671-6200/page831-scans1012-1014.png": "back",
+    "pages/20260929-05671-6200/page832-scans1014-1016.png": "front",
+    "pages/20260929-05671-6200/page839-scans1024-1026.png": "back",
+    "pages/20260929-05671-6200/page840-scans1025-1027.png": "front",
+    "pages/20260929-05671-6200/page848-scans1037-1039.png": "back",
+    "pages/20260929-05671-6200/page849-scans1039-1040.png": "front",
+    "pages/20260929-05671-6200/page854-scans1045-1047.png": "back",
+    "pages/20260929-05671-6200/page855-scans1047-1049.png": "front",
+    "pages/20260929-05671-6200/page858-scans1052-1052.png": "back",
+    "pages/20260929-05671-6200/page859-scans1053-1054.png": "front",
+    "pages/20260929-05671-6200/page862-scans1057-1059.png": "back",
+    "pages/20260929-05671-6200/page863-scans1059-1061.png": "front",
+    "pages/20260929-05671-6200/page866-scans1063-1065.png": "back",
+    "pages/20260929-05671-6200/page867-scans1065-1066.png": "front",
+    "pages/20260929-05671-6200/page870-scans1069-1071.png": "back",
+    "pages/20260929-05671-6200/page871-scans1071-1072.png": "front",
+    "pages/20260929-05671-6200/page874-scans1075-1077.png": "back",
+    "pages/20260929-05671-6200/page875-scans1077-1078.png": "front",
+    "pages/20260929-05671-6200/page880-scans1083-1083.png": "front",
+    "pages/20260929-05671-6200/page883-scans1087-1088.png": "back",
+    "pages/20260929-05671-6200/page884-scans1088-1090.png": "front",
+    "pages/20260929-05671-6200/page887-scans1093-1095.png": "back",
+    "pages/20260929-05671-6200/page888-scans1094-1096.png": "front",
+    "pages/20260929-05671-6200/page891-scans1099-1100.png": "back",
+    "pages/20260929-05671-6200/page892-scans1100-1102.png": "front",
+    "pages/20260929-05671-6200/page895-scans1105-1107.png": "back",
+    "pages/20260929-05671-6200/page896-scans1106-1109.png": "front",
+    "pages/20260929-05671-6200/page899-scans1111-1113.png": "back",
+    "pages/20260929-05671-6200/page900-scans1113-1115.png": "front",
+    "pages/20260929-05671-6200/page903-scans1118-1120.png": "back",
+    "pages/20260929-05671-6200/page904-scans1120-1122.png": "front",
+    "pages/20260929-05671-6200/page908-scans1126-1128.png": "front",
+    "pages/20260929-05671-6200/page911-scans1131-1132.png": "back",
+    "pages/20260929-05671-6200/page912-scans1133-1134.png": "front",
+    "pages/20260929-05671-6200/page915-scans1137-1139.png": "back",
+    "pages/20260929-05671-6200/page916-scans1139-1141.png": "front",
+    "pages/20260929-05671-6200/page919-scans1144-1146.png": "back",
+    "pages/20260929-05671-6200/page920-scans1145-1147.png": "front",
+    "pages/20260929-05671-6200/page923-scans1151-1151.png": "back",
+    "pages/20260929-05671-6200/page924-scans1152-1154.png": "front",
+    "pages/20260929-05671-6200/page927-scans1156-1158.png": "back",
+    "pages/20260929-05671-6200/page928-scans1158-1160.png": "front",
+    "pages/20260929-05671-6200/page931-scans1162-1164.png": "back",
+    "pages/20260929-05671-6200/page932-scans1164-1166.png": "front",
+    "pages/20260929-05671-6200/page935-scans1169-1171.png": "back",
+    "pages/20260929-05671-6200/page936-scans1171-1173.png": "front",
+    "pages/20260929-05671-6200/page939-scans1176-1178.png": "back",
+    "pages/20260929-05671-6200/page940-scans1180-1182.png": "front",
+    "pages/20260929-05671-6200/page943-scans1186-1188.png": "back",
+    "pages/20260929-05671-6200/page944-scans1187-1189.png": "front",
+    "pages/20260929-05671-6200/page947-scans1193-1195.png": "back",
+    "pages/20260929-05671-6200/page948-scans1195-1197.png": "front",
+    "pages/20260929-05671-6200/page951-scans1200-1202.png": "back",
+    "pages/20260929-05671-6200/page952-scans1202-1204.png": "front",
+    "pages/20260929-05671-6200/page955-scans1207-1210.png": "back",
+    "pages/20260929-05671-6200/page956-scans1209-1212.png": "front",
+    "pages/20260929-05671-6200/page959-scans1215-1218.png": "back",
+    "pages/20260929-05671-6200/page960-scans1217-1219.png": "front",
+    "pages/20260929-05671-6200/page967-scans1229-1231.png": "back",
+    "pages/20260929-05671-6200/page968-scans1230-1233.png": "front",
+    "pages/20260929-05671-6200/page975-scans1242-1244.png": "back",
+    "pages/20260929-05671-6200/page976-scans1244-1246.png": "front",
+    "pages/20260929-05671-6200/page981-scans1252-1255.png": "back",
+    "pages/20260929-05671-6200/page982-scans1254-1257.png": "front",
+    "pages/20260929-05671-6200/page989-scans1267-1270.png": "back",
+    "pages/20260929-05671-6200/page990-scans1269-1272.png": "front"
+  },
+  "page_rotations": {
+    "pages/20260929-05671-6200/page1066-scans1429-1434.png": 90,
+    "pages/20260929-05671-6200/page1067-scans1433-1438.png": 90,
+    "pages/20260929-05671-6200/page1068-scans1437-1441.png": 90,
+    "pages/20260929-05671-6200/page1069-scans1440-1445.png": 90,
+    "pages/20260929-05671-6200/page1070-scans1444-1448.png": 90,
+    "pages/20260929-05671-6200/page1071-scans1447-1452.png": 90,
+    "pages/20260929-05671-6200/page1072-scans1451-1456.png": 90,
+    "pages/20260929-05671-6200/page1073-scans1455-1460.png": 90,
+    "pages/20260929-05671-6200/page1074-scans1459-1463.png": 90,
+    "pages/20260929-05671-6200/page1075-scans1462-1467.png": 90,
+    "pages/20260929-05671-6200/page1076-scans1466-1470.png": 90,
+    "pages/20260929-05671-6200/page1077-scans1469-1474.png": 90,
+    "pages/20260929-05671-6200/page1078-scans1473-1478.png": 90,
+    "pages/20260929-05671-6200/page1079-scans1477-1482.png": 90,
+    "pages/20260929-05671-6200/page1080-scans1481-1486.png": 90,
+    "pages/20260929-05671-6200/page1081-scans1485-1490.png": 90,
+    "pages/20260929-05671-6200/page1082-scans1489-1494.png": 90,
+    "pages/20260929-05671-6200/page1083-scans1493-1498.png": 90,
+    "pages/20260929-05671-6200/page1084-scans1497-1503.png": 90,
+    "pages/20260929-05671-6200/page1085-scans1501-1507.png": 90,
+    "pages/20260929-05671-6200/page1086-scans1505-1511.png": 90,
+    "pages/20260929-05671-6200/page1087-scans1510-1515.png": 90,
+    "pages/20260929-05671-6200/page1088-scans1514-1519.png": 90,
+    "pages/20260929-05671-6200/page1089-scans1518-1523.png": 90,
+    "pages/20260929-05671-6200/page1090-scans1522-1527.png": 90
+  },
+  "reverse": false
+}

@@ -1,0 +1,1543 @@
+============================================================
+NEIGHBORING PAGE PLAN COMPARISON
+============================================================
+1543 neighboring pair(s) compared
+
+DUPLICATE PAGES: 83
+  page_0075-0076 <-> page_0076-0077: 964 shared points over 5155 px (99% of the smaller page), dy=-5644 dx=-11
+  page_0124-0125 <-> page_0125-0126: 702 shared points over 5202 px (100% of the smaller page), dy=-5605 dx=-10
+  page_0128-0129 <-> page_0129-0130: 24 shared points over 2747 px (52% of the smaller page), dy=-5691 dx=-7, NCC=0.58
+  page_0162-0163 <-> page_0163-0164: 22 shared points over 4989 px (95% of the smaller page), dy=-5615 dx=-6, NCC=0.54
+  page_0163-0164 <-> page_0164-0165: 23 shared points over 2715 px (52% of the smaller page), dy=-5555 dx=-9, NCC=0.51
+  page_0174-0175 <-> page_0176-0177: 29 shared points over 3838 px (73% of the smaller page), dy=-10820 dx=-15, NCC=0.51
+  page_0183-0184 <-> page_0184-0185: 30 shared points over 3786 px (72% of the smaller page), dy=-5827 dx=-12, NCC=0.65
+  page_0183-0184 <-> page_0185-0186: 27 shared points over 3822 px (73% of the smaller page), dy=-11568 dx=-18, NCC=0.54
+  page_0184-0185 <-> page_0185-0186: 22 shared points over 3776 px (72% of the smaller page), dy=-5742 dx=-7, NCC=0.52
+  page_0191-0192 <-> page_0193-0194: 20 shared points over 3004 px (57% of the smaller page), dy=-11470 dx=-14, NCC=0.50
+  page_0195-0196 <-> page_0196-0197: 27 shared points over 2846 px (54% of the smaller page), dy=-5623 dx=-13, NCC=0.54
+  page_0207-0208 <-> page_0209-0210: 28 shared points over 5214 px (99% of the smaller page), dy=-11198 dx=-11, NCC=0.51
+  page_0215-0216 <-> page_0216-0217: 2062 shared points over 5231 px (100% of the smaller page), dy=-5587 dx=+0
+  page_0220-0221 <-> page_0221-0222: 2355 shared points over 5111 px (97% of the smaller page), dy=-5526 dx=-6
+  page_0226-0227 <-> page_0227-0228: 24 shared points over 3030 px (58% of the smaller page), dy=-5854 dx=-6, NCC=0.70
+  page_0226-0227 <-> page_0228-0229: 26 shared points over 3030 px (58% of the smaller page), dy=-11723 dx=-14, NCC=0.64
+  page_0227-0228 <-> page_0228-0229: 32 shared points over 3021 px (58% of the smaller page), dy=-5870 dx=-8, NCC=0.65
+  page_0227-0228 <-> page_0229-0230: 21 shared points over 2681 px (51% of the smaller page), dy=-11672 dx=-19, NCC=0.69
+  page_0228-0229 <-> page_0229-0230: 1258 shared points over 5219 px (99% of the smaller page), dy=-5615 dx=-11
+  page_0229-0230 <-> page_0231-0232: 38 shared points over 3026 px (57% of the smaller page), dy=-11316 dx=-19, NCC=0.65
+  page_0231-0232 <-> page_0232-0233: 30 shared points over 3035 px (58% of the smaller page), dy=-5940 dx=-6, NCC=0.57
+  page_0231-0232 <-> page_0233-0234: 37 shared points over 3036 px (57% of the smaller page), dy=-11736 dx=-13, NCC=0.56
+  page_0232-0233 <-> page_0233-0234: 25 shared points over 3037 px (58% of the smaller page), dy=-5796 dx=-8, NCC=0.54
+  page_0233-0234 <-> page_0234-0235: 23 shared points over 3201 px (61% of the smaller page), dy=-5802 dx=-7, NCC=0.51
+  page_0234-0235 <-> page_0235-0236: 2356 shared points over 5285 px (100% of the smaller page), dy=-5562 dx=-10
+  page_0242-0243 <-> page_0244-0245: 61 shared points over 5293 px (99% of the smaller page), dy=-11185 dx=-18, NCC=0.65
+  page_0244-0245 <-> page_0246-0247: 34 shared points over 3743 px (70% of the smaller page), dy=-11654 dx=-16, NCC=0.61
+  page_0245-0246 <-> page_0246-0247: 27 shared points over 4118 px (78% of the smaller page), dy=-5840 dx=-10, NCC=0.61
+  page_0251-0252 <-> page_0252-0253: 30 shared points over 4100 px (77% of the smaller page), dy=-5925 dx=-7, NCC=0.55
+  page_0251-0252 <-> page_0253-0254: 27 shared points over 4107 px (83% of the smaller page), dy=-11728 dx=-16, NCC=0.54
+  page_0252-0253 <-> page_0253-0254: 27 shared points over 4091 px (83% of the smaller page), dy=-5804 dx=-9, NCC=0.63
+  page_0260-0261 <-> page_0261-0262: 26 shared points over 2710 px (52% of the smaller page), dy=-5658 dx=-9, NCC=0.68
+  page_0260-0261 <-> page_0263-0264: 27 shared points over 2710 px (52% of the smaller page), dy=+118547 dx=+169, NCC=0.61
+  page_0261-0262 <-> page_0263-0264: 25 shared points over 3064 px (58% of the smaller page), dy=+124205 dx=+178, NCC=0.58
+  page_0263-0264 <-> page_0264-0265: 960 shared points over 5623 px (100% of the smaller page), dy=-5954 dx=-16
+  page_0263-0264 <-> page_0265-0266: 23 shared points over 2715 px (48% of the smaller page), dy=-11249 dx=-15, NCC=0.55
+  page_0266-0267 <-> page_0267-0269: 1068 shared points over 5347 px (98% of the smaller page), dy=-5916 dx=-5
+  page_0279-0280 <-> page_0280-0281: 1928 shared points over 5675 px (100% of the smaller page), dy=-6000 dx=-17
+  page_0283-0284 <-> page_0285-0286: 39 shared points over 5494 px (98% of the smaller page), dy=-11922 dx=-22, NCC=0.54
+  page_0288-0289 <-> page_0290-0291: 21 shared points over 2502 px (44% of the smaller page), dy=-11510 dx=-15, NCC=0.59
+  page_0294-0295 <-> page_0296-0297: 64 shared points over 5529 px (99% of the smaller page), dy=-11855 dx=-24, NCC=0.50
+  page_0295-0296 <-> page_0297-0298: 53 shared points over 5630 px (99% of the smaller page), dy=-11822 dx=-18, NCC=0.50
+  page_0300-0301 <-> page_0301-0302: 20 shared points over 2752 px (49% of the smaller page), dy=-5739 dx=-9, NCC=0.56
+  page_0301-0302 <-> page_0303-0304: 23 shared points over 2859 px (50% of the smaller page), dy=-10309 dx=-16, NCC=0.54
+  page_0303-0304 <-> page_0305-0306: 36 shared points over 5661 px (100% of the smaller page), dy=-11923 dx=-3, NCC=0.53
+  page_0304-0305 <-> page_0306-0307: 45 shared points over 5613 px (100% of the smaller page), dy=-11939 dx=-22, NCC=0.52
+  page_0305-0306 <-> page_0307-0308: 27 shared points over 4084 px (72% of the smaller page), dy=-11794 dx=-21, NCC=0.52
+  page_0306-0307 <-> page_0307-0308: 20 shared points over 5105 px (91% of the smaller page), dy=-5926 dx=-8, NCC=0.56
+  page_0306-0307 <-> page_0308-0309: 39 shared points over 5585 px (99% of the smaller page), dy=-11933 dx=-19, NCC=0.50
+  page_0314-0315 <-> page_0316-0317: 34 shared points over 5532 px (98% of the smaller page), dy=-12052 dx=-52, NCC=0.60
+  page_0315-0316 <-> page_0317-0318: 51 shared points over 5565 px (99% of the smaller page), dy=-11973 dx=-14, NCC=0.56
+  page_0316-0317 <-> page_0318-0319: 33 shared points over 5599 px (99% of the smaller page), dy=-11894 dx=-24, NCC=0.53
+  page_0317-0318 <-> page_0319-0320: 64 shared points over 5573 px (99% of the smaller page), dy=-11840 dx=-11, NCC=0.58
+  page_0322-0323 <-> page_0324-0325: 26 shared points over 5595 px (99% of the smaller page), dy=-11921 dx=-14, NCC=0.50
+  page_0323-0324 <-> page_0325-0326: 70 shared points over 5540 px (99% of the smaller page), dy=-11932 dx=-28, NCC=0.52
+  page_0324-0325 <-> page_0326-0327: 35 shared points over 5570 px (99% of the smaller page), dy=-11907 dx=-11, NCC=0.56
+  page_0325-0326 <-> page_0327-0328: 46 shared points over 5512 px (99% of the smaller page), dy=-11924 dx=-7, NCC=0.53
+  page_0336-0337 <-> page_0338-0339: 37 shared points over 5609 px (100% of the smaller page), dy=-11909 dx=-3, NCC=0.51
+  page_0345-0346 <-> page_0347-0349: 48 shared points over 5512 px (97% of the smaller page), dy=-11879 dx=-19, NCC=0.57
+  page_0362-0363 <-> page_0364-0365: 70 shared points over 5616 px (100% of the smaller page), dy=-11867 dx=-16, NCC=0.56
+  page_0363-0364 <-> page_0365-0366: 40 shared points over 5635 px (100% of the smaller page), dy=-11918 dx=-12, NCC=0.52
+  page_0370-0371 <-> page_0372-0373: 63 shared points over 5564 px (99% of the smaller page), dy=-11935 dx=-12, NCC=0.51
+  page_0371-0372 <-> page_0373-0374: 38 shared points over 5645 px (100% of the smaller page), dy=-11939 dx=-2, NCC=0.53
+  page_0372-0373 <-> page_0374-0375: 43 shared points over 5556 px (98% of the smaller page), dy=-12006 dx=-31, NCC=0.52
+  page_0373-0374 <-> page_0375-0376: 37 shared points over 5634 px (99% of the smaller page), dy=-11943 dx=-23, NCC=0.53
+  page_0375-0376 <-> page_0377-0378: 23 shared points over 3093 px (55% of the smaller page), dy=+217441 dx=+324, NCC=0.51
+  page_0377-0378 <-> page_0379-0380: 27 shared points over 3194 px (56% of the smaller page), dy=-11533 dx=-19, NCC=0.50
+  page_0381-0381 <-> page_0383-0383: 37 shared points over 5518 px (99% of the smaller page), dy=-11935 dx=-23, NCC=0.51
+  page_0382-0382 <-> page_0384-0384: 58 shared points over 5563 px (99% of the smaller page), dy=-11886 dx=-0, NCC=0.58
+  page_0383-0383 <-> page_0387-0387: 559 shared points over 5553 px (99% of the smaller page), dy=-11875 dx=-15
+  page_0399-0400 <-> page_0400-0401: 23 shared points over 3200 px (57% of the smaller page), dy=-5854 dx=-13, NCC=0.58
+  page_0400-0401 <-> page_0402-0403: 39 shared points over 5637 px (100% of the smaller page), dy=-12010 dx=-21, NCC=0.50
+  page_0401-0402 <-> page_0403-0405: 38 shared points over 5482 px (98% of the smaller page), dy=-12004 dx=-28, NCC=0.51
+  page_0409-0410 <-> page_0411-0412: 27 shared points over 3282 px (58% of the smaller page), dy=-11827 dx=-19, NCC=0.51
+  page_0410-0411 <-> page_0412-0413: 46 shared points over 5467 px (97% of the smaller page), dy=-11961 dx=-27, NCC=0.53
+  page_0411-0412 <-> page_0413-0414: 33 shared points over 3333 px (59% of the smaller page), dy=-11623 dx=-20, NCC=0.54
+  page_0412-0413 <-> page_0414-0416: 45 shared points over 5562 px (99% of the smaller page), dy=-11926 dx=-10, NCC=0.51
+  page_0424-0425 <-> page_0426-0427: 28 shared points over 5603 px (99% of the smaller page), dy=-11940 dx=-25, NCC=0.55
+  page_0426-0427 <-> page_0428-0429: 24 shared points over 5596 px (99% of the smaller page), dy=-11939 dx=-7, NCC=0.53
+  page_0435-0436 <-> page_0437-0438: 35 shared points over 3424 px (61% of the smaller page), dy=-11712 dx=-19, NCC=0.52
+  page_0469-0469 <-> page_0473-0474: 46 shared points over 2109 px (38% of the smaller page), dy=-11884 dx=+315, NCC=0.57
+  page_0492-0493 <-> page_0493-0495: 884 shared points over 5597 px (100% of the smaller page), dy=-5961 dx=-15
+  page_0786-0788 <-> page_0788-0790: 2456 shared points over 5596 px (100% of the smaller page), dy=-5966 dx=-21
+
+EDGE MATCHES (pages next to each other in the book): 165
+  page_0012-0012 <-> page_0013-0013: 8 shared points at the meeting edge (rows 1-41 / rows 4-32; dy=-5619 dx=-12, extent 40 px, NCC=0.92)
+  page_0021-0021 <-> page_0023-0024: 8 shared points at the meeting edge (rows 30-168 / rows 23-165; dy=-11294 dx=-15, extent 138 px, NCC=0.78)
+  page_0029-0030 <-> page_0031-0032: 4 shared points at the meeting edge (rows 2-195 / rows 1-203; dy=-11301 dx=-15, extent 193 px, NCC=0.89)
+  page_0030-0031 <-> page_0032-0033: 9 shared points at the meeting edge (rows 19-154 / rows 21-192; dy=-11241 dx=-14, extent 135 px, NCC=0.87)
+  page_0034-0035 <-> page_0035-0036: 4 shared points at the meeting edge (rows 12-37 / rows 14-31; dy=-5686 dx=-9, extent 26 px, NCC=0.87)
+  page_0036-0037 <-> page_0038-0038: 3 shared points at the meeting edge (rows 32-38 / full extent; dy=-5680 dx=-13, extent 6 px, NCC=0.75)
+  page_0055-0056 <-> page_0057-0058: 3 shared points at the meeting edge (rows 5200-5214 / rows 5208-5216; dy=-11307 dx=-168, extent 13 px, NCC=0.80)
+  page_0067-0067 <-> page_0068-0068: 3 shared points at the meeting edge (rows 17-29 / rows 21-33; dy=-5683 dx=-7, extent 11 px, NCC=0.91)
+  page_0074-0075 <-> page_0075-0076: 3 shared points at the meeting edge (rows 25-48 / rows 19-43; dy=-5690 dx=-13, extent 23 px, NCC=0.91)
+  page_0088-0089 <-> page_0089-0090: 3 shared points at the meeting edge (rows 20-42 / rows 18-40; dy=-5629 dx=-8, extent 22 px, NCC=0.92)
+  page_0091-0092 <-> page_0093-0093: 3 shared points at the meeting edge (rows 16-34 / rows 21-36; dy=-5661 dx=-8, extent 18 px, NCC=0.70)
+  page_0104-0105 <-> page_0107-0107: 5 shared points at the meeting edge (rows 19-233 / rows 19-235; dy=-11305 dx=-19, extent 214 px, NCC=0.80)
+  page_0106-0106 <-> page_0107-0110: 3 shared points at the meeting edge (rows 17-40 / rows 13-52; dy=-11334 dx=-19, extent 23 px, NCC=0.86)
+  page_0107-0107 <-> page_0110-0111: 5 shared points at the meeting edge (rows 15-38 / rows 16-54; dy=-11393 dx=-17, extent 23 px, NCC=0.86)
+  page_0113-0114 <-> page_0114-0115: 3 shared points at the meeting edge (rows 20-47 / rows 21-48; dy=-5633 dx=-11, extent 27 px, NCC=0.95)
+  page_0124-0125 <-> page_0126-0127: 3 shared points at the meeting edge (rows 18-76 / rows 19-70; dy=-11242 dx=-19, extent 58 px, NCC=0.75)
+  page_0127-0128 <-> page_0128-0129: 3 shared points at the meeting edge (rows 466-467 / full extent; dy=-5654 dx=-451, extent 1 px, NCC=0.70)
+  page_0136-0136 <-> page_0142-0143: 6 shared points at the meeting edge (rows 16-137 / rows 14-116; dy=-5944 dx=+1, extent 121 px, NCC=0.83)
+  page_0142-0143 <-> page_0143-0144: 3 shared points at the meeting edge (rows 19-49 / rows 20-54; dy=-5603 dx=+8, extent 30 px, NCC=0.94)
+  page_0146-0147 <-> page_0147-0149: 4 shared points at the meeting edge (rows 17-41 / rows 14-34; dy=-5619 dx=-26, extent 24 px, NCC=0.89)
+  page_0155-0156 <-> page_0156-0157: 3 shared points at the meeting edge (rows 16-56 / rows 18-56; dy=-5596 dx=-8, extent 39 px, NCC=0.95)
+  page_0157-0158 <-> page_0158-0159: 3 shared points at the meeting edge (rows 20-53 / rows 21-70; dy=-5602 dx=-1, extent 33 px, NCC=0.95)
+  page_0165-0166 <-> page_0166-0167: 3 shared points at the meeting edge (rows 12-51 / rows 9-56; dy=-5503 dx=-3, extent 39 px, NCC=0.92)
+  page_0167-0168 <-> page_0168-0169: 3 shared points at the meeting edge (rows 1878-2778 / rows 1779-2696; dy=-5668 dx=-2, extent 900 px, NCC=0.68)
+  page_0167-0168 <-> page_0169-0170: 6 shared points at the meeting edge (rows 1878-2778 / rows 1665-2597; dy=-11362 dx=-13, extent 900 px, NCC=0.67)
+  page_0168-0169 <-> page_0169-0170: 6 shared points at the meeting edge (rows 1779-3483 / rows 1665-3389; dy=-5723 dx=-13, extent 1704 px, NCC=0.68)
+  page_0169-0170 <-> page_0171-0172: 4 shared points at the meeting edge (rows 1652-1670 / rows 1466-1482; dy=-11315 dx=-13, extent 18 px, NCC=0.67)
+  page_0171-0172 <-> page_0172-0173: 3 shared points at the meeting edge (rows 14-57 / rows 17-63; dy=-5602 dx=-9, extent 43 px, NCC=0.92)
+  page_0172-0173 <-> page_0173-0174: 3 shared points at the meeting edge (rows 1515-1589 / rows 1105-1174; dy=-5997 dx=-13, extent 74 px, NCC=0.71)
+  page_0176-0177 <-> page_0177-0178: 4 shared points at the meeting edge (rows 16-1493 / rows 14-1474; dy=-5570 dx=-6, extent 1477 px, NCC=0.77)
+  page_0178-0179 <-> page_0180-0181: 5 shared points at the meeting edge (rows 11-57 / rows 4-48; dy=+276820 dx=+383, extent 45 px, NCC=0.92)
+  page_0180-0181 <-> page_0181-0182: 6 shared points at the meeting edge (rows 4-52 / rows 8-53; dy=-5585 dx=-7, extent 48 px, NCC=0.94)
+  page_0182-0183 <-> page_0184-0185: 6 shared points at the meeting edge (rows 1743-1832 / rows 1376-1450; dy=-11578 dx=-29, extent 90 px, NCC=0.66)
+  page_0187-0188 <-> page_0189-0190: 3 shared points at the meeting edge (rows 16-109 / rows 11-110; dy=-11186 dx=-15, extent 93 px, NCC=0.79)
+  page_0188-0189 <-> page_0190-0191: 4 shared points at the meeting edge (rows 3353-3417 / rows 3592-3660; dy=-10984 dx=-19, extent 64 px, NCC=0.66)
+  page_0190-0191 <-> page_0191-0192: 6 shared points at the meeting edge (rows 12-44 / rows 15-51; dy=-5591 dx=-1, extent 33 px, NCC=0.77)
+  page_0191-0192 <-> page_0192-0193: 14 shared points at the meeting edge (rows 995-3614 / rows 871-3489; dy=-5733 dx=-8, extent 2619 px, NCC=0.66)
+  page_0193-0194 <-> page_0195-0196: 5 shared points at the meeting edge (rows 2888-2918 / rows 2273-2291; dy=-11867 dx=-21, extent 30 px, NCC=0.72)
+  page_0196-0197 <-> page_0197-0198: 3 shared points at the meeting edge (rows 2239-2249 / rows 2178-2187; dy=-5623 dx=-14, extent 10 px, NCC=0.76)
+  page_0197-0198 <-> page_0199-0200: 4 shared points at the meeting edge (rows 2178-2195 / rows 2238-2255; dy=-11149 dx=-11, extent 17 px, NCC=0.78)
+  page_0199-0200 <-> page_0201-0202: 8 shared points at the meeting edge (rows 2248-3163 / rows 1653-2558; dy=-11721 dx=-18, extent 915 px, NCC=0.66)
+  page_0200-0201 <-> page_0203-0204: 4 shared points at the meeting edge (rows 2053-2075 / rows 1021-1037; dy=+111538 dx=+156, extent 22 px, NCC=0.79)
+  page_0201-0202 <-> page_0203-0204: 3 shared points at the meeting edge (rows 18-55 / rows 13-58; dy=+118117 dx=+174, extent 36 px, NCC=0.66)
+  page_0201-0202 <-> page_0204-0205: 4 shared points at the meeting edge (rows 7-55 / rows 10-57; dy=+112522 dx=+158, extent 48 px, NCC=0.93)
+  page_0206-0207 <-> page_0207-0208: 3 shared points at the meeting edge (rows 27-54 / rows 15-58; dy=-5569 dx=+3, extent 28 px, NCC=0.78)
+  page_0206-0207 <-> page_0208-0209: 4 shared points at the meeting edge (rows 2399-2626 / rows 2221-2448; dy=-11364 dx=-21, extent 227 px, NCC=0.66)
+  page_0208-0209 <-> page_0209-0210: 7 shared points at the meeting edge (rows 1782-5028 / rows 1809-5060; dy=-5556 dx=-7, extent 3246 px, NCC=0.66)
+  page_0219-0220 <-> page_0221-0222: 4 shared points at the meeting edge (rows 5-51 / rows 6-45; dy=-11081 dx=-24, extent 46 px, NCC=0.82)
+  page_0220-0221 <-> page_0222-0223: 3 shared points at the meeting edge (rows 24-55 / rows 30-55; dy=-11069 dx=-12, extent 31 px, NCC=0.76)
+  page_0221-0222 <-> page_0222-0223: 3 shared points at the meeting edge (rows 2834-2854 / rows 2456-2472; dy=-5926 dx=-6, extent 20 px, NCC=0.81)
+  page_0221-0222 <-> page_0223-0224: 6 shared points at the meeting edge (rows 2835-2860 / rows 2291-2317; dy=-11675 dx=-14, extent 25 px, NCC=0.77)
+  page_0228-0229 <-> page_0230-0231: 3 shared points at the meeting edge (rows 5220-5226 / full extent; dy=-16418 dx=-282, extent 6 px, NCC=0.71)
+  page_0233-0234 <-> page_0235-0236: 4 shared points at the meeting edge (rows 1-47 / rows 0-54; dy=-11127 dx=-11, extent 47 px, NCC=0.90)
+  page_0234-0235 <-> page_0237-0238: 6 shared points at the meeting edge (rows 2483-2885 / rows 1731-2167; dy=+83875 dx=+117, extent 402 px, NCC=0.74)
+  page_0235-0236 <-> page_0238-0239: 6 shared points at the meeting edge (rows 0-54 / rows 2-61; dy=+84696 dx=+118, extent 54 px, NCC=0.89)
+  page_0237-0238 <-> page_0238-0239: 5 shared points at the meeting edge (rows 17-60 / rows 20-61; dy=-5497 dx=-3, extent 43 px, NCC=0.89)
+  page_0238-0239 <-> page_0240-0241: 4 shared points at the meeting edge (rows 1466-1812 / rows 1824-2209; dy=-10718 dx=-14, extent 346 px, NCC=0.76)
+  page_0239-0240 <-> page_0240-0241: 5 shared points at the meeting edge (rows 1-61 / rows 4-59; dy=-5534 dx=-11, extent 60 px, NCC=0.89)
+  page_0240-0241 <-> page_0241-0242: 3 shared points at the meeting edge (rows 1824-1833 / rows 1629-1631; dy=-5804 dx=-11, extent 9 px, NCC=0.82)
+  page_0240-0241 <-> page_0242-0243: 7 shared points at the meeting edge (rows 1813-2214 / rows 1260-1665; dy=-11714 dx=-18, extent 401 px, NCC=0.79)
+  page_0244-0245 <-> page_0245-0246: 19 shared points at the meeting edge (rows 1237-4997 / rows 935-4695; dy=-5814 dx=-6, extent 3760 px, NCC=0.68)
+  page_0249-0250 <-> page_0250-0251: 5 shared points at the meeting edge (rows 12-61 / rows 14-61; dy=-5530 dx=-12, extent 48 px, NCC=0.89)
+  page_0254-0257 <-> page_0257-0258: 3 shared points at the meeting edge (rows 17-38 / rows 12-29; dy=-5536 dx=-9, extent 21 px, NCC=0.81)
+  page_0254-0257 <-> page_0259-0259: 5 shared points at the meeting edge (rows 17-225 / rows 23-231; dy=-11058 dx=-8, extent 208 px, NCC=0.68)
+  page_0257-0258 <-> page_0259-0260: 5 shared points at the meeting edge (rows 4120-4197 / rows 4684-4756; dy=-10502 dx=-8, extent 77 px, NCC=0.77)
+  page_0261-0262 <-> page_0264-0265: 3 shared points at the meeting edge (rows 21-75 / rows 16-53; dy=+118691 dx=+156, extent 54 px, NCC=0.94)
+  page_0268-0272 <-> page_0273-0274: 9 shared points at the meeting edge (rows 31-288 / rows 146-391; dy=-11925 dx=-2, extent 257 px, NCC=0.92)
+  page_0273-0274 <-> page_0274-0275: 3 shared points at the meeting edge (rows 13-73 / rows 8-52; dy=-6026 dx=-19, extent 60 px, NCC=0.94)
+  page_0278-0279 <-> page_0280-0281: 4 shared points at the meeting edge (rows 2615-2631 / rows 3524-3542; dy=-11029 dx=-13, extent 16 px, NCC=0.70)
+  page_0281-0282 <-> page_0282-0283: 3 shared points at the meeting edge (rows 9-33 / rows 11-39; dy=-5991 dx=+4, extent 25 px, NCC=0.83)
+  page_0282-0283 <-> page_0283-0284: 4 shared points at the meeting edge (rows 3665-3733 / rows 3815-3873; dy=-5793 dx=-11, extent 68 px, NCC=0.76)
+  page_0291-0293 <-> page_0292-0294: 4 shared points at the meeting edge (rows 8-11 / rows 14-16; dy=-5922 dx=-6, extent 2 px, NCC=0.68)
+  page_0292-0294 <-> page_0295-0296: 5 shared points at the meeting edge (rows 17-928 / rows 83-1029; dy=-11811 dx=-15, extent 911 px, NCC=0.71)
+  page_0297-0298 <-> page_0298-0299: 3 shared points at the meeting edge (rows 54-1196 / rows 58-1255; dy=-5969 dx=+9, extent 1142 px, NCC=0.73)
+  page_0302-0303 <-> page_0303-0304: 3 shared points at the meeting edge (rows 10-57 / rows 12-37; dy=-5991 dx=-18, extent 47 px, NCC=0.95)
+  page_0304-0305 <-> page_0305-0306: 3 shared points at the meeting edge (rows 14-38 / rows 18-43; dy=-5978 dx=-4, extent 24 px, NCC=0.89)
+  page_0310-0310 <-> page_0310-0312: 3 shared points at the meeting edge (rows 20-57 / rows 16-53; dy=-6021 dx=-17, extent 37 px, NCC=0.88)
+  page_0312-0313 <-> page_0314-0315: 6 shared points at the meeting edge (rows 1757-2091 / rows 3227-3561; dy=-10394 dx=-20, extent 334 px, NCC=0.73)
+  page_0319-0320 <-> page_0320-0321: 3 shared points at the meeting edge (rows 5-16 / rows 11-21; dy=-5952 dx=-15, extent 11 px, NCC=0.87)
+  page_0322-0323 <-> page_0323-0324: 6 shared points at the meeting edge (rows 3547-3859 / rows 3645-3990; dy=-5819 dx=-4, extent 312 px, NCC=0.71)
+  page_0323-0324 <-> page_0324-0325: 4 shared points at the meeting edge (rows 3645-3716 / rows 3796-3864; dy=-5860 dx=-14, extent 71 px, NCC=0.76)
+  page_0327-0328 <-> page_0328-0329: 4 shared points at the meeting edge (rows 3739-3831 / rows 3856-3935; dy=-5874 dx=-13, extent 92 px, NCC=0.84)
+  page_0338-0339 <-> page_0339-0340: 4 shared points at the meeting edge (rows 9-73 / rows 19-58; dy=-5965 dx=-19, extent 64 px, NCC=0.90)
+  page_0339-0340 <-> page_0341-0342: 6 shared points at the meeting edge (rows 1598-1906 / rows 1688-2009; dy=-11846 dx=-20, extent 308 px, NCC=0.70)
+  page_0341-0342 <-> page_0343-0344: 7 shared points at the meeting edge (rows 1688-2010 / rows 2063-2388; dy=-11548 dx=-19, extent 322 px, NCC=0.68)
+  page_0342-0343 <-> page_0343-0344: 5 shared points at the meeting edge (rows 12-55 / rows 19-61; dy=-5951 dx=-9, extent 43 px, NCC=0.92)
+  page_0345-0346 <-> page_0346-0347: 9 shared points at the meeting edge (rows 4803-4886 / rows 4738-4813; dy=-6010 dx=-4, extent 83 px, NCC=0.67)
+  page_0347-0349 <-> page_0350-0351: 3 shared points at the meeting edge (rows 4821-4829 / rows 538-546; dy=-16227 dx=-23, extent 7 px, NCC=0.79)
+  page_0352-0353 <-> page_0354-0356: 8 shared points at the meeting edge (rows 21-493 / rows 21-500; dy=-12262 dx=-3, extent 471 px, NCC=0.66)
+  page_0356-0357 <-> page_0357-0358: 4 shared points at the meeting edge (rows 14-54 / rows 23-62; dy=-5941 dx=-4, extent 41 px, NCC=0.91)
+  page_0359-0360 <-> page_0360-0361: 3 shared points at the meeting edge (rows 8-25 / rows 6-15; dy=-5973 dx=-10, extent 17 px, NCC=0.92)
+  page_0360-0361 <-> page_0362-0363: 5 shared points at the meeting edge (rows 2326-2339 / rows 3224-3243; dy=-11026 dx=-15, extent 13 px, NCC=0.82)
+  page_0364-0365 <-> page_0366-0367: 7 shared points at the meeting edge (rows 3256-3336 / rows 3479-3556; dy=-11717 dx=-23, extent 80 px, NCC=0.70)
+  page_0365-0366 <-> page_0366-0367: 4 shared points at the meeting edge (rows 22-63 / rows 11-41; dy=-5944 dx=-12, extent 41 px, NCC=0.87)
+  page_0366-0367 <-> page_0367-0368: 3 shared points at the meeting edge (rows 13-41 / rows 15-46; dy=-6003 dx=-9, extent 28 px, NCC=0.87)
+  page_0372-0373 <-> page_0373-0374: 3 shared points at the meeting edge (rows 17-29 / rows 23-29; dy=-5989 dx=-11, extent 12 px, NCC=0.89)
+  page_0373-0374 <-> page_0374-0375: 3 shared points at the meeting edge (rows 23-50 / rows 16-39; dy=-6020 dx=-19, extent 28 px, NCC=0.87)
+  page_0379-0380 <-> page_0381-0381: 3 shared points at the meeting edge (rows 18-38 / rows 16-42; dy=-5978 dx=+0, extent 19 px, NCC=0.89)
+  page_0384-0384 <-> page_0387-0387: 4 shared points at the meeting edge (rows 18-40 / rows 15-34; dy=-5941 dx=-12, extent 22 px, NCC=0.90)
+  page_0387-0387 <-> page_0387-0391: 5 shared points at the meeting edge (rows 18-48 / rows 20-61; dy=-5965 dx=+10, extent 29 px, NCC=0.77)
+  page_0387-0391 <-> page_0391-0392: 4 shared points at the meeting edge (rows 20-61 / rows 9-40; dy=-5970 dx=-25, extent 42 px, NCC=0.85)
+  page_0387-0391 <-> page_0392-0393: 7 shared points at the meeting edge (rows 1155-1381 / rows 1665-1898; dy=-11429 dx=-20, extent 226 px, NCC=0.66)
+  page_0392-0393 <-> page_0393-0394: 3 shared points at the meeting edge (rows 65-1911 / rows 50-1864; dy=-5980 dx=-9, extent 1845 px, NCC=0.67)
+  page_0397-0398 <-> page_0398-0399: 4 shared points at the meeting edge (rows 5-13 / rows 8-17; dy=-5942 dx=-18, extent 8 px, NCC=0.95)
+  page_0403-0405 <-> page_0404-0406: 3 shared points at the meeting edge (rows 12-39 / full extent; dy=-5946 dx=-0, extent 26 px, NCC=0.73)
+  page_0404-0406 <-> page_0406-0407: 3 shared points at the meeting edge (rows 1-47 / rows 3-48; dy=-5901 dx=-2, extent 46 px, NCC=0.97)
+  page_0407-0408 <-> page_0409-0410: 4 shared points at the meeting edge (rows 677-765 / rows 3503-3586; dy=-9180 dx=-0, extent 87 px, NCC=0.66)
+  page_0408-0409 <-> page_0409-0410: 3 shared points at the meeting edge (rows 11-41 / rows 14-56; dy=-6012 dx=+1, extent 30 px, NCC=0.90)
+  page_0412-0413 <-> page_0413-0414: 3 shared points at the meeting edge (rows 37-40 / rows 39-42; dy=-5978 dx=-8, extent 2 px, NCC=0.85)
+  page_0413-0414 <-> page_0415-0417: 5 shared points at the meeting edge (rows 3633-4070 / rows 264-724; dy=-15270 dx=-25, extent 437 px, NCC=0.71)
+  page_0415-0417 <-> page_0417-0418: 3 shared points at the meeting edge (rows 487-715 / rows 506-735; dy=-5944 dx=-10, extent 228 px, NCC=0.69)
+  page_0418-0419 <-> page_0419-0420: 3 shared points at the meeting edge (rows 18-60 / rows 9-49; dy=-5958 dx=-12, extent 42 px, NCC=0.92)
+  page_0421-0422 <-> page_0422-0423: 3 shared points at the meeting edge (rows 16-48 / rows 18-40; dy=-5948 dx=-6, extent 32 px, NCC=0.77)
+  page_0425-0426 <-> page_0427-0428: 6 shared points at the meeting edge (rows 736-760 / rows 678-700; dy=-11998 dx=-37, extent 24 px, NCC=0.67)
+  page_0427-0428 <-> page_0428-0429: 4 shared points at the meeting edge (rows 17-42 / rows 20-46; dy=-5959 dx=-11, extent 26 px, NCC=0.88)
+  page_0434-0435 <-> page_0436-0437: 11 shared points at the meeting edge (rows 614-766 / rows 546-711; dy=-12005 dx=+5, extent 153 px, NCC=0.71)
+  page_0435-0436 <-> page_0436-0437: 3 shared points at the meeting edge (rows 15-59 / rows 9-55; dy=-5951 dx=-1, extent 44 px, NCC=0.90)
+  page_0436-0437 <-> page_0437-0438: 3 shared points at the meeting edge (rows 11-55 / rows 23-67; dy=-5983 dx=-10, extent 44 px, NCC=0.88)
+  page_0443-0444 <-> page_0444-0445: 6 shared points at the meeting edge (rows 9-52 / rows 10-44; dy=-5938 dx=-12, extent 43 px, NCC=0.92)
+  page_0444-0445 <-> page_0446-0447: 6 shared points at the meeting edge (rows 4400-4474 / rows 4752-4813; dy=-11589 dx=-12, extent 74 px, NCC=0.67)
+  page_0445-0446 <-> page_0446-0447: 3 shared points at the meeting edge (rows 4674-4734 / rows 4756-4813; dy=-5897 dx=-9, extent 60 px, NCC=0.67)
+  page_0445-0446 <-> page_0447-0448: 4 shared points at the meeting edge (rows 4658-4734 / rows 4743-4825; dy=-11845 dx=-36, extent 77 px, NCC=0.73)
+  page_0446-0447 <-> page_0448-0449: 6 shared points at the meeting edge (rows 4756-4813 / rows 4955-5013; dy=-11717 dx=-19, extent 57 px, NCC=0.69)
+  page_0450-0452 <-> page_0452-0453: 4 shared points at the meeting edge (rows 43-1189 / rows 54-1228; dy=-6000 dx=-13, extent 1146 px, NCC=0.74)
+  page_0454-0455 <-> page_0456-0461: 5 shared points at the meeting edge (rows 2748-2813 / rows 2937-3002; dy=-11688 dx=-28, extent 65 px, NCC=0.72)
+  page_0463-0464 <-> page_0464-0465: 4 shared points at the meeting edge (rows 17-924 / rows 9-965; dy=-5943 dx=-19, extent 907 px, NCC=0.70)
+  page_0465-0466 <-> page_0466-0467: 5 shared points at the meeting edge (rows 30-137 / rows 145-251; dy=-5815 dx=-10, extent 106 px, NCC=0.87)
+  page_0471-0473 <-> page_0473-0474: 5 shared points at the meeting edge (rows 7-45 / rows 13-61; dy=-5969 dx=-7, extent 39 px, NCC=0.84)
+  page_0477-0478 <-> page_0478-0479: 7 shared points at the meeting edge (rows 13-50 / rows 14-46; dy=-6001 dx=-10, extent 37 px, NCC=0.86)
+  page_0478-0479 <-> page_0482-0482: 3 shared points at the meeting edge (rows 14-46 / rows 11-40; dy=-12106 dx=-13, extent 31 px, NCC=0.70)
+  page_0482-0482 <-> page_0485-0485: 4 shared points at the meeting edge (rows 11-40 / rows 15-36; dy=-5975 dx=-49, extent 29 px, NCC=0.89)
+  page_0485-0485 <-> page_0488-0489: 4 shared points at the meeting edge (rows 15-36 / rows 14-54; dy=-11990 dx=-63, extent 21 px, NCC=0.84)
+  page_0491-0492 <-> page_0492-0493: 5 shared points at the meeting edge (rows 2746-2820 / rows 3114-3178; dy=-5629 dx=-7, extent 74 px, NCC=0.68)
+  page_0497-0498 <-> page_0498-0499: 3 shared points at the meeting edge (rows 26-73 / rows 17-65; dy=-6025 dx=-13, extent 47 px, NCC=0.93)
+  page_0512-0513 <-> page_0513-0514: 3 shared points at the meeting edge (rows 22-69 / rows 16-58; dy=-6019 dx=-11, extent 48 px, NCC=0.94)
+  page_0513-0514 <-> page_0514-0515: 4 shared points at the meeting edge (rows 16-58 / rows 21-62; dy=-5998 dx=-12, extent 43 px, NCC=0.93)
+  page_0515-0516 <-> page_0516-0517: 3 shared points at the meeting edge (rows 2569-3104 / rows 2917-3401; dy=-5703 dx=-4, extent 535 px, NCC=0.67)
+  page_0515-0516 <-> page_0517-0518: 6 shared points at the meeting edge (rows 2554-2627 / rows 3145-3219; dy=-11362 dx=-18, extent 73 px, NCC=0.73)
+  page_0516-0517 <-> page_0517-0518: 3 shared points at the meeting edge (rows 2754-2923 / rows 3011-3162; dy=-5703 dx=-11, extent 169 px, NCC=0.75)
+  page_0522-0523 <-> page_0523-0524: 3 shared points at the meeting edge (rows 13-61 / rows 22-63; dy=-6009 dx=-17, extent 49 px, NCC=0.91)
+  page_0525-0526 <-> page_0526-0527: 3 shared points at the meeting edge (rows 23-69 / rows 17-57; dy=-5990 dx=-23, extent 46 px, NCC=0.94)
+  page_0528-0529 <-> page_0531-0532: 7 shared points at the meeting edge (rows 2246-2326 / rows 2940-3019; dy=-11298 dx=-5, extent 80 px, NCC=0.65)
+  page_0531-0532 <-> page_0532-0533: 5 shared points at the meeting edge (rows 2942-2964 / rows 3244-3269; dy=-5732 dx=-10, extent 22 px, NCC=0.70)
+  page_0531-0532 <-> page_0533-0534: 4 shared points at the meeting edge (rows 2940-2964 / rows 3550-3577; dy=-11400 dx=-19, extent 24 px, NCC=0.65)
+  page_0532-0533 <-> page_0533-0534: 3 shared points at the meeting edge (rows 20-51 / rows 10-43; dy=-5987 dx=-5, extent 31 px, NCC=0.69)
+  page_0536-0538 <-> page_0537-0539: 6 shared points at the meeting edge (rows 2-47 / rows 16-66; dy=-5911 dx=+3, extent 45 px, NCC=0.68)
+  page_0540-0541 <-> page_0541-0542: 3 shared points at the meeting edge (rows 14-58 / rows 25-63; dy=-5975 dx=-8, extent 44 px, NCC=0.92)
+  page_0559-0560 <-> page_0560-0561: 5 shared points at the meeting edge (rows 20-59 / rows 14-55; dy=-5947 dx=-4, extent 39 px, NCC=0.91)
+  page_0565-0566 <-> page_0566-0567: 3 shared points at the meeting edge (rows 15-56 / rows 23-62; dy=-6010 dx=-10, extent 41 px, NCC=0.91)
+  page_0566-0567 <-> page_0567-0568: 3 shared points at the meeting edge (rows 23-62 / rows 17-54; dy=-6027 dx=-5, extent 38 px, NCC=0.94)
+  page_0569-0571 <-> page_0570-0572: 3 shared points at the meeting edge (rows 1-11 / rows 23-25; dy=-6008 dx=-13, extent 11 px, NCC=0.82)
+  page_0572-0573 <-> page_0574-0575: 7 shared points at the meeting edge (rows 15-428 / rows 15-415; dy=-11916 dx=-8, extent 413 px, NCC=0.75)
+  page_0573-0574 <-> page_0574-0575: 3 shared points at the meeting edge (rows 2351-2414 / rows 2820-2880; dy=-5500 dx=-5, extent 63 px, NCC=0.73)
+  page_0574-0575 <-> page_0576-0577: 12 shared points at the meeting edge (rows 16-486 / rows 21-514; dy=-11968 dx=-19, extent 470 px, NCC=0.67)
+  page_0580-0581 <-> page_0581-0582: 3 shared points at the meeting edge (rows 25-67 / rows 18-48; dy=-5984 dx=-30, extent 42 px, NCC=0.94)
+  page_0583-0584 <-> page_0584-0585: 3 shared points at the meeting edge (rows 13-61 / rows 16-55; dy=-5936 dx=-18, extent 48 px, NCC=0.88)
+  page_0629-0631 <-> page_0631-0632: 4 shared points at the meeting edge (rows 14-57 / rows 21-62; dy=-6029 dx=-11, extent 43 px, NCC=0.93)
+  page_0660-0662 <-> page_0662-0663: 3 shared points at the meeting edge (rows 15-62 / rows 22-62; dy=-6004 dx=-10, extent 47 px, NCC=0.94)
+  page_0662-0663 <-> page_0663-0664: 6 shared points at the meeting edge (rows 20-62 / rows 14-54; dy=-6019 dx=-2, extent 42 px, NCC=0.94)
+  page_0668-0669 <-> page_0669-0670: 3 shared points at the meeting edge (rows 14-20 / rows 26-32; dy=-5989 dx=-7, extent 5 px, NCC=0.93)
+  page_0684-0686 <-> page_0685-0687: 6 shared points at the meeting edge (rows 10-49 / rows 22-58; dy=-6027 dx=-9, extent 38 px, NCC=0.88)
+  page_0701-0703 <-> page_0703-0704: 5 shared points at the meeting edge (rows 17-59 / rows 11-48; dy=-6012 dx=-11, extent 41 px, NCC=0.91)
+  page_0745-0746 <-> page_0746-0747: 3 shared points at the meeting edge (rows 19-23 / rows 21-30; dy=-5941 dx=-10, extent 4 px, NCC=0.93)
+  page_0846-0846 <-> page_0847-0848: 3 shared points at the meeting edge (rows 12-25 / rows 21-24; dy=-5972 dx=-16, extent 12 px, NCC=0.84)
+  page_0879-0881 <-> page_0880-0882: 3 shared points at the meeting edge (rows 12-15 / full extent; dy=-5954 dx=-6, extent 4 px, NCC=0.69)
+
+UNCERTAIN (clustered matches, unclassified): 1285
+  ? page_0001-0001 <-> page_0001-0002: 2 shared pts, dy=-5606 dx=-11, extent=1px
+  ? page_0001-0002 <-> page_0002-0003: 11 shared pts, dy=-10160 dx=-13, extent=262px
+  ? page_0001-0002 <-> page_0004-0005: 11 shared pts, dy=+11 dx=+118, extent=188px
+  ? page_0002-0003 <-> page_0004-0005: 7 shared pts, dy=+10171 dx=+131, extent=184px
+  ? page_0002-0003 <-> page_0005-0006: 7 shared pts, dy=+4806 dx=+122, extent=184px
+  ? page_0004-0005 <-> page_0005-0006: 16 shared pts, dy=-5366 dx=-8, extent=3830px
+  ? page_0004-0005 <-> page_0006-0007: 11 shared pts, dy=-10453 dx=-17, extent=3719px
+  ? page_0005-0006 <-> page_0006-0007: 12 shared pts, dy=-5085 dx=-4, extent=3675px
+  ? page_0005-0006 <-> page_0007-0008: 11 shared pts, dy=-11268 dx=-15, extent=5222px
+  ? page_0006-0007 <-> page_0007-0008: 13 shared pts, dy=-5385 dx=-6, extent=3436px
+  ? page_0006-0007 <-> page_0008-0009: 5 shared pts, dy=-15486 dx=-20, extent=438px
+  ? page_0007-0008 <-> page_0008-0009: 3 shared pts, dy=-5059 dx=-5, extent=2595px
+  ? page_0007-0008 <-> page_0009-0010: 9 shared pts, dy=-11267 dx=-13, extent=5168px
+  ? page_0008-0009 <-> page_0009-0010: 2 shared pts, dy=-8189 dx=+85, extent=0px
+  ? page_0008-0009 <-> page_0010-0011: 8 shared pts, dy=-11208 dx=-15, extent=5170px
+  ? page_0009-0010 <-> page_0010-0011: 5 shared pts, dy=-5021 dx=-6, extent=22px
+  ? page_0009-0010 <-> page_0012-0012: 5 shared pts, dy=-11195 dx=-13, extent=4677px
+  ? page_0010-0011 <-> page_0012-0012: 8 shared pts, dy=-4384 dx=-4, extent=453px
+  ? page_0010-0011 <-> page_0013-0013: 9 shared pts, dy=-9566 dx=-13, extent=1168px
+  ? page_0012-0012 <-> page_0014-0015: 4 shared pts, dy=-11290 dx=-16, extent=5129px
+  ? page_0013-0013 <-> page_0014-0015: 4 shared pts, dy=-5295 dx=-7, extent=158px
+  ? page_0013-0013 <-> page_0015-0016: 11 shared pts, dy=-10131 dx=-10, extent=593px
+  ? page_0014-0015 <-> page_0015-0016: 5 shared pts, dy=-4836 dx=-3, extent=3797px
+  ? page_0014-0015 <-> page_0016-0017: 8 shared pts, dy=-7844 dx=+191, extent=862px
+  ? page_0015-0016 <-> page_0016-0017: 14 shared pts, dy=-5182 dx=-5, extent=3813px
+  ? page_0015-0016 <-> page_0017-0018: 9 shared pts, dy=-10616 dx=-16, extent=3614px
+  ? page_0016-0017 <-> page_0017-0018: 8 shared pts, dy=-5435 dx=-14, extent=3610px
+  ? page_0016-0017 <-> page_0018-0019: 5 shared pts, dy=-14151 dx=-29, extent=433px
+  ? page_0017-0018 <-> page_0018-0019: 8 shared pts, dy=-8716 dx=-15, extent=429px
+  ? page_0017-0018 <-> page_0019-0021: 12 shared pts, dy=-13822 dx=-23, extent=451px
+  ? page_0018-0019 <-> page_0019-0021: 10 shared pts, dy=-5106 dx=-8, extent=587px
+  ? page_0018-0019 <-> page_0021-0021: 9 shared pts, dy=-10122 dx=-14, extent=473px
+  ? page_0019-0021 <-> page_0021-0021: 16 shared pts, dy=-5016 dx=-5, extent=605px
+  ? page_0019-0021 <-> page_0021-0023: 15 shared pts, dy=-9320 dx=-14, extent=247px
+  ? page_0021-0021 <-> page_0021-0023: 13 shared pts, dy=-4303 dx=-8, extent=244px
+  ? page_0021-0023 <-> page_0023-0024: 7 shared pts, dy=-2166 dx=+112, extent=25px
+  ? page_0021-0023 <-> page_0024-0025: 9 shared pts, dy=-13364 dx=+156, extent=28px
+  ? page_0023-0024 <-> page_0024-0025: 4 shared pts, dy=-5061 dx=-4, extent=10px
+  ? page_0023-0024 <-> page_0025-0026: 4 shared pts, dy=-10370 dx=-13, extent=10px
+  ? page_0024-0025 <-> page_0025-0026: 4 shared pts, dy=-5309 dx=-9, extent=9px
+  ? page_0024-0025 <-> page_0027-0027: 4 shared pts, dy=-11295 dx=-21, extent=5159px
+  ? page_0025-0026 <-> page_0027-0027: 3 shared pts, dy=-3083 dx=-5, extent=281px
+  ? page_0025-0026 <-> page_0028-0028: 5 shared pts, dy=-11338 dx=-17, extent=5116px
+  ? page_0027-0027 <-> page_0028-0028: 9 shared pts, dy=-5123 dx=-7, extent=592px
+  ? page_0027-0027 <-> page_0029-0030: 13 shared pts, dy=-10370 dx=-15, extent=225px
+  ? page_0028-0028 <-> page_0029-0030: 10 shared pts, dy=-5247 dx=-7, extent=2084px
+  ? page_0028-0028 <-> page_0030-0031: 9 shared pts, dy=-11300 dx=-126, extent=4591px
+  ? page_0029-0030 <-> page_0030-0031: 5 shared pts, dy=-5157 dx=-7, extent=2394px
+  ? page_0030-0031 <-> page_0031-0032: 17 shared pts, dy=-5207 dx=-9, extent=2907px
+  ? page_0031-0032 <-> page_0032-0033: 9 shared pts, dy=-6241 dx=+272, extent=14px
+  ? page_0031-0032 <-> page_0033-0034: 26 shared pts, dy=-10698 dx=-15, extent=2988px
+  ? page_0032-0033 <-> page_0033-0034: 7 shared pts, dy=-5511 dx=-8, extent=3605px
+  ? page_0032-0033 <-> page_0034-0035: 7 shared pts, dy=-10859 dx=-15, extent=2579px
+  ? page_0033-0034 <-> page_0034-0035: 23 shared pts, dy=-5349 dx=-8, extent=2537px
+  ? page_0033-0034 <-> page_0035-0036: 20 shared pts, dy=-10493 dx=-16, extent=2831px
+  ? page_0034-0035 <-> page_0036-0037: 11 shared pts, dy=-10403 dx=-15, extent=2718px
+  ? page_0035-0036 <-> page_0036-0037: 6 shared pts, dy=-5258 dx=-7, extent=2596px
+  ? page_0035-0036 <-> page_0038-0038: 16 shared pts, dy=-10607 dx=-16, extent=426px
+  ? page_0036-0037 <-> page_0039-0039: 6 shared pts, dy=-10549 dx=-16, extent=90px
+  ? page_0038-0038 <-> page_0039-0039: 19 shared pts, dy=-5201 dx=-7, extent=581px
+  ? page_0038-0038 <-> page_0040-0041: 16 shared pts, dy=-9050 dx=-11, extent=166px
+  ? page_0039-0039 <-> page_0040-0041: 10 shared pts, dy=-3848 dx=-3, extent=1226px
+  ? page_0039-0039 <-> page_0041-0043: 7 shared pts, dy=-14303 dx=-19, extent=144px
+  ? page_0040-0041 <-> page_0041-0043: 10 shared pts, dy=-10455 dx=-16, extent=143px
+  ? page_0040-0041 <-> page_0043-0043: 8 shared pts, dy=-13294 dx=-19, extent=355px
+  ? page_0041-0043 <-> page_0043-0043: 5 shared pts, dy=-2839 dx=-3, extent=173px
+  ? page_0041-0043 <-> page_0045-0046: 6 shared pts, dy=-11927 dx=-15, extent=2529px
+  ? page_0043-0043 <-> page_0045-0046: 9 shared pts, dy=-5070 dx=-10, extent=297px
+  ? page_0043-0043 <-> page_0046-0047: 3 shared pts, dy=-14439 dx=-25, extent=36px
+  ? page_0045-0046 <-> page_0046-0047: 4 shared pts, dy=-2975 dx=+151, extent=37px
+  ? page_0045-0046 <-> page_0047-0048: 6 shared pts, dy=-14615 dx=-23, extent=598px
+  ? page_0046-0047 <-> page_0047-0048: 10 shared pts, dy=-5246 dx=-7, extent=2613px
+  ? page_0046-0047 <-> page_0048-0049: 19 shared pts, dy=-11314 dx=-13, extent=5221px
+  ? page_0047-0048 <-> page_0048-0049: 14 shared pts, dy=-5234 dx=-4, extent=2992px
+  ? page_0047-0048 <-> page_0049-0050: 24 shared pts, dy=-10504 dx=-12, extent=2984px
+  ? page_0048-0049 <-> page_0049-0050: 15 shared pts, dy=-5267 dx=-9, extent=3576px
+  ? page_0048-0049 <-> page_0050-0051: 9 shared pts, dy=-10379 dx=-13, extent=2732px
+  ? page_0049-0050 <-> page_0050-0051: 10 shared pts, dy=-5112 dx=-5, extent=2643px
+  ? page_0049-0050 <-> page_0051-0053: 16 shared pts, dy=-10325 dx=-12, extent=2980px
+  ? page_0050-0051 <-> page_0051-0053: 11 shared pts, dy=-5214 dx=-7, extent=2646px
+  ? page_0050-0051 <-> page_0052-0054: 5 shared pts, dy=-13305 dx=-21, extent=2498px
+  ? page_0051-0053 <-> page_0052-0054: 12 shared pts, dy=-8090 dx=-12, extent=2504px
+  ? page_0051-0053 <-> page_0054-0055: 10 shared pts, dy=-13395 dx=-19, extent=2613px
+  ? page_0052-0054 <-> page_0054-0055: 9 shared pts, dy=-5305 dx=-7, extent=2424px
+  ? page_0052-0054 <-> page_0055-0056: 4 shared pts, dy=-11327 dx=-16, extent=4791px
+  ? page_0054-0055 <-> page_0055-0056: 1 shared pts, dy=-9127 dx=-69, extent=0px
+  ? page_0054-0055 <-> page_0056-0057: 13 shared pts, dy=-9699 dx=-12, extent=2611px
+  ? page_0055-0056 <-> page_0056-0057: 6 shared pts, dy=-5242 dx=-6, extent=2635px
+  ? page_0056-0057 <-> page_0057-0058: 18 shared pts, dy=-5578 dx=-8, extent=2674px
+  ? page_0056-0057 <-> page_0058-0060: 17 shared pts, dy=-10856 dx=-20, extent=2587px
+  ? page_0057-0058 <-> page_0058-0060: 8 shared pts, dy=-5278 dx=-13, extent=2546px
+  ? page_0057-0058 <-> page_0059-0061: 3 shared pts, dy=-14842 dx=-28, extent=89px
+  ? page_0058-0060 <-> page_0059-0061: 2 shared pts, dy=-6306 dx=+200, extent=6px
+  ? page_0058-0060 <-> page_0061-0062: 11 shared pts, dy=-9563 dx=-8, extent=185px
+  ? page_0059-0061 <-> page_0061-0062: 4 shared pts, dy=-5615 dx=-21, extent=5031px
+  ? page_0059-0061 <-> page_0062-0063: 6 shared pts, dy=-10934 dx=-16, extent=3889px
+  ? page_0061-0062 <-> page_0062-0063: 21 shared pts, dy=-5610 dx=-10, extent=3803px
+  ? page_0061-0062 <-> page_0063-0064: 18 shared pts, dy=-10896 dx=-17, extent=3836px
+  ? page_0062-0063 <-> page_0063-0064: 10 shared pts, dy=-5287 dx=-6, extent=3851px
+  ? page_0062-0063 <-> page_0064-0065: 5 shared pts, dy=-13910 dx=-18, extent=89px
+  ? page_0063-0064 <-> page_0064-0065: 10 shared pts, dy=-5262 dx=-6, extent=2620px
+  ? page_0063-0064 <-> page_0065-0066: 14 shared pts, dy=-10580 dx=-14, extent=2970px
+  ? page_0064-0065 <-> page_0065-0066: 7 shared pts, dy=-5319 dx=-8, extent=2499px
+  ? page_0064-0065 <-> page_0067-0067: 14 shared pts, dy=-11259 dx=-39, extent=5208px
+  ? page_0065-0066 <-> page_0067-0067: 12 shared pts, dy=-4557 dx=-5, extent=652px
+  ? page_0065-0066 <-> page_0068-0068: 8 shared pts, dy=-9872 dx=-16, extent=319px
+  ? page_0067-0067 <-> page_0068-0071: 17 shared pts, dy=-10643 dx=-21, extent=575px
+  ? page_0068-0068 <-> page_0068-0071: 25 shared pts, dy=-5328 dx=-10, extent=430px
+  ? page_0068-0068 <-> page_0071-0072: 16 shared pts, dy=-10708 dx=-19, extent=231px
+  ? page_0068-0071 <-> page_0071-0072: 28 shared pts, dy=-5379 dx=-8, extent=3142px
+  ? page_0068-0071 <-> page_0072-0073: 30 shared pts, dy=-10738 dx=-15, extent=3142px
+  ? page_0071-0072 <-> page_0072-0073: 23 shared pts, dy=-5358 dx=-7, extent=3793px
+  ? page_0071-0072 <-> page_0073-0074: 11 shared pts, dy=-11314 dx=-17, extent=5212px
+  ? page_0072-0073 <-> page_0073-0074: 7 shared pts, dy=-5355 dx=-8, extent=3729px
+  ? page_0072-0073 <-> page_0074-0075: 15 shared pts, dy=-11381 dx=-17, extent=5239px
+  ? page_0073-0074 <-> page_0074-0075: 12 shared pts, dy=-5676 dx=-6, extent=5176px
+  ? page_0073-0074 <-> page_0075-0076: 30 shared pts, dy=-11347 dx=-13, extent=5204px
+  ? page_0074-0075 <-> page_0076-0077: 20 shared pts, dy=-10591 dx=-13, extent=234px
+  ? page_0075-0076 <-> page_0077-0078: 13 shared pts, dy=-10672 dx=-13, extent=2056px
+  ? page_0076-0077 <-> page_0077-0078: 16 shared pts, dy=-5481 dx=-6, extent=408px
+  ? page_0076-0077 <-> page_0078-0079: 10 shared pts, dy=-11308 dx=-15, extent=5191px
+  ? page_0077-0078 <-> page_0078-0079: 6 shared pts, dy=-6351 dx=+238, extent=18px
+  ? page_0077-0078 <-> page_0079-0080: 19 shared pts, dy=-10859 dx=-16, extent=2819px
+  ? page_0078-0079 <-> page_0079-0080: 3 shared pts, dy=-5517 dx=-10, extent=2519px
+  ? page_0078-0079 <-> page_0080-0082: 4 shared pts, dy=-11221 dx=-10, extent=5111px
+  ? page_0079-0080 <-> page_0080-0082: 16 shared pts, dy=-5448 dx=-7, extent=576px
+  ? page_0079-0080 <-> page_0081-0083: 15 shared pts, dy=-8910 dx=-8, extent=322px
+  ? page_0080-0082 <-> page_0081-0083: 15 shared pts, dy=-3461 dx=-0, extent=708px
+  ? page_0080-0082 <-> page_0083-0084: 15 shared pts, dy=-11308 dx=-16, extent=5181px
+  ? page_0081-0083 <-> page_0083-0084: 12 shared pts, dy=-5468 dx=-7, extent=3738px
+  ? page_0081-0083 <-> page_0084-0085: 16 shared pts, dy=-10920 dx=-14, extent=3773px
+  ? page_0083-0084 <-> page_0084-0085: 9 shared pts, dy=-5452 dx=-8, extent=3705px
+  ? page_0083-0084 <-> page_0085-0086: 16 shared pts, dy=-11338 dx=-102, extent=5200px
+  ? page_0084-0085 <-> page_0085-0086: 20 shared pts, dy=-5359 dx=-7, extent=2622px
+  ? page_0084-0085 <-> page_0086-0087: 20 shared pts, dy=-10817 dx=-17, extent=2637px
+  ? page_0085-0086 <-> page_0086-0087: 18 shared pts, dy=-5458 dx=-10, extent=2701px
+  ? page_0085-0086 <-> page_0087-0088: 10 shared pts, dy=-11314 dx=-23, extent=5195px
+  ? page_0086-0087 <-> page_0087-0088: 11 shared pts, dy=-5381 dx=-11, extent=212px
+  ? page_0086-0087 <-> page_0088-0089: 21 shared pts, dy=-10765 dx=-19, extent=2648px
+  ? page_0087-0088 <-> page_0088-0089: 13 shared pts, dy=-5383 dx=-8, extent=2631px
+  ? page_0087-0088 <-> page_0089-0090: 8 shared pts, dy=-10874 dx=-16, extent=2532px
+  ? page_0088-0089 <-> page_0090-0091: 23 shared pts, dy=-10813 dx=-16, extent=2614px
+  ? page_0089-0090 <-> page_0090-0091: 15 shared pts, dy=-5322 dx=-7, extent=182px
+  ? page_0089-0090 <-> page_0091-0092: 9 shared pts, dy=-11030 dx=-13, extent=2600px
+  ? page_0090-0091 <-> page_0091-0092: 10 shared pts, dy=-5706 dx=-6, extent=4689px
+  ? page_0090-0091 <-> page_0093-0093: 19 shared pts, dy=-9880 dx=-15, extent=676px
+  ? page_0091-0092 <-> page_0098-0099: 4 shared pts, dy=-11871 dx=-25, extent=5164px
+  ? page_0093-0093 <-> page_0098-0099: 15 shared pts, dy=-5553 dx=-8, extent=598px
+  ? page_0093-0093 <-> page_0099-0100: 20 shared pts, dy=-11136 dx=-16, extent=675px
+  ? page_0098-0099 <-> page_0099-0100: 18 shared pts, dy=-5583 dx=-8, extent=3794px
+  ? page_0098-0099 <-> page_0100-0101: 17 shared pts, dy=-11059 dx=-15, extent=3709px
+  ? page_0099-0100 <-> page_0100-0101: 19 shared pts, dy=-5476 dx=-6, extent=3793px
+  ? page_0099-0100 <-> page_0101-0102: 20 shared pts, dy=-11011 dx=-14, extent=3791px
+  ? page_0100-0101 <-> page_0101-0102: 19 shared pts, dy=-5534 dx=-8, extent=3800px
+  ? page_0100-0101 <-> page_0102-0103: 10 shared pts, dy=-11062 dx=-16, extent=3684px
+  ? page_0101-0102 <-> page_0102-0103: 15 shared pts, dy=-5529 dx=-9, extent=3807px
+  ? page_0101-0102 <-> page_0103-0104: 21 shared pts, dy=-14593 dx=-26, extent=420px
+  ? page_0102-0103 <-> page_0103-0104: 21 shared pts, dy=-5460 dx=-11, extent=2991px
+  ? page_0102-0103 <-> page_0104-0105: 11 shared pts, dy=-10909 dx=-20, extent=2623px
+  ? page_0103-0104 <-> page_0104-0105: 13 shared pts, dy=-5449 dx=-10, extent=2507px
+  ? page_0103-0104 <-> page_0106-0106: 22 shared pts, dy=-9187 dx=-13, extent=266px
+  ? page_0104-0105 <-> page_0106-0106: 6 shared pts, dy=-3737 dx=-2, extent=80px
+  ? page_0106-0106 <-> page_0107-0107: 15 shared pts, dy=-5435 dx=-7, extent=2761px
+  ? page_0107-0107 <-> page_0107-0110: 10 shared pts, dy=-4423 dx=-8, extent=155px
+  ? page_0107-0110 <-> page_0110-0111: 8 shared pts, dy=-5544 dx=-7, extent=3890px
+  ? page_0107-0110 <-> page_0111-0112: 24 shared pts, dy=-11389 dx=-60, extent=5178px
+  ? page_0110-0111 <-> page_0111-0112: 9 shared pts, dy=-5438 dx=-10, extent=3730px
+  ? page_0110-0111 <-> page_0112-0113: 27 shared pts, dy=-11065 dx=-17, extent=3837px
+  ? page_0111-0112 <-> page_0112-0113: 20 shared pts, dy=-5626 dx=-9, extent=5234px
+  ? page_0111-0112 <-> page_0113-0114: 10 shared pts, dy=-11299 dx=-18, extent=5231px
+  ? page_0112-0113 <-> page_0113-0114: 14 shared pts, dy=-5307 dx=-6, extent=3696px
+  ? page_0112-0113 <-> page_0114-0115: 8 shared pts, dy=-10851 dx=-14, extent=3580px
+  ? page_0113-0114 <-> page_0115-0116: 12 shared pts, dy=-11308 dx=-18, extent=5239px
+  ? page_0114-0115 <-> page_0115-0116: 3 shared pts, dy=-5505 dx=-7, extent=2px
+  ? page_0114-0115 <-> page_0116-0117: 16 shared pts, dy=-11312 dx=-17, extent=5222px
+  ? page_0115-0116 <-> page_0116-0117: 17 shared pts, dy=-5537 dx=-9, extent=2542px
+  ? page_0115-0116 <-> page_0117-0118: 9 shared pts, dy=-11154 dx=-18, extent=4051px
+  ? page_0116-0117 <-> page_0117-0118: 21 shared pts, dy=-5617 dx=-9, extent=5228px
+  ? page_0116-0117 <-> page_0118-0119: 20 shared pts, dy=-10593 dx=-18, extent=2611px
+  ? page_0117-0118 <-> page_0118-0119: 13 shared pts, dy=-4976 dx=-9, extent=2621px
+  ? page_0117-0118 <-> page_0119-0120: 28 shared pts, dy=-11249 dx=-24, extent=5225px
+  ? page_0118-0119 <-> page_0119-0120: 19 shared pts, dy=-5631 dx=-8, extent=922px
+  ? page_0118-0119 <-> page_0120-0121: 28 shared pts, dy=-11164 dx=-15, extent=2810px
+  ? page_0119-0120 <-> page_0120-0121: 16 shared pts, dy=-5533 dx=-7, extent=2654px
+  ? page_0120-0121 <-> page_0122-0123: 9 shared pts, dy=+547736 dx=-170, extent=80px
+  ? page_0120-0121 <-> page_0123-0124: 2 shared pts, dy=+545123 dx=+400, extent=0px
+  ? page_0122-0123 <-> page_0123-0124: 16 shared pts, dy=-5581 dx=-6, extent=2711px
+  ? page_0122-0123 <-> page_0124-0125: 6 shared pts, dy=-11038 dx=-14, extent=2542px
+  ? page_0123-0124 <-> page_0124-0125: 15 shared pts, dy=-5457 dx=-8, extent=2618px
+  ? page_0123-0124 <-> page_0125-0126: 20 shared pts, dy=-11289 dx=-16, extent=2690px
+  ? page_0125-0126 <-> page_0126-0127: 17 shared pts, dy=-4422 dx=-8, extent=2658px
+  ? page_0125-0126 <-> page_0127-0128: 13 shared pts, dy=-9945 dx=-15, extent=1234px
+  ? page_0126-0127 <-> page_0127-0128: 11 shared pts, dy=-5523 dx=-7, extent=2611px
+  ? page_0126-0127 <-> page_0128-0129: 25 shared pts, dy=-11126 dx=-16, extent=2648px
+  ? page_0127-0128 <-> page_0129-0130: 23 shared pts, dy=-11303 dx=-10, extent=5218px
+  ? page_0128-0129 <-> page_0130-0131: 44 shared pts, dy=-11300 dx=-20, extent=5231px
+  ? page_0129-0130 <-> page_0130-0131: 17 shared pts, dy=-5610 dx=-12, extent=3300px
+  ? page_0129-0130 <-> page_0131-0132: 9 shared pts, dy=-11172 dx=-16, extent=2533px
+  ? page_0130-0131 <-> page_0131-0132: 7 shared pts, dy=-5563 dx=-4, extent=162px
+  ? page_0130-0131 <-> page_0132-0133: 49 shared pts, dy=-11230 dx=-14, extent=5221px
+  ? page_0131-0132 <-> page_0132-0133: 6 shared pts, dy=-5666 dx=-9, extent=2630px
+  ? page_0131-0132 <-> page_0133-0134: 11 shared pts, dy=-11251 dx=-15, extent=5199px
+  ? page_0132-0133 <-> page_0133-0134: 22 shared pts, dy=-5940 dx=-10, extent=865px
+  ? page_0132-0133 <-> page_0135-0135: 17 shared pts, dy=-10957 dx=-15, extent=470px
+  ? page_0133-0134 <-> page_0135-0135: 17 shared pts, dy=-5017 dx=-5, extent=305px
+  ? page_0133-0134 <-> page_0136-0136: 2 shared pts, dy=-11323 dx=-16, extent=15px
+  ? page_0135-0135 <-> page_0136-0136: 7 shared pts, dy=-5575 dx=-7, extent=151px
+  ? page_0135-0135 <-> page_0142-0143: 6 shared pts, dy=-10444 dx=-17, extent=163px
+  ? page_0136-0136 <-> page_0143-0144: 2 shared pts, dy=-13625 dx=-165, extent=0px
+  ? page_0142-0143 <-> page_0144-0145: 13 shared pts, dy=-11255 dx=-11, extent=5235px
+  ? page_0143-0144 <-> page_0144-0145: 3 shared pts, dy=-5664 dx=-17, extent=530px
+  ? page_0143-0144 <-> page_0145-0146: 28 shared pts, dy=-9313 dx=-16, extent=2633px
+  ? page_0144-0145 <-> page_0145-0146: 10 shared pts, dy=-5614 dx=-1, extent=5190px
+  ? page_0144-0145 <-> page_0146-0147: 18 shared pts, dy=-11268 dx=-1, extent=5234px
+  ? page_0145-0146 <-> page_0146-0147: 13 shared pts, dy=-5584 dx=-7, extent=2706px
+  ? page_0145-0146 <-> page_0147-0149: 16 shared pts, dy=-11145 dx=-17, extent=2821px
+  ? page_0146-0147 <-> page_0148-0150: 8 shared pts, dy=-9581 dx=-9, extent=265px
+  ? page_0147-0149 <-> page_0148-0150: 7 shared pts, dy=-4020 dx=-1, extent=235px
+  ? page_0147-0149 <-> page_0150-0151: 15 shared pts, dy=-9678 dx=-7, extent=255px
+  ? page_0148-0150 <-> page_0150-0151: 13 shared pts, dy=-5657 dx=-7, extent=4277px
+  ? page_0148-0150 <-> page_0151-0152: 14 shared pts, dy=-11215 dx=-45, extent=5199px
+  ? page_0150-0151 <-> page_0151-0152: 7 shared pts, dy=-4874 dx=+70, extent=57px
+  ? page_0150-0151 <-> page_0152-0153: 27 shared pts, dy=-11211 dx=-14, extent=5240px
+  ? page_0151-0152 <-> page_0152-0153: 5 shared pts, dy=-5597 dx=-5, extent=5196px
+  ? page_0151-0152 <-> page_0153-0154: 12 shared pts, dy=-11215 dx=-14, extent=5199px
+  ? page_0152-0153 <-> page_0153-0154: 8 shared pts, dy=-5627 dx=-11, extent=4824px
+  ? page_0152-0153 <-> page_0154-0155: 24 shared pts, dy=-11137 dx=-15, extent=4771px
+  ? page_0153-0154 <-> page_0154-0155: 9 shared pts, dy=-5510 dx=-5, extent=4763px
+  ? page_0153-0154 <-> page_0155-0156: 16 shared pts, dy=-11158 dx=-11, extent=5149px
+  ? page_0154-0155 <-> page_0155-0156: 21 shared pts, dy=-4810 dx=-7, extent=3806px
+  ? page_0154-0155 <-> page_0156-0157: 30 shared pts, dy=-10499 dx=-19, extent=3815px
+  ? page_0155-0156 <-> page_0157-0158: 11 shared pts, dy=-11378 dx=-15, extent=3790px
+  ? page_0156-0157 <-> page_0157-0158: 14 shared pts, dy=-5687 dx=-4, extent=4975px
+  ? page_0156-0157 <-> page_0158-0159: 24 shared pts, dy=-11138 dx=-12, extent=3795px
+  ? page_0157-0158 <-> page_0159-0160: 10 shared pts, dy=-11119 dx=-18, extent=3804px
+  ? page_0158-0159 <-> page_0159-0160: 16 shared pts, dy=-5670 dx=-10, extent=3805px
+  ? page_0158-0159 <-> page_0160-0161: 26 shared pts, dy=-11214 dx=-29, extent=5249px
+  ? page_0159-0160 <-> page_0160-0161: 10 shared pts, dy=-5501 dx=-6, extent=3800px
+  ? page_0159-0160 <-> page_0161-0162: 9 shared pts, dy=-15961 dx=-22, extent=249px
+  ? page_0160-0161 <-> page_0161-0162: 21 shared pts, dy=-5625 dx=-10, extent=5190px
+  ? page_0160-0161 <-> page_0162-0163: 43 shared pts, dy=-11250 dx=-14, extent=5241px
+  ? page_0161-0162 <-> page_0162-0163: 35 shared pts, dy=-5620 dx=-10, extent=5247px
+  ? page_0161-0162 <-> page_0163-0164: 54 shared pts, dy=-11235 dx=-12, extent=5248px
+  ? page_0162-0163 <-> page_0164-0165: 40 shared pts, dy=-11171 dx=-15, extent=5214px
+  ? page_0163-0164 <-> page_0165-0166: 17 shared pts, dy=-11358 dx=-15, extent=2548px
+  ? page_0164-0165 <-> page_0165-0166: 13 shared pts, dy=-5802 dx=-6, extent=4610px
+  ? page_0164-0165 <-> page_0166-0167: 10 shared pts, dy=-11403 dx=-15, extent=4578px
+  ? page_0165-0166 <-> page_0167-0168: 5 shared pts, dy=-11272 dx=-15, extent=2402px
+  ? page_0166-0167 <-> page_0167-0168: 5 shared pts, dy=-5120 dx=+70, extent=28px
+  ? page_0166-0167 <-> page_0168-0169: 23 shared pts, dy=-11162 dx=-18, extent=5205px
+  ? page_0168-0169 <-> page_0170-0171: 19 shared pts, dy=-11202 dx=-25, extent=5244px
+  ? page_0169-0170 <-> page_0170-0171: 6 shared pts, dy=-5595 dx=-10, extent=5232px
+  ? page_0170-0171 <-> page_0171-0172: 6 shared pts, dy=-5679 dx=-6, extent=3589px
+  ? page_0170-0171 <-> page_0172-0173: 19 shared pts, dy=-11145 dx=-8, extent=5198px
+  ? page_0171-0172 <-> page_0173-0174: 9 shared pts, dy=-11198 dx=-24, extent=5237px
+  ? page_0172-0173 <-> page_0174-0175: 21 shared pts, dy=-11675 dx=-20, extent=3785px
+  ? page_0173-0174 <-> page_0174-0175: 13 shared pts, dy=-5994 dx=-11, extent=3724px
+  ? page_0173-0174 <-> page_0175-0176: 8 shared pts, dy=-11720 dx=-20, extent=3646px
+  ? page_0174-0175 <-> page_0175-0176: 12 shared pts, dy=-5724 dx=-8, extent=3676px
+  ? page_0175-0176 <-> page_0176-0177: 7 shared pts, dy=-5093 dx=-7, extent=3661px
+  ? page_0175-0176 <-> page_0177-0178: 25 shared pts, dy=-11296 dx=-22, extent=1004px
+  ? page_0176-0177 <-> page_0178-0179: 28 shared pts, dy=-11283 dx=-12, extent=3838px
+  ? page_0177-0178 <-> page_0178-0179: 19 shared pts, dy=-5587 dx=-5, extent=4629px
+  ? page_0177-0178 <-> page_0180-0181: 52 shared pts, dy=+271267 dx=+372, extent=5182px
+  ? page_0178-0179 <-> page_0181-0182: 16 shared pts, dy=+271237 dx=+374, extent=5227px
+  ? page_0180-0181 <-> page_0182-0183: 17 shared pts, dy=-11197 dx=-13, extent=5248px
+  ? page_0181-0182 <-> page_0182-0183: 15 shared pts, dy=-5673 dx=-6, extent=3687px
+  ? page_0181-0182 <-> page_0183-0184: 29 shared pts, dy=-11204 dx=-15, extent=5250px
+  ? page_0182-0183 <-> page_0183-0184: 14 shared pts, dy=-5857 dx=-5, extent=3685px
+  ? page_0184-0185 <-> page_0186-0187: 17 shared pts, dy=-11699 dx=-16, extent=3786px
+  ? page_0185-0186 <-> page_0186-0187: 24 shared pts, dy=-5957 dx=-10, extent=3776px
+  ? page_0185-0186 <-> page_0187-0188: 22 shared pts, dy=-10720 dx=-14, extent=3776px
+  ? page_0186-0187 <-> page_0187-0188: 19 shared pts, dy=-4763 dx=-5, extent=3775px
+  ? page_0186-0187 <-> page_0188-0189: 11 shared pts, dy=-13948 dx=-21, extent=118px
+  ? page_0187-0188 <-> page_0188-0189: 21 shared pts, dy=-5643 dx=-5, extent=3011px
+  ? page_0188-0189 <-> page_0189-0190: 26 shared pts, dy=-5340 dx=-8, extent=3016px
+  ? page_0189-0190 <-> page_0190-0191: 6 shared pts, dy=-5335 dx=-7, extent=16px
+  ? page_0189-0190 <-> page_0191-0192: 20 shared pts, dy=-11777 dx=-13, extent=3547px
+  ? page_0190-0191 <-> page_0192-0193: 13 shared pts, dy=-11246 dx=-70, extent=5227px
+  ? page_0192-0193 <-> page_0193-0194: 16 shared pts, dy=-5736 dx=-7, extent=2668px
+  ? page_0192-0193 <-> page_0194-0195: 11 shared pts, dy=-11870 dx=-16, extent=2610px
+  ? page_0193-0194 <-> page_0194-0195: 23 shared pts, dy=-6133 dx=-9, extent=2657px
+  ? page_0194-0195 <-> page_0195-0196: 22 shared pts, dy=-5605 dx=-11, extent=2876px
+  ? page_0194-0195 <-> page_0196-0197: 23 shared pts, dy=-11229 dx=-24, extent=2810px
+  ? page_0195-0196 <-> page_0197-0198: 51 shared pts, dy=-11105 dx=-16, extent=5202px
+  ? page_0196-0197 <-> page_0198-0199: 43 shared pts, dy=-11149 dx=-10, extent=5213px
+  ? page_0197-0198 <-> page_0198-0199: 20 shared pts, dy=-5668 dx=-6, extent=2728px
+  ? page_0198-0199 <-> page_0199-0200: 15 shared pts, dy=-5746 dx=-8, extent=2669px
+  ? page_0198-0199 <-> page_0200-0201: 23 shared pts, dy=-11186 dx=-10, extent=5202px
+  ? page_0199-0200 <-> page_0200-0201: 3 shared pts, dy=-5742 dx=-10, extent=1681px
+  ? page_0200-0201 <-> page_0201-0202: 3 shared pts, dy=-5968 dx=-10, extent=912px
+  ? page_0203-0204 <-> page_0204-0205: 9 shared pts, dy=-6044 dx=-13, extent=3778px
+  ? page_0203-0204 <-> page_0205-0206: 6 shared pts, dy=-11366 dx=-22, extent=3672px
+  ? page_0204-0205 <-> page_0205-0206: 11 shared pts, dy=-5323 dx=-5, extent=3689px
+  ? page_0204-0205 <-> page_0206-0207: 12 shared pts, dy=-15314 dx=-17, extent=169px
+  ? page_0205-0206 <-> page_0206-0207: 15 shared pts, dy=-5855 dx=-11, extent=2603px
+  ? page_0205-0206 <-> page_0207-0208: 22 shared pts, dy=-11133 dx=-7, extent=5206px
+  ? page_0207-0208 <-> page_0208-0209: 3 shared pts, dy=-5807 dx=-15, extent=1699px
+  ? page_0208-0209 <-> page_0210-0211: 6 shared pts, dy=-11163 dx=+2, extent=5181px
+  ? page_0209-0210 <-> page_0210-0211: 4 shared pts, dy=-5728 dx=-13, extent=3199px
+  ? page_0209-0210 <-> page_0211-0212: 10 shared pts, dy=-11144 dx=-27, extent=5204px
+  ? page_0210-0211 <-> page_0211-0212: 4 shared pts, dy=-4938 dx=-344, extent=11px
+  ? page_0210-0211 <-> page_0212-0213: 4 shared pts, dy=-11739 dx=-19, extent=3190px
+  ? page_0211-0212 <-> page_0212-0213: 8 shared pts, dy=-5718 dx=-7, extent=3669px
+  ? page_0211-0212 <-> page_0213-0214: 6 shared pts, dy=-11525 dx=-11, extent=3199px
+  ? page_0212-0213 <-> page_0213-0214: 7 shared pts, dy=-5808 dx=-5, extent=3776px
+  ? page_0212-0213 <-> page_0214-0215: 31 shared pts, dy=-11107 dx=-22, extent=5199px
+  ? page_0213-0214 <-> page_0214-0215: 10 shared pts, dy=-5802 dx=-11, extent=2614px
+  ? page_0213-0214 <-> page_0215-0216: 16 shared pts, dy=-11126 dx=-23, extent=5167px
+  ? page_0214-0215 <-> page_0215-0216: 9 shared pts, dy=-5601 dx=-7, extent=2611px
+  ? page_0214-0215 <-> page_0216-0217: 3 shared pts, dy=-11191 dx=-7, extent=32px
+  ? page_0215-0216 <-> page_0219-0220: 4 shared pts, dy=+63781 dx=+69, extent=32px
+  ? page_0216-0217 <-> page_0219-0220: 8 shared pts, dy=+69372 dx=+38, extent=32px
+  ? page_0216-0217 <-> page_0220-0221: 3 shared pts, dy=+64507 dx=+86, extent=32px
+  ? page_0219-0220 <-> page_0220-0221: 2 shared pts, dy=-6058 dx=+59, extent=10px
+  ? page_0222-0223 <-> page_0223-0224: 17 shared pts, dy=-5797 dx=-10, extent=2696px
+  ? page_0222-0223 <-> page_0224-0225: 23 shared pts, dy=-9224 dx=-21, extent=2686px
+  ? page_0223-0224 <-> page_0224-0225: 11 shared pts, dy=-3426 dx=-11, extent=2655px
+  ? page_0223-0224 <-> page_0225-0226: 11 shared pts, dy=-11191 dx=-8, extent=5218px
+  ? page_0224-0225 <-> page_0225-0226: 5 shared pts, dy=-5717 dx=-3, extent=889px
+  ? page_0224-0225 <-> page_0226-0227: 29 shared pts, dy=-11385 dx=-11, extent=3035px
+  ? page_0225-0226 <-> page_0226-0227: 10 shared pts, dy=-5667 dx=-7, extent=3030px
+  ? page_0225-0226 <-> page_0227-0228: 16 shared pts, dy=-11159 dx=-51, extent=5186px
+  ? page_0229-0230 <-> page_0230-0231: 23 shared pts, dy=-5420 dx=-9, extent=3012px
+  ? page_0230-0231 <-> page_0231-0232: 28 shared pts, dy=-5896 dx=-10, extent=3031px
+  ? page_0230-0231 <-> page_0232-0233: 15 shared pts, dy=-11835 dx=-14, extent=3020px
+  ? page_0232-0233 <-> page_0234-0235: 11 shared pts, dy=-11599 dx=-15, extent=2682px
+  ? page_0235-0236 <-> page_0237-0238: 20 shared pts, dy=+90193 dx=+120, extent=5226px
+  ? page_0237-0238 <-> page_0239-0240: 13 shared pts, dy=-11043 dx=-6, extent=5218px
+  ? page_0238-0239 <-> page_0239-0240: 7 shared pts, dy=-5856 dx=-12, extent=3676px
+  ? page_0239-0240 <-> page_0241-0242: 14 shared pts, dy=-11143 dx=-21, extent=5260px
+  ? page_0241-0242 <-> page_0242-0243: 16 shared pts, dy=-5903 dx=-7, extent=3655px
+  ? page_0241-0242 <-> page_0243-0244: 20 shared pts, dy=-11147 dx=-17, extent=5271px
+  ? page_0242-0243 <-> page_0243-0244: 24 shared pts, dy=-5810 dx=-8, extent=3754px
+  ? page_0243-0244 <-> page_0244-0245: 25 shared pts, dy=-5376 dx=-8, extent=3745px
+  ? page_0243-0244 <-> page_0245-0246: 19 shared pts, dy=-11190 dx=-15, extent=4119px
+  ? page_0245-0246 <-> page_0247-0248: 14 shared pts, dy=-11673 dx=-17, extent=3688px
+  ? page_0246-0247 <-> page_0247-0248: 85 shared pts, dy=-5889 dx=+142, extent=4245px
+  ? page_0246-0247 <-> page_0248-0249: 18 shared pts, dy=-11082 dx=-41, extent=5312px
+  ? page_0247-0248 <-> page_0248-0249: 3 shared pts, dy=-5954 dx=-13, extent=72px
+  ? page_0247-0248 <-> page_0249-0250: 13 shared pts, dy=-10279 dx=-16, extent=3694px
+  ? page_0248-0249 <-> page_0249-0250: 4 shared pts, dy=-5590 dx=+9, extent=5233px
+  ? page_0248-0249 <-> page_0250-0251: 16 shared pts, dy=-11116 dx=-9, extent=5264px
+  ? page_0249-0250 <-> page_0251-0252: 10 shared pts, dy=-11323 dx=-17, extent=3739px
+  ? page_0250-0251 <-> page_0251-0252: 26 shared pts, dy=-5400 dx=-9, extent=4100px
+  ? page_0250-0251 <-> page_0252-0253: 36 shared pts, dy=-11325 dx=-16, extent=4100px
+  ? page_0252-0253 <-> page_0254-0254: 32 shared pts, dy=-11690 dx=-17, extent=697px
+  ? page_0253-0254 <-> page_0254-0254: 27 shared pts, dy=-5885 dx=-8, extent=637px
+  ? page_0253-0254 <-> page_0254-0257: 27 shared pts, dy=-11752 dx=-17, extent=613px
+  ? page_0254-0254 <-> page_0254-0257: 31 shared pts, dy=-5866 dx=-8, extent=634px
+  ? page_0254-0254 <-> page_0257-0258: 5 shared pts, dy=-11677 dx=-18, extent=379px
+  ? page_0257-0258 <-> page_0259-0259: 11 shared pts, dy=-4694 dx=-7, extent=445px
+  ? page_0259-0259 <-> page_0259-0260: 7 shared pts, dy=-5947 dx=-11, extent=2335px
+  ? page_0259-0259 <-> page_0260-0261: 14 shared pts, dy=-11885 dx=-16, extent=2497px
+  ? page_0259-0260 <-> page_0260-0261: 12 shared pts, dy=-5938 dx=-12, extent=2626px
+  ? page_0259-0260 <-> page_0261-0262: 13 shared pts, dy=-11136 dx=+23, extent=35px
+  ? page_0264-0265 <-> page_0265-0266: 22 shared pts, dy=-5921 dx=-6, extent=4585px
+  ? page_0264-0265 <-> page_0266-0267: 33 shared pts, dy=-11822 dx=-13, extent=5536px
+  ? page_0265-0266 <-> page_0266-0267: 10 shared pts, dy=-5750 dx=-10, extent=2631px
+  ? page_0265-0266 <-> page_0267-0269: 9 shared pts, dy=-11866 dx=-22, extent=3993px
+  ? page_0266-0267 <-> page_0268-0272: 7 shared pts, dy=-10463 dx=-9, extent=512px
+  ? page_0267-0269 <-> page_0268-0272: 7 shared pts, dy=-4345 dx=+0, extent=248px
+  ? page_0267-0269 <-> page_0272-0273: 27 shared pts, dy=-11845 dx=-11, extent=5243px
+  ? page_0268-0272 <-> page_0272-0273: 10 shared pts, dy=-5376 dx=-11, extent=957px
+  ? page_0272-0273 <-> page_0273-0274: 17 shared pts, dy=-5961 dx=-6, extent=4513px
+  ? page_0272-0273 <-> page_0274-0275: 20 shared pts, dy=-12008 dx=-24, extent=5524px
+  ? page_0273-0274 <-> page_0275-0276: 21 shared pts, dy=-11814 dx=-21, extent=4072px
+  ? page_0274-0275 <-> page_0275-0276: 23 shared pts, dy=-5969 dx=-10, extent=4692px
+  ? page_0274-0275 <-> page_0276-0277: 22 shared pts, dy=-11923 dx=-8, extent=5487px
+  ? page_0275-0276 <-> page_0276-0277: 9 shared pts, dy=-9844 dx=-12, extent=185px
+  ? page_0275-0276 <-> page_0277-0278: 40 shared pts, dy=-11856 dx=-13, extent=5638px
+  ? page_0276-0277 <-> page_0277-0278: 25 shared pts, dy=-6043 dx=-13, extent=2780px
+  ? page_0276-0277 <-> page_0278-0279: 68 shared pts, dy=-11858 dx=-26, extent=5516px
+  ? page_0277-0278 <-> page_0278-0279: 16 shared pts, dy=-5749 dx=-6, extent=2681px
+  ? page_0277-0278 <-> page_0279-0280: 30 shared pts, dy=-11032 dx=-15, extent=2714px
+  ? page_0278-0279 <-> page_0279-0280: 14 shared pts, dy=-5284 dx=-9, extent=2654px
+  ? page_0279-0280 <-> page_0281-0282: 17 shared pts, dy=-11782 dx=-14, extent=2662px
+  ? page_0280-0281 <-> page_0281-0282: 15 shared pts, dy=-5814 dx=-8, extent=2703px
+  ? page_0280-0281 <-> page_0282-0283: 18 shared pts, dy=-11913 dx=-16, extent=5632px
+  ? page_0281-0282 <-> page_0283-0284: 36 shared pts, dy=-11937 dx=-6, extent=5518px
+  ? page_0282-0283 <-> page_0284-0285: 32 shared pts, dy=-11857 dx=-19, extent=3926px
+  ? page_0283-0284 <-> page_0284-0285: 16 shared pts, dy=-6161 dx=-13, extent=2780px
+  ? page_0284-0285 <-> page_0285-0286: 15 shared pts, dy=-5833 dx=-7, extent=2754px
+  ? page_0284-0285 <-> page_0286-0287: 30 shared pts, dy=-11276 dx=-13, extent=2796px
+  ? page_0285-0286 <-> page_0286-0287: 11 shared pts, dy=-5446 dx=-8, extent=2775px
+  ? page_0285-0286 <-> page_0287-0288: 30 shared pts, dy=-11930 dx=-13, extent=5548px
+  ? page_0286-0287 <-> page_0287-0288: 6 shared pts, dy=-5809 dx=-8, extent=3106px
+  ? page_0286-0287 <-> page_0288-0289: 26 shared pts, dy=-11647 dx=-17, extent=3079px
+  ? page_0287-0288 <-> page_0288-0289: 17 shared pts, dy=-5838 dx=-9, extent=3084px
+  ? page_0287-0288 <-> page_0289-0290: 45 shared pts, dy=-11921 dx=-10, extent=5509px
+  ? page_0288-0289 <-> page_0289-0290: 13 shared pts, dy=-5618 dx=-4, extent=2799px
+  ? page_0289-0290 <-> page_0290-0291: 20 shared pts, dy=-5893 dx=-10, extent=5395px
+  ? page_0289-0290 <-> page_0291-0293: 36 shared pts, dy=-11946 dx=-26, extent=5564px
+  ? page_0290-0291 <-> page_0291-0293: 15 shared pts, dy=-6001 dx=-16, extent=5448px
+  ? page_0290-0291 <-> page_0292-0294: 22 shared pts, dy=-10429 dx=-14, extent=620px
+  ? page_0291-0293 <-> page_0294-0295: 58 shared pts, dy=-11886 dx=-9, extent=5534px
+  ? page_0292-0294 <-> page_0294-0295: 14 shared pts, dy=-6044 dx=-8, extent=4033px
+  ? page_0294-0295 <-> page_0295-0296: 19 shared pts, dy=-5891 dx=-9, extent=4038px
+  ? page_0295-0296 <-> page_0296-0297: 17 shared pts, dy=-5919 dx=-7, extent=4701px
+  ? page_0296-0297 <-> page_0297-0298: 14 shared pts, dy=-5903 dx=-11, extent=4007px
+  ? page_0296-0297 <-> page_0298-0299: 47 shared pts, dy=-11929 dx=-0, extent=5512px
+  ? page_0297-0298 <-> page_0299-0300: 16 shared pts, dy=-11720 dx=-18, extent=4040px
+  ? page_0298-0299 <-> page_0299-0300: 6 shared pts, dy=-5921 dx=-23, extent=4461px
+  ? page_0298-0299 <-> page_0300-0301: 52 shared pts, dy=-11868 dx=-28, extent=5613px
+  ? page_0299-0300 <-> page_0300-0301: 5 shared pts, dy=-10134 dx=-13, extent=571px
+  ? page_0299-0300 <-> page_0301-0302: 13 shared pts, dy=-11830 dx=-3, extent=5657px
+  ? page_0300-0301 <-> page_0302-0303: 32 shared pts, dy=-11854 dx=-13, extent=5542px
+  ? page_0301-0302 <-> page_0302-0303: 11 shared pts, dy=-4401 dx=-10, extent=2676px
+  ? page_0302-0303 <-> page_0304-0305: 30 shared pts, dy=-11935 dx=-21, extent=5563px
+  ? page_0303-0304 <-> page_0304-0305: 10 shared pts, dy=-5835 dx=-9, extent=2790px
+  ? page_0305-0306 <-> page_0306-0307: 19 shared pts, dy=-5868 dx=-13, extent=2788px
+  ? page_0307-0308 <-> page_0308-0309: 5 shared pts, dy=-5837 dx=-7, extent=582px
+  ? page_0307-0308 <-> page_0310-0310: 17 shared pts, dy=-11445 dx=-14, extent=597px
+  ? page_0308-0309 <-> page_0310-0310: 8 shared pts, dy=-5611 dx=-13, extent=529px
+  ? page_0308-0309 <-> page_0310-0312: 34 shared pts, dy=-11998 dx=-21, extent=5507px
+  ? page_0310-0310 <-> page_0312-0313: 25 shared pts, dy=-11954 dx=-20, extent=4510px
+  ? page_0310-0312 <-> page_0312-0313: 10 shared pts, dy=-5901 dx=-7, extent=5413px
+  ? page_0310-0312 <-> page_0313-0314: 42 shared pts, dy=-11852 dx=-7, extent=5625px
+  ? page_0312-0313 <-> page_0313-0314: 10 shared pts, dy=-5870 dx=-13, extent=3644px
+  ? page_0313-0314 <-> page_0314-0315: 10 shared pts, dy=-5860 dx=-8, extent=2769px
+  ? page_0313-0314 <-> page_0315-0316: 51 shared pts, dy=-11989 dx=-74, extent=5274px
+  ? page_0314-0315 <-> page_0315-0316: 14 shared pts, dy=-6026 dx=-51, extent=3556px
+  ? page_0315-0316 <-> page_0316-0317: 12 shared pts, dy=-5875 dx=-4, extent=2811px
+  ? page_0316-0317 <-> page_0317-0318: 15 shared pts, dy=-5904 dx=-13, extent=2811px
+  ? page_0317-0318 <-> page_0318-0319: 22 shared pts, dy=-5882 dx=-7, extent=3756px
+  ? page_0318-0319 <-> page_0319-0320: 7 shared pts, dy=-5798 dx=-10, extent=2756px
+  ? page_0318-0319 <-> page_0320-0321: 25 shared pts, dy=-11681 dx=-20, extent=2824px
+  ? page_0319-0320 <-> page_0322-0323: 6 shared pts, dy=+303694 dx=+477, extent=2820px
+  ? page_0320-0321 <-> page_0322-0323: 21 shared pts, dy=+309543 dx=+494, extent=2875px
+  ? page_0320-0321 <-> page_0323-0324: 12 shared pts, dy=+303677 dx=+486, extent=4000px
+  ? page_0324-0325 <-> page_0325-0326: 14 shared pts, dy=-6003 dx=-14, extent=2831px
+  ? page_0325-0326 <-> page_0326-0327: 25 shared pts, dy=-5956 dx=-6, extent=3986px
+  ? page_0326-0327 <-> page_0327-0328: 8 shared pts, dy=-5884 dx=-5, extent=3864px
+  ? page_0326-0327 <-> page_0328-0329: 18 shared pts, dy=-11635 dx=-18, extent=2830px
+  ? page_0327-0328 <-> page_0330-0330: 43 shared pts, dy=-11943 dx=-23, extent=5537px
+  ? page_0328-0329 <-> page_0330-0330: 11 shared pts, dy=-4444 dx=-7, extent=558px
+  ? page_0328-0329 <-> page_0334-0335: 6 shared pts, dy=-15338 dx=-257, extent=198px
+  ? page_0330-0330 <-> page_0334-0335: 41 shared pts, dy=-6055 dx=-14, extent=5543px
+  ? page_0330-0330 <-> page_0336-0337: 43 shared pts, dy=+43941 dx=+59, extent=5542px
+  ? page_0334-0335 <-> page_0336-0337: 44 shared pts, dy=+50004 dx=+74, extent=5538px
+  ? page_0334-0335 <-> page_0337-0338: 10 shared pts, dy=+43964 dx=+65, extent=3869px
+  ? page_0336-0337 <-> page_0337-0338: 12 shared pts, dy=-5911 dx=-12, extent=3850px
+  ? page_0337-0338 <-> page_0338-0339: 12 shared pts, dy=-5958 dx=-7, extent=5194px
+  ? page_0337-0338 <-> page_0339-0340: 26 shared pts, dy=-11824 dx=-18, extent=3855px
+  ? page_0338-0339 <-> page_0340-0341: 32 shared pts, dy=-11945 dx=-21, extent=3602px
+  ? page_0339-0340 <-> page_0340-0341: 11 shared pts, dy=-5780 dx=-10, extent=3866px
+  ? page_0340-0341 <-> page_0341-0342: 8 shared pts, dy=-5890 dx=-11, extent=3399px
+  ? page_0340-0341 <-> page_0342-0343: 33 shared pts, dy=-11927 dx=-26, extent=5551px
+  ? page_0341-0342 <-> page_0342-0343: 7 shared pts, dy=-5961 dx=-8, extent=5063px
+  ? page_0342-0343 <-> page_0344-0345: 34 shared pts, dy=-11880 dx=-26, extent=5565px
+  ? page_0343-0344 <-> page_0344-0345: 11 shared pts, dy=-5486 dx=-9, extent=3497px
+  ? page_0343-0344 <-> page_0345-0346: 17 shared pts, dy=-14765 dx=-21, extent=443px
+  ? page_0344-0345 <-> page_0345-0346: 26 shared pts, dy=-6010 dx=-6, extent=5011px
+  ? page_0344-0345 <-> page_0346-0347: 52 shared pts, dy=-11938 dx=-10, extent=5553px
+  ? page_0346-0347 <-> page_0347-0349: 9 shared pts, dy=-5974 dx=-10, extent=5017px
+  ? page_0346-0347 <-> page_0348-0350: 36 shared pts, dy=-11928 dx=-20, extent=5527px
+  ? page_0347-0349 <-> page_0348-0350: 10 shared pts, dy=-4429 dx=+1, extent=620px
+  ? page_0348-0350 <-> page_0350-0351: 9 shared pts, dy=-5834 dx=-12, extent=3384px
+  ? page_0348-0350 <-> page_0351-0352: 33 shared pts, dy=-11944 dx=-18, extent=5525px
+  ? page_0350-0351 <-> page_0351-0352: 5 shared pts, dy=-5917 dx=-6, extent=3343px
+  ? page_0350-0351 <-> page_0352-0353: 25 shared pts, dy=-11167 dx=-15, extent=3821px
+  ? page_0351-0352 <-> page_0352-0353: 2 shared pts, dy=-5245 dx=-9, extent=2919px
+  ? page_0351-0352 <-> page_0353-0354: 43 shared pts, dy=-11870 dx=-19, extent=4734px
+  ? page_0352-0353 <-> page_0353-0354: 12 shared pts, dy=-5931 dx=-12, extent=4600px
+  ? page_0353-0354 <-> page_0354-0356: 14 shared pts, dy=-5861 dx=-7, extent=3374px
+  ? page_0353-0354 <-> page_0356-0357: 59 shared pts, dy=-12311 dx=-6, extent=5625px
+  ? page_0354-0356 <-> page_0356-0357: 4 shared pts, dy=-5907 dx=+6, extent=3321px
+  ? page_0354-0356 <-> page_0357-0358: 31 shared pts, dy=-11999 dx=-4, extent=4244px
+  ? page_0356-0357 <-> page_0358-0359: 67 shared pts, dy=-11924 dx=-13, extent=5598px
+  ? page_0357-0358 <-> page_0358-0359: 9 shared pts, dy=-5975 dx=-7, extent=4991px
+  ? page_0357-0358 <-> page_0359-0360: 49 shared pts, dy=-11933 dx=-37, extent=5658px
+  ? page_0358-0359 <-> page_0359-0360: 5 shared pts, dy=-6041 dx=-18, extent=82px
+  ? page_0358-0359 <-> page_0360-0361: 53 shared pts, dy=-11931 dx=-29, extent=5631px
+  ? page_0359-0360 <-> page_0361-0362: 51 shared pts, dy=-11923 dx=-9, extent=5538px
+  ? page_0360-0361 <-> page_0361-0362: 3 shared pts, dy=-11035 dx=-20, extent=38px
+  ? page_0361-0362 <-> page_0362-0363: 12 shared pts, dy=-5936 dx=-12, extent=561px
+  ? page_0361-0362 <-> page_0363-0364: 38 shared pts, dy=-11925 dx=-21, extent=5649px
+  ? page_0362-0363 <-> page_0363-0364: 16 shared pts, dy=-5900 dx=-5, extent=3450px
+  ? page_0363-0364 <-> page_0364-0365: 12 shared pts, dy=-5880 dx=-9, extent=3556px
+  ? page_0364-0365 <-> page_0365-0366: 10 shared pts, dy=-5853 dx=-13, extent=3076px
+  ? page_0365-0366 <-> page_0367-0368: 18 shared pts, dy=-11676 dx=-15, extent=3058px
+  ? page_0366-0367 <-> page_0368-0369: 40 shared pts, dy=-11922 dx=-14, extent=5567px
+  ? page_0367-0368 <-> page_0368-0369: 3 shared pts, dy=-5974 dx=-7, extent=3018px
+  ? page_0367-0368 <-> page_0369-0370: 13 shared pts, dy=-10668 dx=-14, extent=245px
+  ? page_0368-0369 <-> page_0369-0370: 1 shared pts, dy=-8193 dx=-120, extent=0px
+  ? page_0368-0369 <-> page_0370-0371: 29 shared pts, dy=-11946 dx=-28, extent=5527px
+  ? page_0369-0370 <-> page_0370-0371: 7 shared pts, dy=-6027 dx=-10, extent=1435px
+  ? page_0369-0370 <-> page_0371-0372: 20 shared pts, dy=-12037 dx=-23, extent=4627px
+  ? page_0370-0371 <-> page_0371-0372: 19 shared pts, dy=-6010 dx=-13, extent=5196px
+  ? page_0371-0372 <-> page_0372-0373: 11 shared pts, dy=-5922 dx=-9, extent=2816px
+  ? page_0374-0375 <-> page_0375-0376: 7 shared pts, dy=-5118 dx=-125, extent=1184px
+  ? page_0374-0375 <-> page_0377-0378: 4 shared pts, dy=+211357 dx=+314, extent=79px
+  ? page_0375-0376 <-> page_0378-0379: 16 shared pts, dy=+211793 dx=+313, extent=3134px
+  ? page_0377-0378 <-> page_0378-0379: 13 shared pts, dy=-5649 dx=-11, extent=3027px
+  ? page_0378-0379 <-> page_0379-0380: 17 shared pts, dy=-5884 dx=-7, extent=3089px
+  ? page_0378-0379 <-> page_0381-0381: 56 shared pts, dy=-11925 dx=-9, extent=5524px
+  ? page_0379-0380 <-> page_0382-0382: 31 shared pts, dy=-11945 dx=-14, extent=5401px
+  ? page_0381-0381 <-> page_0382-0382: 7 shared pts, dy=-5950 dx=-8, extent=2769px
+  ? page_0382-0382 <-> page_0383-0383: 7 shared pts, dy=-5802 dx=+1, extent=1567px
+  ? page_0383-0383 <-> page_0384-0384: 9 shared pts, dy=-6085 dx=+0, extent=1539px
+  ? page_0384-0384 <-> page_0387-0391: 352 shared pts, dy=-11922 dx=-23, extent=5504px
+  ? page_0387-0387 <-> page_0391-0392: 40 shared pts, dy=-11943 dx=-14, extent=5554px
+  ? page_0391-0392 <-> page_0392-0393: 9 shared pts, dy=-6097 dx=-11, extent=3644px
+  ? page_0391-0392 <-> page_0393-0394: 66 shared pts, dy=-11936 dx=-12, extent=5618px
+  ? page_0392-0393 <-> page_0395-0396: 5 shared pts, dy=+63350 dx=+72, extent=3166px
+  ? page_0393-0394 <-> page_0395-0396: 49 shared pts, dy=+68994 dx=+73, extent=5559px
+  ? page_0393-0394 <-> page_0396-0397: 11 shared pts, dy=+62889 dx=+72, extent=4761px
+  ? page_0395-0396 <-> page_0396-0397: 4 shared pts, dy=-6537 dx=+27, extent=50px
+  ? page_0395-0396 <-> page_0397-0398: 50 shared pts, dy=-11999 dx=-8, extent=5496px
+  ? page_0396-0397 <-> page_0397-0398: 4 shared pts, dy=-5931 dx=-7, extent=13px
+  ? page_0396-0397 <-> page_0398-0399: 16 shared pts, dy=-15143 dx=-22, extent=607px
+  ? page_0397-0398 <-> page_0399-0400: 45 shared pts, dy=-11935 dx=-25, extent=5568px
+  ? page_0398-0399 <-> page_0399-0400: 19 shared pts, dy=-5854 dx=-10, extent=3083px
+  ? page_0398-0399 <-> page_0400-0401: 31 shared pts, dy=-11947 dx=-14, extent=5519px
+  ? page_0399-0400 <-> page_0401-0402: 36 shared pts, dy=-11942 dx=-14, extent=5537px
+  ? page_0400-0401 <-> page_0401-0402: 11 shared pts, dy=-5849 dx=-10, extent=3120px
+  ? page_0401-0402 <-> page_0402-0403: 9 shared pts, dy=-6006 dx=-9, extent=4942px
+  ? page_0402-0403 <-> page_0403-0405: 8 shared pts, dy=-5833 dx=-13, extent=3089px
+  ? page_0402-0403 <-> page_0404-0406: 22 shared pts, dy=-10429 dx=-13, extent=638px
+  ? page_0403-0405 <-> page_0406-0407: 55 shared pts, dy=-11850 dx=-2, extent=4762px
+  ? page_0404-0406 <-> page_0407-0408: 41 shared pts, dy=-11866 dx=-12, extent=5574px
+  ? page_0406-0407 <-> page_0407-0408: 10 shared pts, dy=-5873 dx=-12, extent=3232px
+  ? page_0406-0407 <-> page_0408-0409: 43 shared pts, dy=-11943 dx=-36, extent=5513px
+  ? page_0407-0408 <-> page_0408-0409: 4 shared pts, dy=-9282 dx=-17, extent=695px
+  ? page_0408-0409 <-> page_0410-0411: 77 shared pts, dy=-12002 dx=-5, extent=5554px
+  ? page_0409-0410 <-> page_0410-0411: 18 shared pts, dy=-5941 dx=-11, extent=3564px
+  ? page_0410-0411 <-> page_0411-0412: 19 shared pts, dy=-5885 dx=-8, extent=3271px
+  ? page_0411-0412 <-> page_0412-0413: 15 shared pts, dy=-5828 dx=-11, extent=3205px
+  ? page_0413-0414 <-> page_0414-0416: 6 shared pts, dy=-6152 dx=-15, extent=524px
+  ? page_0414-0416 <-> page_0415-0417: 5 shared pts, dy=-3362 dx=+2, extent=50px
+  ? page_0414-0416 <-> page_0417-0418: 54 shared pts, dy=-11948 dx=-25, extent=5547px
+  ? page_0415-0417 <-> page_0418-0419: 41 shared pts, dy=-11949 dx=-22, extent=5583px
+  ? page_0417-0418 <-> page_0418-0419: 8 shared pts, dy=-5945 dx=-7, extent=3040px
+  ? page_0417-0418 <-> page_0419-0420: 67 shared pts, dy=-11936 dx=-14, extent=5504px
+  ? page_0418-0419 <-> page_0420-0421: 36 shared pts, dy=-11948 dx=-10, extent=5593px
+  ? page_0419-0420 <-> page_0420-0421: 9 shared pts, dy=-5873 dx=-9, extent=3022px
+  ? page_0419-0420 <-> page_0421-0422: 35 shared pts, dy=-11931 dx=-29, extent=5566px
+  ? page_0420-0421 <-> page_0421-0422: 6 shared pts, dy=-5873 dx=-12, extent=4703px
+  ? page_0420-0421 <-> page_0422-0423: 36 shared pts, dy=-11872 dx=-30, extent=5648px
+  ? page_0421-0422 <-> page_0423-0424: 44 shared pts, dy=-11935 dx=-6, extent=5455px
+  ? page_0422-0423 <-> page_0423-0424: 7 shared pts, dy=-9307 dx=-17, extent=185px
+  ? page_0422-0423 <-> page_0424-0425: 58 shared pts, dy=-11939 dx=-18, extent=5620px
+  ? page_0423-0424 <-> page_0424-0425: 12 shared pts, dy=-6000 dx=-11, extent=5097px
+  ? page_0423-0424 <-> page_0425-0426: 50 shared pts, dy=-11933 dx=-39, extent=5614px
+  ? page_0424-0425 <-> page_0425-0426: 9 shared pts, dy=-5783 dx=-6, extent=3352px
+  ? page_0425-0426 <-> page_0426-0427: 12 shared pts, dy=-6035 dx=-11, extent=3350px
+  ? page_0426-0427 <-> page_0427-0428: 15 shared pts, dy=-5823 dx=-12, extent=3284px
+  ? page_0427-0428 <-> page_0429-0430: 61 shared pts, dy=-11873 dx=-22, extent=5464px
+  ? page_0428-0429 <-> page_0429-0430: 6 shared pts, dy=-5792 dx=-9, extent=3364px
+  ? page_0428-0429 <-> page_0431-0431: 15 shared pts, dy=-11689 dx=-12, extent=728px
+  ? page_0429-0430 <-> page_0431-0431: 4 shared pts, dy=-5900 dx=-201, extent=1481px
+  ? page_0429-0430 <-> page_0432-0432: 59 shared pts, dy=-11890 dx=-10, extent=5389px
+  ? page_0431-0431 <-> page_0432-0432: 12 shared pts, dy=-5923 dx=-13, extent=2543px
+  ? page_0431-0431 <-> page_0432-0434: 17 shared pts, dy=-10558 dx=-15, extent=730px
+  ? page_0432-0432 <-> page_0432-0434: 19 shared pts, dy=-4635 dx=-3, extent=301px
+  ? page_0432-0432 <-> page_0434-0435: 35 shared pts, dy=-11966 dx=-29, extent=5431px
+  ? page_0432-0434 <-> page_0434-0435: 14 shared pts, dy=-5951 dx=-12, extent=3831px
+  ? page_0432-0434 <-> page_0435-0436: 98 shared pts, dy=-11935 dx=-26, extent=5624px
+  ? page_0434-0435 <-> page_0435-0436: 14 shared pts, dy=-5983 dx=-8, extent=3837px
+  ? page_0436-0437 <-> page_0438-0439: 61 shared pts, dy=-11953 dx=-30, extent=5572px
+  ? page_0437-0438 <-> page_0438-0439: 4 shared pts, dy=-5777 dx=-13, extent=2929px
+  ? page_0437-0438 <-> page_0439-0440: 31 shared pts, dy=-11939 dx=-31, extent=5627px
+  ? page_0438-0439 <-> page_0439-0440: 5 shared pts, dy=-5664 dx=-8, extent=2964px
+  ? page_0438-0439 <-> page_0440-0441: 5 shared pts, dy=-10022 dx=+5, extent=335px
+  ? page_0439-0440 <-> page_0440-0441: 8 shared pts, dy=-5556 dx=-11, extent=3382px
+  ? page_0439-0440 <-> page_0441-0442: 48 shared pts, dy=-11977 dx=+1, extent=5523px
+  ? page_0440-0441 <-> page_0441-0442: 14 shared pts, dy=-5962 dx=-9, extent=3775px
+  ? page_0440-0441 <-> page_0442-0443: 5 shared pts, dy=-12093 dx=-19, extent=3357px
+  ? page_0441-0442 <-> page_0442-0443: 7 shared pts, dy=-6131 dx=+450, extent=38px
+  ? page_0441-0442 <-> page_0443-0444: 19 shared pts, dy=-11091 dx=-17, extent=3400px
+  ? page_0442-0443 <-> page_0443-0444: 14 shared pts, dy=-4959 dx=-7, extent=486px
+  ? page_0442-0443 <-> page_0444-0445: 39 shared pts, dy=-11874 dx=-13, extent=5499px
+  ? page_0443-0444 <-> page_0445-0446: 19 shared pts, dy=-11601 dx=-17, extent=3386px
+  ? page_0444-0445 <-> page_0445-0446: 10 shared pts, dy=-5900 dx=-7, extent=4906px
+  ? page_0446-0447 <-> page_0447-0448: 6 shared pts, dy=-7522 dx=-61, extent=15px
+  ? page_0447-0448 <-> page_0448-0449: 5 shared pts, dy=-5700 dx=-14, extent=145px
+  ? page_0447-0448 <-> page_0449-0451: 28 shared pts, dy=-11919 dx=-8, extent=5559px
+  ? page_0448-0449 <-> page_0449-0451: 9 shared pts, dy=-5857 dx=-9, extent=3412px
+  ? page_0448-0449 <-> page_0450-0452: 40 shared pts, dy=-11940 dx=-16, extent=5495px
+  ? page_0449-0451 <-> page_0450-0452: 5 shared pts, dy=-4578 dx=+0, extent=172px
+  ? page_0449-0451 <-> page_0452-0453: 19 shared pts, dy=-10367 dx=-10, extent=643px
+  ? page_0450-0452 <-> page_0453-0454: 63 shared pts, dy=-12015 dx=-28, extent=5613px
+  ? page_0452-0453 <-> page_0453-0454: 8 shared pts, dy=-5979 dx=-9, extent=3868px
+  ? page_0452-0453 <-> page_0454-0455: 23 shared pts, dy=-12000 dx=-9, extent=5605px
+  ? page_0453-0454 <-> page_0454-0455: 3 shared pts, dy=-5813 dx=-14, extent=2889px
+  ? page_0453-0454 <-> page_0455-0456: 45 shared pts, dy=-11940 dx=-8, extent=5532px
+  ? page_0454-0455 <-> page_0455-0456: 5 shared pts, dy=-5812 dx=-15, extent=312px
+  ? page_0455-0456 <-> page_0456-0461: 2 shared pts, dy=-6234 dx=+29, extent=9px
+  ? page_0455-0456 <-> page_0458-0463: 24 shared pts, dy=-17914 dx=-53, extent=1716px
+  ? page_0456-0461 <-> page_0458-0463: 7 shared pts, dy=-9132 dx=-14, extent=496px
+  ? page_0456-0461 <-> page_0461-0461: 14 shared pts, dy=-3386 dx=-15, extent=742px
+  ? page_0458-0463 <-> page_0461-0461: 25 shared pts, dy=+5973 dx=-10, extent=5244px
+  ? page_0458-0463 <-> page_0463-0464: 34 shared pts, dy=-5967 dx=-20, extent=5516px
+  ? page_0461-0461 <-> page_0463-0464: 14 shared pts, dy=-11945 dx=-15, extent=5540px
+  ? page_0461-0461 <-> page_0464-0465: 1 shared pts, dy=-21997 dx=-62, extent=0px
+  ? page_0463-0464 <-> page_0465-0466: 17 shared pts, dy=-11872 dx=-34, extent=5594px
+  ? page_0464-0465 <-> page_0465-0466: 6 shared pts, dy=-5890 dx=-9, extent=3457px
+  ? page_0464-0465 <-> page_0466-0467: 58 shared pts, dy=-11847 dx=-22, extent=5584px
+  ? page_0465-0466 <-> page_0467-0469: 21 shared pts, dy=-11874 dx=-23, extent=5458px
+  ? page_0466-0467 <-> page_0467-0469: 14 shared pts, dy=-5877 dx=-9, extent=404px
+  ? page_0466-0467 <-> page_0469-0469: 43 shared pts, dy=-11932 dx=-16, extent=5429px
+  ? page_0467-0469 <-> page_0469-0469: 4 shared pts, dy=-11599 dx=-57, extent=6px
+  ? page_0467-0469 <-> page_0471-0473: 23 shared pts, dy=-11922 dx=+313, extent=517px
+  ? page_0469-0469 <-> page_0471-0473: 30 shared pts, dy=-6101 dx=+321, extent=2064px
+  ? page_0471-0473 <-> page_0474-0475: 23 shared pts, dy=-11922 dx=-25, extent=601px
+  ? page_0473-0474 <-> page_0474-0475: 8 shared pts, dy=-5720 dx=-8, extent=2787px
+  ? page_0473-0474 <-> page_0475-0476: 62 shared pts, dy=-11876 dx=-23, extent=5567px
+  ? page_0474-0475 <-> page_0475-0476: 6 shared pts, dy=-5576 dx=-8, extent=3335px
+  ? page_0474-0475 <-> page_0476-0477: 43 shared pts, dy=-11932 dx=-25, extent=5614px
+  ? page_0475-0476 <-> page_0476-0477: 5 shared pts, dy=-5727 dx=-6, extent=2777px
+  ? page_0475-0476 <-> page_0477-0478: 55 shared pts, dy=-11948 dx=-15, extent=5606px
+  ? page_0476-0477 <-> page_0477-0478: 11 shared pts, dy=-10822 dx=-25, extent=376px
+  ? page_0476-0477 <-> page_0478-0479: 19 shared pts, dy=-11927 dx=-10, extent=5608px
+  ? page_0477-0478 <-> page_0480-0480: 64 shared pts, dy=-11955 dx=-24, extent=5579px
+  ? page_0478-0479 <-> page_0480-0480: 3 shared pts, dy=-4170 dx=-12, extent=208px
+  ? page_0480-0480 <-> page_0482-0482: 79 shared pts, dy=-6158 dx=-2, extent=5559px
+  ? page_0480-0480 <-> page_0484-0488: 53 shared pts, dy=-18127 dx=-101, extent=5251px
+  ? page_0482-0482 <-> page_0484-0488: 43 shared pts, dy=-11969 dx=-100, extent=5584px
+  ? page_0484-0488 <-> page_0485-0485: 12 shared pts, dy=+5998 dx=+47, extent=507px
+  ? page_0484-0488 <-> page_0488-0489: 64 shared pts, dy=-5983 dx=-10, extent=5576px
+  ? page_0485-0485 <-> page_0489-0490: 19 shared pts, dy=-15952 dx=-63, extent=705px
+  ? page_0488-0489 <-> page_0489-0490: 10 shared pts, dy=-6003 dx=-12, extent=4828px
+  ? page_0488-0489 <-> page_0490-0491: 60 shared pts, dy=-12007 dx=-19, extent=5597px
+  ? page_0489-0490 <-> page_0490-0491: 6 shared pts, dy=-5732 dx=-12, extent=2701px
+  ? page_0489-0490 <-> page_0491-0492: 27 shared pts, dy=-12008 dx=-14, extent=5585px
+  ? page_0490-0491 <-> page_0491-0492: 3 shared pts, dy=-4525 dx=+34, extent=22px
+  ? page_0490-0491 <-> page_0492-0493: 60 shared pts, dy=-11991 dx=-11, extent=5552px
+  ? page_0491-0492 <-> page_0493-0495: 4 shared pts, dy=-11956 dx=-28, extent=37px
+  ? page_0492-0493 <-> page_0494-0495: 6 shared pts, dy=-9219 dx=-8, extent=421px
+  ? page_0493-0495 <-> page_0494-0495: 14 shared pts, dy=-3416 dx=+1, extent=535px
+  ? page_0493-0495 <-> page_0496-0497: 1 shared pts, dy=+490913 dx=+338, extent=0px
+  ? page_0494-0495 <-> page_0496-0497: 5 shared pts, dy=+494173 dx=+134, extent=13px
+  ? page_0494-0495 <-> page_0497-0498: 2 shared pts, dy=+490926 dx=+390, extent=15px
+  ? page_0496-0497 <-> page_0497-0498: 6 shared pts, dy=-5752 dx=-8, extent=2842px
+  ? page_0496-0497 <-> page_0498-0499: 53 shared pts, dy=-12005 dx=-19, extent=5594px
+  ? page_0497-0498 <-> page_0499-0500: 53 shared pts, dy=-12017 dx=-32, extent=5588px
+  ? page_0498-0499 <-> page_0499-0500: 7 shared pts, dy=-6187 dx=-13, extent=2616px
+  ? page_0498-0499 <-> page_0500-0501: 66 shared pts, dy=-12000 dx=-26, extent=5529px
+  ? page_0499-0500 <-> page_0500-0501: 5 shared pts, dy=-5791 dx=-10, extent=2621px
+  ? page_0499-0500 <-> page_0501-0502: 15 shared pts, dy=-12013 dx=-3, extent=5509px
+  ? page_0500-0501 <-> page_0501-0502: 2 shared pts, dy=-6074 dx=+323, extent=0px
+  ? page_0500-0501 <-> page_0502-0503: 64 shared pts, dy=-12003 dx=-18, extent=5583px
+  ? page_0501-0502 <-> page_0502-0503: 1 shared pts, dy=-10246 dx=-4, extent=0px
+  ? page_0501-0502 <-> page_0503-0505: 12 shared pts, dy=-11479 dx=-23, extent=216px
+  ? page_0502-0503 <-> page_0503-0505: 6 shared pts, dy=-5833 dx=-13, extent=3785px
+  ? page_0502-0503 <-> page_0505-0505: 48 shared pts, dy=-11941 dx=-9, extent=5576px
+  ? page_0503-0505 <-> page_0505-0505: 8 shared pts, dy=-8032 dx=-196, extent=15px
+  ? page_0503-0505 <-> page_0507-0508: 2 shared pts, dy=+42844 dx=+68, extent=86px
+  ? page_0505-0505 <-> page_0507-0508: 47 shared pts, dy=+47771 dx=+78, extent=5543px
+  ? page_0505-0505 <-> page_0508-0509: 4 shared pts, dy=+42371 dx=+73, extent=47px
+  ? page_0507-0508 <-> page_0508-0509: 9 shared pts, dy=-5843 dx=-8, extent=2628px
+  ? page_0507-0508 <-> page_0509-0510: 60 shared pts, dy=-11920 dx=-69, extent=5519px
+  ? page_0508-0509 <-> page_0509-0510: 8 shared pts, dy=-5928 dx=-45, extent=2951px
+  ? page_0508-0509 <-> page_0510-0511: 27 shared pts, dy=-11850 dx=-56, extent=3046px
+  ? page_0509-0510 <-> page_0510-0511: 3 shared pts, dy=-5228 dx=-36, extent=19px
+  ? page_0509-0510 <-> page_0511-0512: 49 shared pts, dy=-12003 dx=-4, extent=5536px
+  ? page_0510-0511 <-> page_0511-0512: 6 shared pts, dy=-5871 dx=+74, extent=2654px
+  ? page_0510-0511 <-> page_0512-0513: 31 shared pts, dy=-12000 dx=-12, extent=5533px
+  ? page_0511-0512 <-> page_0512-0513: 7 shared pts, dy=-5864 dx=-11, extent=2528px
+  ? page_0511-0512 <-> page_0513-0514: 63 shared pts, dy=-12014 dx=-21, extent=5603px
+  ? page_0512-0513 <-> page_0514-0515: 36 shared pts, dy=-12011 dx=-25, extent=5588px
+  ? page_0513-0514 <-> page_0515-0516: 92 shared pts, dy=-11949 dx=-19, extent=5600px
+  ? page_0514-0515 <-> page_0515-0516: 3 shared pts, dy=-5952 dx=-6, extent=5600px
+  ? page_0514-0515 <-> page_0516-0517: 37 shared pts, dy=-11950 dx=-16, extent=5581px
+  ? page_0516-0517 <-> page_0518-0520: 22 shared pts, dy=-11938 dx=-34, extent=5603px
+  ? page_0517-0518 <-> page_0518-0520: 5 shared pts, dy=-5536 dx=-11, extent=3511px
+  ? page_0517-0518 <-> page_0520-0520: 38 shared pts, dy=-12008 dx=-23, extent=5560px
+  ? page_0518-0520 <-> page_0520-0520: 2 shared pts, dy=-6557 dx=+357, extent=0px
+  ? page_0518-0520 <-> page_0521-0522: 12 shared pts, dy=-9590 dx=-12, extent=423px
+  ? page_0520-0520 <-> page_0521-0522: 3 shared pts, dy=-5724 dx=-1, extent=208px
+  ? page_0520-0520 <-> page_0522-0523: 39 shared pts, dy=-12018 dx=-40, extent=5561px
+  ? page_0521-0522 <-> page_0522-0523: 9 shared pts, dy=-5911 dx=-51, extent=2497px
+  ? page_0521-0522 <-> page_0523-0524: 29 shared pts, dy=-11061 dx=-60, extent=2993px
+  ? page_0522-0523 <-> page_0524-0525: 70 shared pts, dy=-12010 dx=-24, extent=2399px
+  ? page_0523-0524 <-> page_0524-0525: 11 shared pts, dy=-5891 dx=-8, extent=2544px
+  ? page_0523-0524 <-> page_0525-0526: 34 shared pts, dy=-11956 dx=-8, extent=5506px
+  ? page_0524-0525 <-> page_0525-0526: 13 shared pts, dy=-5641 dx=-8, extent=2517px
+  ? page_0524-0525 <-> page_0526-0527: 36 shared pts, dy=-11937 dx=-27, extent=5467px
+  ? page_0525-0526 <-> page_0527-0528: 29 shared pts, dy=-11945 dx=-27, extent=5543px
+  ? page_0526-0527 <-> page_0527-0528: 5 shared pts, dy=-5816 dx=-12, extent=2421px
+  ? page_0526-0527 <-> page_0528-0529: 51 shared pts, dy=-11959 dx=-28, extent=5559px
+  ? page_0527-0528 <-> page_0528-0529: 3 shared pts, dy=-5793 dx=-13, extent=66px
+  ? page_0527-0528 <-> page_0529-0531: 21 shared pts, dy=-11992 dx=-29, extent=5613px
+  ? page_0528-0529 <-> page_0529-0531: 4 shared pts, dy=-5712 dx=-8, extent=21px
+  ? page_0529-0531 <-> page_0531-0532: 6 shared pts, dy=-5721 dx=-6, extent=3106px
+  ? page_0529-0531 <-> page_0532-0533: 24 shared pts, dy=-11995 dx=-18, extent=5531px
+  ? page_0532-0533 <-> page_0534-0535: 10 shared pts, dy=-11137 dx=-22, extent=3745px
+  ? page_0533-0534 <-> page_0534-0535: 10 shared pts, dy=-5568 dx=-11, extent=3844px
+  ? page_0533-0534 <-> page_0535-0536: 28 shared pts, dy=-11885 dx=-13, extent=5496px
+  ? page_0534-0535 <-> page_0535-0536: 5 shared pts, dy=-5660 dx=-7, extent=3827px
+  ? page_0534-0535 <-> page_0536-0538: 7 shared pts, dy=-11289 dx=-15, extent=210px
+  ? page_0535-0536 <-> page_0536-0538: 7 shared pts, dy=-5629 dx=-8, extent=3904px
+  ? page_0535-0536 <-> page_0537-0539: 50 shared pts, dy=-11937 dx=-14, extent=3118px
+  ? page_0536-0538 <-> page_0539-0540: 26 shared pts, dy=-11870 dx=-30, extent=5624px
+  ? page_0537-0539 <-> page_0539-0540: 9 shared pts, dy=-5683 dx=-11, extent=2413px
+  ? page_0537-0539 <-> page_0540-0541: 84 shared pts, dy=-11956 dx=-24, extent=5565px
+  ? page_0539-0540 <-> page_0540-0541: 9 shared pts, dy=-5678 dx=-4, extent=2399px
+  ? page_0539-0540 <-> page_0541-0542: 35 shared pts, dy=-11981 dx=-5, extent=5611px
+  ? page_0540-0541 <-> page_0542-0543: 75 shared pts, dy=-11944 dx=-22, extent=5561px
+  ? page_0541-0542 <-> page_0542-0543: 5 shared pts, dy=-5968 dx=-11, extent=5528px
+  ? page_0541-0542 <-> page_0543-0545: 17 shared pts, dy=-11960 dx=-21, extent=5525px
+  ? page_0542-0543 <-> page_0543-0545: 3 shared pts, dy=-5626 dx=-6, extent=60px
+  ? page_0542-0543 <-> page_0544-0546: 42 shared pts, dy=-12009 dx=-23, extent=5132px
+  ? page_0543-0545 <-> page_0544-0546: 5 shared pts, dy=-4630 dx=-6, extent=2208px
+  ? page_0543-0545 <-> page_0546-0547: 25 shared pts, dy=-12002 dx=-19, extent=5562px
+  ? page_0544-0546 <-> page_0546-0547: 2 shared pts, dy=-5825 dx=-3, extent=1521px
+  ? page_0544-0546 <-> page_0547-0548: 44 shared pts, dy=-11988 dx=-16, extent=5550px
+  ? page_0546-0547 <-> page_0547-0548: 4 shared pts, dy=-3193 dx=+85, extent=21px
+  ? page_0546-0547 <-> page_0548-0549: 56 shared pts, dy=-11170 dx=+68, extent=345px
+  ? page_0547-0548 <-> page_0548-0549: 3 shared pts, dy=-4343 dx=-6, extent=67px
+  ? page_0547-0548 <-> page_0549-0550: 105 shared pts, dy=-11114 dx=+72, extent=1877px
+  ? page_0548-0549 <-> page_0549-0550: 12 shared pts, dy=-5587 dx=-6, extent=3925px
+  ? page_0548-0549 <-> page_0550-0551: 21 shared pts, dy=-11176 dx=-16, extent=3938px
+  ? page_0549-0550 <-> page_0550-0551: 20 shared pts, dy=-5589 dx=-9, extent=4025px
+  ? page_0549-0550 <-> page_0551-0552: 38 shared pts, dy=-11954 dx=-14, extent=1455px
+  ? page_0550-0551 <-> page_0551-0552: 3 shared pts, dy=-5998 dx=-8, extent=35px
+  ? page_0550-0551 <-> page_0553-0553: 18 shared pts, dy=-10876 dx=-16, extent=3106px
+  ? page_0551-0552 <-> page_0553-0553: 2 shared pts, dy=-6009 dx=-10, extent=6px
+  ? page_0551-0552 <-> page_0553-0555: 33 shared pts, dy=-11994 dx=-24, extent=5430px
+  ? page_0553-0553 <-> page_0553-0555: 4 shared pts, dy=-7590 dx=-474, extent=46px
+  ? page_0553-0553 <-> page_0555-0556: 15 shared pts, dy=-11936 dx=-20, extent=5508px
+  ? page_0553-0555 <-> page_0555-0556: 3 shared pts, dy=-5821 dx=-364, extent=1px
+  ? page_0553-0555 <-> page_0556-0557: 83 shared pts, dy=-11953 dx=-19, extent=5547px
+  ? page_0555-0556 <-> page_0556-0557: 2 shared pts, dy=-5991 dx=-15, extent=46px
+  ? page_0555-0556 <-> page_0557-0558: 24 shared pts, dy=-11989 dx=-21, extent=5597px
+  ? page_0556-0557 <-> page_0557-0558: 6 shared pts, dy=-5491 dx=-7, extent=2268px
+  ? page_0556-0557 <-> page_0558-0559: 84 shared pts, dy=-11931 dx=-13, extent=5466px
+  ? page_0557-0558 <-> page_0558-0559: 5 shared pts, dy=-5471 dx=-6, extent=2331px
+  ? page_0557-0558 <-> page_0559-0560: 45 shared pts, dy=-11939 dx=-17, extent=5545px
+  ? page_0558-0559 <-> page_0559-0560: 4 shared pts, dy=-6062 dx=-147, extent=3px
+  ? page_0558-0559 <-> page_0560-0561: 56 shared pts, dy=-11961 dx=-17, extent=5566px
+  ? page_0559-0560 <-> page_0561-0563: 19 shared pts, dy=-11947 dx=-14, extent=5547px
+  ? page_0560-0561 <-> page_0561-0563: 3 shared pts, dy=-5572 dx=-9, extent=61px
+  ? page_0560-0561 <-> page_0562-0564: 35 shared pts, dy=-11947 dx=-14, extent=5550px
+  ? page_0561-0563 <-> page_0562-0564: 3 shared pts, dy=-5381 dx=-9, extent=15px
+  ? page_0561-0563 <-> page_0564-0565: 26 shared pts, dy=-11926 dx=-16, extent=5513px
+  ? page_0562-0564 <-> page_0564-0565: 4 shared pts, dy=-7433 dx=+80, extent=8px
+  ? page_0562-0564 <-> page_0565-0566: 70 shared pts, dy=-11986 dx=-30, extent=5563px
+  ? page_0564-0565 <-> page_0565-0566: 6 shared pts, dy=-5662 dx=-12, extent=2288px
+  ? page_0564-0565 <-> page_0566-0567: 29 shared pts, dy=-12018 dx=-31, extent=5527px
+  ? page_0565-0566 <-> page_0567-0568: 67 shared pts, dy=-12037 dx=-16, extent=5476px
+  ? page_0566-0567 <-> page_0568-0569: 54 shared pts, dy=-12009 dx=-15, extent=5618px
+  ? page_0567-0568 <-> page_0568-0569: 3 shared pts, dy=-5561 dx=-11, extent=65px
+  ? page_0567-0568 <-> page_0569-0571: 57 shared pts, dy=-11937 dx=-20, extent=5526px
+  ? page_0568-0569 <-> page_0569-0571: 4 shared pts, dy=-10420 dx=-18, extent=288px
+  ? page_0568-0569 <-> page_0570-0572: 38 shared pts, dy=-11963 dx=-24, extent=5594px
+  ? page_0569-0571 <-> page_0572-0573: 83 shared pts, dy=-12008 dx=-38, extent=5535px
+  ? page_0570-0572 <-> page_0572-0573: 7 shared pts, dy=-5479 dx=-13, extent=2255px
+  ? page_0570-0572 <-> page_0573-0574: 37 shared pts, dy=-11940 dx=-20, extent=5579px
+  ? page_0572-0573 <-> page_0573-0574: 11 shared pts, dy=-5519 dx=-4, extent=2271px
+  ? page_0573-0574 <-> page_0575-0576: 141 shared pts, dy=-11939 dx=-25, extent=5599px
+  ? page_0574-0575 <-> page_0575-0576: 9 shared pts, dy=-5970 dx=-15, extent=5052px
+  ? page_0575-0576 <-> page_0576-0577: 5 shared pts, dy=-8743 dx=+137, extent=36px
+  ? page_0575-0576 <-> page_0577-0578: 23 shared pts, dy=-11956 dx=-12, extent=5545px
+  ? page_0576-0577 <-> page_0577-0578: 3 shared pts, dy=-5597 dx=-7, extent=17px
+  ? page_0576-0577 <-> page_0579-0579: 77 shared pts, dy=-11945 dx=-14, extent=5526px
+  ? page_0577-0578 <-> page_0579-0579: 8 shared pts, dy=-5987 dx=-8, extent=598px
+  ? page_0577-0578 <-> page_0580-0581: 44 shared pts, dy=-12003 dx=-1, extent=5542px
+  ? page_0579-0579 <-> page_0580-0581: 4 shared pts, dy=-5629 dx=+1, extent=34px
+  ? page_0579-0579 <-> page_0581-0582: 75 shared pts, dy=-11989 dx=-29, extent=5542px
+  ? page_0580-0581 <-> page_0582-0583: 39 shared pts, dy=-11986 dx=-31, extent=5516px
+  ? page_0581-0582 <-> page_0582-0583: 13 shared pts, dy=-5460 dx=-7, extent=2245px
+  ? page_0581-0582 <-> page_0583-0584: 88 shared pts, dy=-12019 dx=-7, extent=5555px
+  ? page_0582-0583 <-> page_0583-0584: 6 shared pts, dy=-5489 dx=-5, extent=2243px
+  ? page_0582-0583 <-> page_0584-0585: 18 shared pts, dy=-11942 dx=-20, extent=5490px
+  ? page_0583-0584 <-> page_0585-0586: 61 shared pts, dy=-11895 dx=-27, extent=3251px
+  ? page_0584-0585 <-> page_0585-0586: 3 shared pts, dy=-7451 dx=-96, extent=54px
+  ? page_0584-0585 <-> page_0586-0588: 21 shared pts, dy=-11966 dx=-31, extent=5584px
+  ? page_0585-0586 <-> page_0586-0588: 13 shared pts, dy=-5537 dx=-12, extent=4107px
+  ? page_0585-0586 <-> page_0588-0588: 58 shared pts, dy=-11970 dx=-22, extent=2913px
+  ? page_0586-0588 <-> page_0588-0588: 3 shared pts, dy=-5965 dx=-3, extent=3939px
+  ? page_0586-0588 <-> page_0589-0590: 24 shared pts, dy=-11933 dx=+3, extent=5564px
+  ? page_0588-0588 <-> page_0589-0590: 1 shared pts, dy=-8801 dx=-21, extent=0px
+  ? page_0588-0588 <-> page_0590-0591: 54 shared pts, dy=-11951 dx=-13, extent=5508px
+  ? page_0589-0590 <-> page_0590-0591: 2 shared pts, dy=-5980 dx=-19, extent=0px
+  ? page_0589-0590 <-> page_0591-0592: 37 shared pts, dy=-11976 dx=-25, extent=5425px
+  ? page_0590-0591 <-> page_0591-0592: 2 shared pts, dy=-5489 dx=-11, extent=6px
+  ? page_0590-0591 <-> page_0592-0593: 95 shared pts, dy=-12026 dx=-22, extent=5595px
+  ? page_0591-0592 <-> page_0592-0593: 7 shared pts, dy=-5356 dx=-12, extent=2195px
+  ? page_0591-0592 <-> page_0593-0594: 22 shared pts, dy=-12009 dx=-26, extent=5591px
+  ? page_0592-0593 <-> page_0593-0594: 5 shared pts, dy=-5559 dx=-6, extent=2457px
+  ? page_0592-0593 <-> page_0594-0596: 65 shared pts, dy=-11922 dx=-14, extent=5596px
+  ? page_0593-0594 <-> page_0594-0596: 6 shared pts, dy=-4037 dx=-45, extent=13px
+  ? page_0593-0594 <-> page_0595-0597: 21 shared pts, dy=-11969 dx=-9, extent=5595px
+  ? page_0594-0596 <-> page_0595-0597: 3 shared pts, dy=-4386 dx=-9, extent=20px
+  ? page_0594-0596 <-> page_0597-0598: 76 shared pts, dy=-12039 dx=-17, extent=5564px
+  ? page_0595-0597 <-> page_0597-0598: 3 shared pts, dy=-5849 dx=-13, extent=479px
+  ? page_0595-0597 <-> page_0598-0599: 33 shared pts, dy=-11974 dx=-16, extent=5477px
+  ? page_0597-0598 <-> page_0598-0599: 2 shared pts, dy=-3346 dx=+427, extent=1px
+  ? page_0597-0598 <-> page_0599-0600: 84 shared pts, dy=-11949 dx=-14, extent=5520px
+  ? page_0598-0599 <-> page_0599-0600: 2 shared pts, dy=-5854 dx=-372, extent=1px
+  ? page_0598-0599 <-> page_0600-0601: 19 shared pts, dy=-11950 dx=-23, extent=5576px
+  ? page_0599-0600 <-> page_0600-0601: 4 shared pts, dy=-3939 dx=-94, extent=11px
+  ? page_0599-0600 <-> page_0602-0602: 55 shared pts, dy=-11972 dx=-26, extent=3116px
+  ? page_0600-0601 <-> page_0602-0602: 2 shared pts, dy=-5636 dx=-10, extent=0px
+  ? page_0600-0601 <-> page_0602-0604: 20 shared pts, dy=-11999 dx=-25, extent=3093px
+  ? page_0602-0602 <-> page_0602-0604: 2 shared pts, dy=-4481 dx=+68, extent=0px
+  ? page_0602-0602 <-> page_0603-0605: 60 shared pts, dy=-10085 dx=+172, extent=5554px
+  ? page_0602-0604 <-> page_0603-0605: 4 shared pts, dy=-6822 dx=-166, extent=2px
+  ? page_0602-0604 <-> page_0605-0606: 22 shared pts, dy=-10050 dx=+170, extent=3344px
+  ? page_0603-0605 <-> page_0605-0606: 13 shared pts, dy=-10065 dx=+168, extent=1062px
+  ? page_0603-0605 <-> page_0606-0607: 80 shared pts, dy=-11945 dx=-23, extent=5542px
+  ? page_0605-0606 <-> page_0606-0607: 2 shared pts, dy=-3612 dx=-6, extent=8px
+  ? page_0605-0606 <-> page_0607-0609: 12 shared pts, dy=-11989 dx=-21, extent=5522px
+  ? page_0606-0607 <-> page_0607-0609: 2 shared pts, dy=-5384 dx=-20, extent=10px
+  ? page_0606-0607 <-> page_0608-0610: 57 shared pts, dy=-12021 dx=-20, extent=5523px
+  ? page_0607-0609 <-> page_0608-0610: 4 shared pts, dy=-9406 dx=-19, extent=771px
+  ? page_0607-0609 <-> page_0610-0611: 19 shared pts, dy=-12015 dx=-15, extent=5498px
+  ? page_0608-0610 <-> page_0610-0611: 2 shared pts, dy=-6020 dx=-4, extent=46px
+  ? page_0608-0610 <-> page_0611-0612: 70 shared pts, dy=-11969 dx=-10, extent=5468px
+  ? page_0610-0611 <-> page_0611-0612: 5 shared pts, dy=-5793 dx=-7, extent=3094px
+  ? page_0610-0611 <-> page_0612-0613: 21 shared pts, dy=-11953 dx=-22, extent=5559px
+  ? page_0611-0612 <-> page_0612-0613: 6 shared pts, dy=-5504 dx=-10, extent=2619px
+  ? page_0611-0612 <-> page_0613-0614: 37 shared pts, dy=-11976 dx=-26, extent=5305px
+  ? page_0612-0613 <-> page_0613-0614: 5 shared pts, dy=-3999 dx=+146, extent=47px
+  ? page_0612-0613 <-> page_0615-0615: 27 shared pts, dy=-11961 dx=-19, extent=5335px
+  ? page_0613-0614 <-> page_0615-0615: 5 shared pts, dy=-5380 dx=-11, extent=509px
+  ? page_0613-0614 <-> page_0616-0616: 34 shared pts, dy=-12020 dx=-10, extent=3724px
+  ? page_0615-0615 <-> page_0616-0616: 1 shared pts, dy=-9134 dx=-29, extent=0px
+  ? page_0615-0615 <-> page_0617-0618: 16 shared pts, dy=-12007 dx=-12, extent=5327px
+  ? page_0616-0616 <-> page_0618-0619: 44 shared pts, dy=-11937 dx=-18, extent=1591px
+  ? page_0617-0618 <-> page_0618-0619: 2 shared pts, dy=-6980 dx=-411, extent=17px
+  ? page_0617-0618 <-> page_0619-0620: 26 shared pts, dy=-11956 dx=-21, extent=5598px
+  ? page_0618-0619 <-> page_0619-0620: 6 shared pts, dy=-6032 dx=+94, extent=664px
+  ? page_0618-0619 <-> page_0620-0622: 55 shared pts, dy=-12024 dx=-16, extent=5588px
+  ? page_0619-0620 <-> page_0620-0622: 2 shared pts, dy=-5712 dx=-467, extent=6px
+  ? page_0619-0620 <-> page_0621-0623: 18 shared pts, dy=-12027 dx=-8, extent=5604px
+  ? page_0620-0622 <-> page_0621-0623: 6 shared pts, dy=-6000 dx=-9, extent=58px
+  ? page_0620-0622 <-> page_0623-0624: 71 shared pts, dy=-12031 dx=-16, extent=5589px
+  ? page_0621-0623 <-> page_0623-0624: 5 shared pts, dy=-8191 dx=-499, extent=8px
+  ? page_0621-0623 <-> page_0624-0625: 28 shared pts, dy=-12035 dx=-20, extent=5581px
+  ? page_0623-0624 <-> page_0624-0625: 2 shared pts, dy=-5998 dx=-7, extent=0px
+  ? page_0623-0624 <-> page_0625-0626: 54 shared pts, dy=-12046 dx=-20, extent=5589px
+  ? page_0624-0625 <-> page_0625-0626: 3 shared pts, dy=-5983 dx=-175, extent=70px
+  ? page_0624-0625 <-> page_0626-0627: 16 shared pts, dy=-12100 dx=-20, extent=5494px
+  ? page_0625-0626 <-> page_0626-0627: 3 shared pts, dy=-5655 dx=-10, extent=69px
+  ? page_0625-0626 <-> page_0627-0628: 47 shared pts, dy=-12074 dx=-26, extent=5584px
+  ? page_0626-0627 <-> page_0627-0628: 2 shared pts, dy=-10916 dx=-18, extent=0px
+  ? page_0626-0627 <-> page_0628-0630: 9 shared pts, dy=-11079 dx=-24, extent=4209px
+  ? page_0627-0628 <-> page_0628-0630: 6 shared pts, dy=-5503 dx=-15, extent=515px
+  ? page_0627-0628 <-> page_0629-0631: 31 shared pts, dy=-11949 dx=-22, extent=3100px
+  ? page_0628-0630 <-> page_0629-0631: 1 shared pts, dy=-9559 dx=+5, extent=0px
+  ? page_0628-0630 <-> page_0631-0632: 19 shared pts, dy=-12008 dx=-28, extent=5570px
+  ? page_0629-0631 <-> page_0632-0633: 35 shared pts, dy=-12017 dx=-14, extent=5573px
+  ? page_0631-0632 <-> page_0632-0633: 4 shared pts, dy=-3910 dx=+124, extent=29px
+  ? page_0631-0632 <-> page_0633-0634: 27 shared pts, dy=-12003 dx=-14, extent=5476px
+  ? page_0632-0633 <-> page_0633-0634: 4 shared pts, dy=-5391 dx=-3, extent=16px
+  ? page_0632-0633 <-> page_0634-0635: 54 shared pts, dy=-12020 dx=-22, extent=5573px
+  ? page_0633-0634 <-> page_0634-0635: 2 shared pts, dy=-5380 dx=-8, extent=10px
+  ? page_0633-0634 <-> page_0635-0637: 22 shared pts, dy=-12025 dx=-16, extent=5455px
+  ? page_0634-0635 <-> page_0635-0637: 3 shared pts, dy=-5470 dx=-9, extent=21px
+  ? page_0634-0635 <-> page_0636-0638: 45 shared pts, dy=-11944 dx=-29, extent=5581px
+  ? page_0635-0637 <-> page_0636-0638: 3 shared pts, dy=-8382 dx=-28, extent=9px
+  ? page_0635-0637 <-> page_0638-0639: 30 shared pts, dy=-11921 dx=-19, extent=5602px
+  ? page_0636-0638 <-> page_0638-0639: 2 shared pts, dy=-8379 dx=-18, extent=9px
+  ? page_0636-0638 <-> page_0639-0640: 55 shared pts, dy=-11950 dx=-14, extent=5567px
+  ? page_0638-0639 <-> page_0639-0640: 3 shared pts, dy=-5343 dx=-9, extent=14px
+  ? page_0638-0639 <-> page_0640-0641: 12 shared pts, dy=-11954 dx=-32, extent=5308px
+  ? page_0639-0640 <-> page_0640-0641: 4 shared pts, dy=-5259 dx=-8, extent=140px
+  ? page_0639-0640 <-> page_0641-0643: 73 shared pts, dy=-12046 dx=-20, extent=5577px
+  ? page_0640-0641 <-> page_0641-0643: 12 shared pts, dy=-8190 dx=-490, extent=50px
+  ? page_0640-0641 <-> page_0642-0644: 27 shared pts, dy=-12007 dx=-15, extent=5469px
+  ? page_0641-0643 <-> page_0642-0644: 2 shared pts, dy=-3088 dx=-3, extent=12px
+  ? page_0641-0643 <-> page_0644-0645: 69 shared pts, dy=-11995 dx=-30, extent=5556px
+  ? page_0642-0644 <-> page_0644-0645: 3 shared pts, dy=-8355 dx=-14, extent=2721px
+  ? page_0642-0644 <-> page_0645-0647: 27 shared pts, dy=-12021 dx=-6, extent=5504px
+  ? page_0644-0645 <-> page_0645-0647: 5 shared pts, dy=-5318 dx=-7, extent=2901px
+  ? page_0644-0645 <-> page_0646-0648: 38 shared pts, dy=-11955 dx=-6, extent=5577px
+  ? page_0645-0647 <-> page_0646-0648: 3 shared pts, dy=-5350 dx=-12, extent=3361px
+  ? page_0645-0647 <-> page_0648-0649: 23 shared pts, dy=-11972 dx=-23, extent=5554px
+  ? page_0646-0648 <-> page_0648-0649: 5 shared pts, dy=-5350 dx=-11, extent=1978px
+  ? page_0646-0648 <-> page_0649-0650: 122 shared pts, dy=-12007 dx=-28, extent=5606px
+  ? page_0648-0649 <-> page_0649-0650: 5 shared pts, dy=-5357 dx=-11, extent=1963px
+  ? page_0648-0649 <-> page_0650-0651: 25 shared pts, dy=-12010 dx=-24, extent=5597px
+  ? page_0649-0650 <-> page_0650-0651: 6 shared pts, dy=-5505 dx=-9, extent=2093px
+  ? page_0649-0650 <-> page_0651-0652: 63 shared pts, dy=-12000 dx=-7, extent=5522px
+  ? page_0650-0651 <-> page_0651-0652: 3 shared pts, dy=-8132 dx=-496, extent=27px
+  ? page_0650-0651 <-> page_0652-0654: 22 shared pts, dy=-12022 dx=-13, extent=5448px
+  ? page_0651-0652 <-> page_0652-0654: 3 shared pts, dy=-5429 dx=-7, extent=16px
+  ? page_0651-0652 <-> page_0653-0655: 52 shared pts, dy=-12002 dx=-13, extent=5495px
+  ? page_0652-0654 <-> page_0653-0655: 2 shared pts, dy=-5989 dx=-96, extent=12px
+  ? page_0652-0654 <-> page_0655-0656: 30 shared pts, dy=-11941 dx=-26, extent=5529px
+  ? page_0653-0655 <-> page_0655-0656: 1 shared pts, dy=-9105 dx=-10, extent=0px
+  ? page_0653-0655 <-> page_0656-0657: 63 shared pts, dy=-11941 dx=-27, extent=5477px
+  ? page_0655-0656 <-> page_0656-0657: 2 shared pts, dy=-9034 dx=-277, extent=0px
+  ? page_0655-0656 <-> page_0657-0658: 34 shared pts, dy=-12020 dx=-6, extent=5542px
+  ? page_0656-0657 <-> page_0657-0658: 2 shared pts, dy=-5154 dx=+0, extent=64px
+  ? page_0656-0657 <-> page_0658-0659: 56 shared pts, dy=-12027 dx=-7, extent=5504px
+  ? page_0657-0658 <-> page_0658-0659: 2 shared pts, dy=-5983 dx=-12, extent=7px
+  ? page_0657-0658 <-> page_0659-0661: 11 shared pts, dy=-12049 dx=-40, extent=4203px
+  ? page_0658-0659 <-> page_0659-0661: 3 shared pts, dy=-5227 dx=-13, extent=17px
+  ? page_0658-0659 <-> page_0660-0662: 27 shared pts, dy=-12020 dx=-24, extent=4296px
+  ? page_0659-0661 <-> page_0660-0662: 2 shared pts, dy=-9093 dx=-272, extent=1px
+  ? page_0659-0661 <-> page_0662-0663: 28 shared pts, dy=-11998 dx=-8, extent=5549px
+  ? page_0660-0662 <-> page_0663-0664: 146 shared pts, dy=-12025 dx=-13, extent=5580px
+  ? page_0662-0663 <-> page_0664-0665: 21 shared pts, dy=-12045 dx=-11, extent=5535px
+  ? page_0663-0664 <-> page_0664-0665: 3 shared pts, dy=-5362 dx=-7, extent=60px
+  ? page_0663-0664 <-> page_0665-0666: 55 shared pts, dy=-11947 dx=-16, extent=5554px
+  ? page_0664-0665 <-> page_0665-0666: 1 shared pts, dy=-5909 dx=-157, extent=0px
+  ? page_0664-0665 <-> page_0667-0667: 22 shared pts, dy=-11885 dx=-35, extent=5518px
+  ? page_0665-0666 <-> page_0667-0667: 4 shared pts, dy=-3728 dx=+181, extent=22px
+  ? page_0665-0666 <-> page_0668-0669: 46 shared pts, dy=-11920 dx=-23, extent=1696px
+  ? page_0667-0667 <-> page_0668-0669: 2 shared pts, dy=-5954 dx=-232, extent=3904px
+  ? page_0667-0667 <-> page_0669-0670: 22 shared pts, dy=-11961 dx=-4, extent=5531px
+  ? page_0668-0669 <-> page_0670-0671: 70 shared pts, dy=-12013 dx=-16, extent=5589px
+  ? page_0669-0670 <-> page_0670-0671: 2 shared pts, dy=-4056 dx=+267, extent=937px
+  ? page_0669-0670 <-> page_0671-0673: 24 shared pts, dy=-12004 dx=-22, extent=5514px
+  ? page_0670-0671 <-> page_0671-0673: 2 shared pts, dy=-5980 dx=-13, extent=6px
+  ? page_0670-0671 <-> page_0672-0674: 64 shared pts, dy=-12010 dx=-34, extent=5576px
+  ? page_0671-0673 <-> page_0672-0674: 2 shared pts, dy=-3408 dx=-10, extent=15px
+  ? page_0671-0673 <-> page_0674-0675: 23 shared pts, dy=-12020 dx=-28, extent=5558px
+  ? page_0672-0674 <-> page_0674-0675: 2 shared pts, dy=-5204 dx=-13, extent=16px
+  ? page_0672-0674 <-> page_0675-0676: 68 shared pts, dy=-11998 dx=-11, extent=5526px
+  ? page_0674-0675 <-> page_0675-0676: 3 shared pts, dy=-6359 dx=-143, extent=3px
+  ? page_0674-0675 <-> page_0676-0677: 25 shared pts, dy=-11947 dx=-14, extent=5562px
+  ? page_0675-0676 <-> page_0676-0677: 7 shared pts, dy=-5213 dx=-7, extent=1783px
+  ? page_0675-0676 <-> page_0677-0678: 38 shared pts, dy=-11949 dx=-13, extent=5543px
+  ? page_0676-0677 <-> page_0677-0678: 3 shared pts, dy=-5154 dx=-13, extent=71px
+  ? page_0676-0677 <-> page_0678-0680: 21 shared pts, dy=-12006 dx=-35, extent=5439px
+  ? page_0677-0678 <-> page_0679-0681: 28 shared pts, dy=-11943 dx=-14, extent=5547px
+  ? page_0678-0680 <-> page_0679-0681: 12 shared pts, dy=-6590 dx=+249, extent=50px
+  ? page_0678-0680 <-> page_0681-0682: 19 shared pts, dy=-11991 dx=-12, extent=5494px
+  ? page_0679-0681 <-> page_0681-0682: 5 shared pts, dy=-3896 dx=-3, extent=552px
+  ? page_0679-0681 <-> page_0682-0683: 92 shared pts, dy=-12032 dx=-30, extent=5499px
+  ? page_0681-0682 <-> page_0682-0683: 2 shared pts, dy=-5163 dx=-9, extent=19px
+  ? page_0681-0682 <-> page_0683-0684: 10 shared pts, dy=-12004 dx=-23, extent=4946px
+  ? page_0682-0683 <-> page_0683-0684: 5 shared pts, dy=-5149 dx=-8, extent=1051px
+  ? page_0682-0683 <-> page_0684-0686: 39 shared pts, dy=-12022 dx=-28, extent=5547px
+  ? page_0683-0684 <-> page_0684-0686: 3 shared pts, dy=-5505 dx=-420, extent=78px
+  ? page_0683-0684 <-> page_0685-0687: 19 shared pts, dy=-12007 dx=-28, extent=4410px
+  ? page_0684-0686 <-> page_0687-0688: 95 shared pts, dy=-12006 dx=-7, extent=5595px
+  ? page_0685-0687 <-> page_0687-0688: 8 shared pts, dy=-5019 dx=-12, extent=2040px
+  ? page_0685-0687 <-> page_0688-0690: 25 shared pts, dy=-12005 dx=-21, extent=5571px
+  ? page_0687-0688 <-> page_0688-0690: 3 shared pts, dy=-5016 dx=-13, extent=1799px
+  ? page_0687-0688 <-> page_0689-0691: 55 shared pts, dy=-12017 dx=-25, extent=5585px
+  ? page_0688-0690 <-> page_0689-0691: 11 shared pts, dy=-6648 dx=+222, extent=62px
+  ? page_0688-0690 <-> page_0691-0692: 34 shared pts, dy=-12009 dx=-19, extent=5572px
+  ? page_0689-0691 <-> page_0691-0692: 7 shared pts, dy=-6116 dx=+306, extent=3px
+  ? page_0689-0691 <-> page_0692-0694: 60 shared pts, dy=-12018 dx=-21, extent=5590px
+  ? page_0691-0692 <-> page_0692-0694: 4 shared pts, dy=-3566 dx=-9, extent=2039px
+  ? page_0691-0692 <-> page_0694-0694: 29 shared pts, dy=-11965 dx=-16, extent=5321px
+  ? page_0692-0694 <-> page_0694-0694: 3 shared pts, dy=-5352 dx=-8, extent=3px
+  ? page_0692-0694 <-> page_0695-0696: 42 shared pts, dy=-11930 dx=-19, extent=5589px
+  ? page_0694-0694 <-> page_0695-0696: 2 shared pts, dy=-6403 dx=+2, extent=6px
+  ? page_0694-0694 <-> page_0696-0698: 25 shared pts, dy=-11957 dx=-32, extent=5485px
+  ? page_0695-0696 <-> page_0696-0698: 5 shared pts, dy=-4932 dx=-6, extent=3949px
+  ? page_0695-0696 <-> page_0698-0698: 50 shared pts, dy=-11999 dx=-17, extent=1381px
+  ? page_0696-0698 <-> page_0698-0698: 7 shared pts, dy=-5156 dx=-8, extent=2418px
+  ? page_0696-0698 <-> page_0699-0700: 21 shared pts, dy=-12014 dx=-14, extent=4588px
+  ? page_0698-0698 <-> page_0699-0700: 3 shared pts, dy=-5114 dx=-11, extent=1900px
+  ? page_0698-0698 <-> page_0700-0702: 53 shared pts, dy=-12017 dx=-20, extent=5544px
+  ? page_0699-0700 <-> page_0700-0702: 16 shared pts, dy=-4139 dx=+152, extent=518px
+  ? page_0699-0700 <-> page_0701-0703: 32 shared pts, dy=-12019 dx=-8, extent=5522px
+  ? page_0700-0702 <-> page_0701-0703: 4 shared pts, dy=-9351 dx=-5, extent=20px
+  ? page_0700-0702 <-> page_0703-0704: 72 shared pts, dy=-12017 dx=-16, extent=5494px
+  ? page_0703-0704 <-> page_0705-0706: 1 shared pts, dy=+1001994 dx=+384, extent=0px
+  ? page_0703-0704 <-> page_0706-0707: 1 shared pts, dy=+993719 dx=+384, extent=0px
+  ? page_0705-0706 <-> page_0706-0707: 5 shared pts, dy=-5212 dx=-11, extent=1673px
+  ? page_0705-0706 <-> page_0707-0708: 76 shared pts, dy=-11890 dx=-20, extent=5522px
+  ? page_0706-0707 <-> page_0707-0708: 4 shared pts, dy=-4942 dx=-8, extent=1672px
+  ? page_0706-0707 <-> page_0709-0709: 36 shared pts, dy=-11908 dx=-18, extent=5519px
+  ? page_0707-0708 <-> page_0709-0709: 2 shared pts, dy=-4523 dx=-76, extent=90px
+  ? page_0707-0708 <-> page_0709-0711: 64 shared pts, dy=-11933 dx=-22, extent=5292px
+  ? page_0709-0709 <-> page_0709-0711: 5 shared pts, dy=-4120 dx=+142, extent=1744px
+  ? page_0709-0709 <-> page_0711-0712: 25 shared pts, dy=-11992 dx=-20, extent=5527px
+  ? page_0709-0711 <-> page_0711-0712: 7 shared pts, dy=-5035 dx=-9, extent=2099px
+  ? page_0709-0711 <-> page_0712-0713: 87 shared pts, dy=-12029 dx=-23, extent=5586px
+  ? page_0711-0712 <-> page_0712-0713: 8 shared pts, dy=-5033 dx=-10, extent=78px
+  ? page_0711-0712 <-> page_0713-0715: 19 shared pts, dy=-12034 dx=-22, extent=5254px
+  ? page_0712-0713 <-> page_0713-0715: 6 shared pts, dy=-4983 dx=-4, extent=3376px
+  ? page_0712-0713 <-> page_0714-0716: 54 shared pts, dy=-12037 dx=-9, extent=5591px
+  ? page_0713-0715 <-> page_0714-0716: 3 shared pts, dy=-10326 dx=-19, extent=65px
+  ? page_0713-0715 <-> page_0716-0717: 24 shared pts, dy=-11994 dx=-19, extent=5531px
+  ? page_0714-0716 <-> page_0716-0717: 4 shared pts, dy=-5332 dx=-11, extent=4082px
+  ? page_0714-0716 <-> page_0717-0718: 116 shared pts, dy=-12018 dx=-27, extent=5546px
+  ? page_0716-0717 <-> page_0717-0718: 4 shared pts, dy=-4924 dx=-12, extent=2138px
+  ? page_0716-0717 <-> page_0718-0720: 35 shared pts, dy=-12013 dx=-26, extent=5524px
+  ? page_0717-0718 <-> page_0718-0720: 5 shared pts, dy=-4923 dx=-10, extent=1703px
+  ? page_0717-0718 <-> page_0720-0720: 45 shared pts, dy=-11940 dx=-5, extent=5404px
+  ? page_0718-0720 <-> page_0720-0720: 21 shared pts, dy=-6651 dx=+231, extent=60px
+  ? page_0718-0720 <-> page_0721-0722: 44 shared pts, dy=-11872 dx=-10, extent=5534px
+  ? page_0720-0720 <-> page_0721-0722: 2 shared pts, dy=-5937 dx=+49, extent=11px
+  ? page_0720-0720 <-> page_0722-0724: 75 shared pts, dy=-11991 dx=-30, extent=3732px
+  ? page_0721-0722 <-> page_0722-0724: 2 shared pts, dy=-5438 dx=-14, extent=0px
+  ? page_0721-0722 <-> page_0723-0725: 16 shared pts, dy=-12055 dx=-16, extent=5296px
+  ? page_0722-0724 <-> page_0723-0725: 3 shared pts, dy=-5033 dx=-10, extent=10px
+  ? page_0722-0724 <-> page_0725-0726: 37 shared pts, dy=-12008 dx=-0, extent=5577px
+  ? page_0723-0725 <-> page_0725-0726: 2 shared pts, dy=-9860 dx=-11, extent=13px
+  ? page_0723-0725 <-> page_0726-0727: 17 shared pts, dy=-12016 dx=-5, extent=5566px
+  ? page_0725-0726 <-> page_0726-0727: 2 shared pts, dy=-7268 dx=-267, extent=0px
+  ? page_0725-0726 <-> page_0727-0729: 66 shared pts, dy=-12020 dx=-28, extent=5578px
+  ? page_0726-0727 <-> page_0727-0729: 3 shared pts, dy=-5338 dx=-8, extent=1599px
+  ? page_0726-0727 <-> page_0728-0730: 21 shared pts, dy=-11999 dx=-38, extent=5567px
+  ? page_0727-0729 <-> page_0728-0730: 9 shared pts, dy=-5053 dx=+1, extent=2893px
+  ? page_0727-0729 <-> page_0730-0731: 80 shared pts, dy=-12005 dx=-19, extent=5573px
+  ? page_0728-0730 <-> page_0730-0731: 5 shared pts, dy=-5999 dx=+15, extent=1032px
+  ? page_0728-0730 <-> page_0731-0732: 37 shared pts, dy=-11965 dx=-23, extent=5301px
+  ? page_0730-0731 <-> page_0731-0732: 3 shared pts, dy=-4089 dx=-7, extent=1664px
+  ? page_0730-0731 <-> page_0732-0734: 69 shared pts, dy=-11972 dx=-19, extent=5576px
+  ? page_0731-0732 <-> page_0732-0734: 4 shared pts, dy=-4888 dx=-4, extent=76px
+  ? page_0731-0732 <-> page_0733-0735: 32 shared pts, dy=-11945 dx=-9, extent=5467px
+  ? page_0732-0734 <-> page_0733-0735: 3 shared pts, dy=-4638 dx=+2, extent=2379px
+  ? page_0732-0734 <-> page_0735-0736: 73 shared pts, dy=-11872 dx=-15, extent=5584px
+  ? page_0733-0735 <-> page_0735-0736: 5 shared pts, dy=-9935 dx=-23, extent=12px
+  ? page_0733-0735 <-> page_0736-0737: 32 shared pts, dy=-11910 dx=-27, extent=5319px
+  ? page_0735-0736 <-> page_0736-0737: 2 shared pts, dy=-5420 dx=-10, extent=0px
+  ? page_0735-0736 <-> page_0737-0739: 49 shared pts, dy=-11955 dx=-18, extent=3033px
+  ? page_0736-0737 <-> page_0737-0739: 3 shared pts, dy=-4866 dx=-2, extent=1508px
+  ? page_0736-0737 <-> page_0738-0740: 16 shared pts, dy=-11993 dx=-8, extent=3643px
+  ? page_0737-0739 <-> page_0738-0740: 1 shared pts, dy=-9243 dx=+171, extent=0px
+  ? page_0737-0739 <-> page_0740-0741: 46 shared pts, dy=-12006 dx=-2, extent=5574px
+  ? page_0738-0740 <-> page_0740-0741: 2 shared pts, dy=-4740 dx=-73, extent=311px
+  ? page_0738-0740 <-> page_0741-0742: 29 shared pts, dy=-12013 dx=-21, extent=5302px
+  ? page_0740-0741 <-> page_0741-0742: 4 shared pts, dy=-4943 dx=-13, extent=1558px
+  ? page_0740-0741 <-> page_0742-0744: 45 shared pts, dy=-11956 dx=-29, extent=5561px
+  ? page_0741-0742 <-> page_0742-0744: 4 shared pts, dy=-4379 dx=-6, extent=74px
+  ? page_0741-0742 <-> page_0743-0745: 33 shared pts, dy=-11885 dx=-15, extent=5536px
+  ? page_0742-0744 <-> page_0743-0745: 2 shared pts, dy=-5966 dx=-2, extent=33px
+  ? page_0742-0744 <-> page_0745-0746: 52 shared pts, dy=-11882 dx=-10, extent=5514px
+  ? page_0743-0745 <-> page_0745-0746: 5 shared pts, dy=-9918 dx=-10, extent=12px
+  ? page_0743-0745 <-> page_0746-0747: 35 shared pts, dy=-11877 dx=-22, extent=5589px
+  ? page_0745-0746 <-> page_0747-0749: 64 shared pts, dy=-11973 dx=-22, extent=5584px
+  ? page_0746-0747 <-> page_0747-0749: 5 shared pts, dy=-4866 dx=-10, extent=2216px
+  ? page_0746-0747 <-> page_0748-0750: 16 shared pts, dy=-11962 dx=-20, extent=5528px
+  ? page_0747-0749 <-> page_0748-0750: 2 shared pts, dy=-8631 dx=+105, extent=1349px
+  ? page_0747-0749 <-> page_0750-0751: 94 shared pts, dy=-11962 dx=-18, extent=1843px
+  ? page_0748-0750 <-> page_0750-0751: 8 shared pts, dy=-7569 dx=+294, extent=73px
+  ? page_0748-0750 <-> page_0751-0753: 33 shared pts, dy=-11992 dx=-16, extent=5575px
+  ? page_0750-0751 <-> page_0751-0753: 3 shared pts, dy=-5158 dx=-12, extent=2301px
+  ? page_0750-0751 <-> page_0752-0754: 76 shared pts, dy=-12005 dx=-9, extent=5476px
+  ? page_0751-0753 <-> page_0752-0754: 3 shared pts, dy=-8695 dx=-12, extent=1574px
+  ? page_0751-0753 <-> page_0754-0755: 35 shared pts, dy=-12035 dx=-11, extent=5489px
+  ? page_0752-0754 <-> page_0754-0755: 7 shared pts, dy=-5225 dx=-11, extent=3933px
+  ? page_0752-0754 <-> page_0755-0757: 67 shared pts, dy=-12024 dx=-25, extent=5372px
+  ? page_0754-0755 <-> page_0755-0757: 2 shared pts, dy=-4660 dx=-13, extent=9px
+  ? page_0754-0755 <-> page_0756-0758: 13 shared pts, dy=-11942 dx=-31, extent=3689px
+  ? page_0755-0757 <-> page_0756-0758: 3 shared pts, dy=-5943 dx=-72, extent=4550px
+  ? page_0755-0757 <-> page_0758-0760: 61 shared pts, dy=-11879 dx=-17, extent=5134px
+  ? page_0756-0758 <-> page_0758-0760: 2 shared pts, dy=-9691 dx=-20, extent=58px
+  ? page_0756-0758 <-> page_0759-0761: 12 shared pts, dy=-11886 dx=-3, extent=5450px
+  ? page_0758-0760 <-> page_0759-0761: 2 shared pts, dy=-8839 dx=-213, extent=10px
+  ? page_0758-0760 <-> page_0761-0762: 45 shared pts, dy=-11884 dx=-2, extent=3102px
+  ? page_0759-0761 <-> page_0761-0762: 3 shared pts, dy=-7946 dx=-387, extent=23px
+  ? page_0759-0761 <-> page_0762-0763: 25 shared pts, dy=-11992 dx=-19, extent=5495px
+  ? page_0761-0762 <-> page_0762-0763: 9 shared pts, dy=-6096 dx=+62, extent=3px
+  ? page_0761-0762 <-> page_0763-0765: 82 shared pts, dy=-12037 dx=-21, extent=5585px
+  ? page_0762-0763 <-> page_0763-0765: 8 shared pts, dy=-4756 dx=-10, extent=1494px
+  ? page_0762-0763 <-> page_0765-0765: 31 shared pts, dy=-12033 dx=-19, extent=5523px
+  ? page_0763-0765 <-> page_0765-0765: 2 shared pts, dy=-4806 dx=-11, extent=2393px
+  ? page_0763-0765 <-> page_0766-0767: 66 shared pts, dy=-12015 dx=-20, extent=3916px
+  ? page_0765-0765 <-> page_0766-0767: 3 shared pts, dy=-6015 dx=-128, extent=804px
+  ? page_0765-0765 <-> page_0767-0768: 17 shared pts, dy=-12015 dx=-28, extent=4221px
+  ? page_0766-0767 <-> page_0767-0768: 8 shared pts, dy=-4812 dx=-5, extent=2322px
+  ? page_0766-0767 <-> page_0769-0769: 77 shared pts, dy=-12031 dx=-18, extent=5431px
+  ? page_0767-0768 <-> page_0769-0769: 2 shared pts, dy=-5006 dx=-175, extent=1993px
+  ? page_0767-0768 <-> page_0769-0771: 28 shared pts, dy=-12014 dx=-13, extent=5539px
+  ? page_0769-0769 <-> page_0769-0771: 3 shared pts, dy=-4773 dx=-7, extent=2428px
+  ? page_0769-0769 <-> page_0771-0773: 78 shared pts, dy=-12027 dx=-20, extent=5415px
+  ? page_0769-0771 <-> page_0771-0773: 5 shared pts, dy=-5386 dx=+116, extent=76px
+  ? page_0769-0771 <-> page_0772-0774: 32 shared pts, dy=-12018 dx=-13, extent=5575px
+  ? page_0771-0773 <-> page_0772-0774: 4 shared pts, dy=-4713 dx=-0, extent=2610px
+  ? page_0771-0773 <-> page_0774-0775: 93 shared pts, dy=-11943 dx=-21, extent=5543px
+  ? page_0772-0774 <-> page_0774-0775: 6 shared pts, dy=-4116 dx=-7, extent=2347px
+  ? page_0772-0774 <-> page_0775-0776: 42 shared pts, dy=-11895 dx=-27, extent=5562px
+  ? page_0774-0775 <-> page_0775-0776: 5 shared pts, dy=-4651 dx=-8, extent=1489px
+  ? page_0774-0775 <-> page_0777-0777: 88 shared pts, dy=-11995 dx=-11, extent=5429px
+  ? page_0775-0776 <-> page_0777-0777: 4 shared pts, dy=-6035 dx=-3, extent=8px
+  ? page_0775-0776 <-> page_0778-0779: 22 shared pts, dy=-12014 dx=-20, extent=5525px
+  ? page_0777-0777 <-> page_0778-0779: 3 shared pts, dy=-4370 dx=-288, extent=208px
+  ? page_0777-0777 <-> page_0779-0780: 64 shared pts, dy=-12000 dx=-23, extent=5554px
+  ? page_0778-0779 <-> page_0779-0780: 3 shared pts, dy=-4605 dx=-8, extent=778px
+  ? page_0778-0779 <-> page_0780-0782: 12 shared pts, dy=-12018 dx=-22, extent=5526px
+  ? page_0779-0780 <-> page_0780-0782: 4 shared pts, dy=-4614 dx=-6, extent=1400px
+  ? page_0779-0780 <-> page_0781-0783: 48 shared pts, dy=-12023 dx=-18, extent=1568px
+  ? page_0780-0782 <-> page_0781-0783: 2 shared pts, dy=-7431 dx=-103, extent=4px
+  ? page_0780-0782 <-> page_0783-0784: 30 shared pts, dy=-12037 dx=-10, extent=5516px
+  ? page_0781-0783 <-> page_0783-0784: 5 shared pts, dy=-4902 dx=-10, extent=2320px
+  ? page_0781-0783 <-> page_0784-0785: 96 shared pts, dy=-12025 dx=-20, extent=5600px
+  ? page_0783-0784 <-> page_0784-0785: 5 shared pts, dy=-4828 dx=-10, extent=1462px
+  ? page_0783-0784 <-> page_0786-0786: 22 shared pts, dy=-11965 dx=-22, extent=4661px
+  ? page_0784-0785 <-> page_0786-0786: 3 shared pts, dy=-4634 dx=-9, extent=4px
+  ? page_0784-0785 <-> page_0786-0788: 40 shared pts, dy=-11896 dx=-22, extent=5607px
+  ? page_0786-0786 <-> page_0786-0788: 1 shared pts, dy=-5961 dx=-11, extent=0px
+  ? page_0786-0786 <-> page_0788-0790: 1 shared pts, dy=-15079 dx=-498, extent=0px
+  ? page_0786-0788 <-> page_0789-0791: 3 shared pts, dy=-15293 dx=+113, extent=18px
+  ? page_0788-0790 <-> page_0789-0791: 6 shared pts, dy=-8830 dx=+31, extent=29px
+  ? page_0788-0790 <-> page_0791-0792: 39 shared pts, dy=-12023 dx=+7, extent=5364px
+  ? page_0789-0791 <-> page_0791-0792: 4 shared pts, dy=-4949 dx=-5, extent=1360px
+  ? page_0789-0791 <-> page_0793-0793: 13 shared pts, dy=-12899 dx=-21, extent=2976px
+  ? page_0791-0792 <-> page_0793-0793: 2 shared pts, dy=-7241 dx=-133, extent=0px
+  ? page_0791-0792 <-> page_0793-0795: 60 shared pts, dy=-12008 dx=-18, extent=5545px
+  ? page_0793-0793 <-> page_0793-0795: 10 shared pts, dy=-4694 dx=-6, extent=2442px
+  ? page_0793-0793 <-> page_0795-0796: 18 shared pts, dy=-12005 dx=-14, extent=4411px
+  ? page_0793-0795 <-> page_0795-0796: 4 shared pts, dy=-4593 dx=-2, extent=1594px
+  ? page_0793-0795 <-> page_0796-0798: 83 shared pts, dy=-12023 dx=-14, extent=5561px
+  ? page_0795-0796 <-> page_0796-0798: 5 shared pts, dy=-4582 dx=-4, extent=2345px
+  ? page_0795-0796 <-> page_0797-0799: 16 shared pts, dy=-13604 dx=-15, extent=2304px
+  ? page_0796-0798 <-> page_0797-0799: 7 shared pts, dy=-4423 dx=+2, extent=2543px
+  ? page_0796-0798 <-> page_0799-0800: 57 shared pts, dy=-12026 dx=-23, extent=5577px
+  ? page_0797-0799 <-> page_0799-0800: 3 shared pts, dy=-6015 dx=-15, extent=813px
+  ? page_0797-0799 <-> page_0800-0802: 26 shared pts, dy=-12017 dx=-33, extent=5552px
+  ? page_0799-0800 <-> page_0800-0802: 3 shared pts, dy=-4731 dx=-6, extent=68px
+  ? page_0799-0800 <-> page_0801-0803: 62 shared pts, dy=-11981 dx=-19, extent=4662px
+  ? page_0800-0802 <-> page_0801-0803: 6 shared pts, dy=-7559 dx=-11, extent=2422px
+  ? page_0800-0802 <-> page_0803-0805: 28 shared pts, dy=-11881 dx=-14, extent=4463px
+  ? page_0801-0803 <-> page_0803-0805: 6 shared pts, dy=-4482 dx=-2, extent=2435px
+  ? page_0801-0803 <-> page_0804-0806: 46 shared pts, dy=-11842 dx=-8, extent=5378px
+  ? page_0803-0805 <-> page_0804-0806: 6 shared pts, dy=-10737 dx=-178, extent=5px
+  ? page_0803-0805 <-> page_0806-0807: 24 shared pts, dy=-11979 dx=-18, extent=5486px
+  ? page_0804-0806 <-> page_0806-0807: 6 shared pts, dy=-4522 dx=-6, extent=1359px
+  ? page_0804-0806 <-> page_0807-0809: 62 shared pts, dy=-12026 dx=-23, extent=5585px
+  ? page_0806-0807 <-> page_0807-0809: 5 shared pts, dy=-4580 dx=-3, extent=1365px
+  ? page_0806-0807 <-> page_0808-0810: 24 shared pts, dy=-12027 dx=-18, extent=5471px
+  ? page_0807-0809 <-> page_0808-0810: 2 shared pts, dy=-6936 dx=-12, extent=2426px
+  ? page_0807-0809 <-> page_0811-0811: 56 shared pts, dy=-12032 dx=-19, extent=5085px
+  ? page_0808-0810 <-> page_0811-0811: 2 shared pts, dy=-3398 dx=+75, extent=0px
+  ? page_0808-0810 <-> page_0812-0814: 18 shared pts, dy=-12016 dx=-18, extent=5362px
+  ? page_0811-0811 <-> page_0812-0814: 2 shared pts, dy=-10410 dx=+384, extent=5px
+  ? page_0811-0811 <-> page_0813-0815: 45 shared pts, dy=-11951 dx=-10, extent=5049px
+  ? page_0812-0814 <-> page_0813-0815: 1 shared pts, dy=-6316 dx=+184, extent=0px
+  ? page_0812-0814 <-> page_0815-0817: 15 shared pts, dy=-11958 dx=-16, extent=3812px
+  ? page_0813-0815 <-> page_0815-0817: 2 shared pts, dy=-8898 dx=-4, extent=16px
+  ? page_0813-0815 <-> page_0816-0818: 41 shared pts, dy=-11941 dx=-11, extent=2051px
+  ? page_0815-0817 <-> page_0816-0818: 5 shared pts, dy=-3956 dx=-187, extent=808px
+  ? page_0815-0817 <-> page_0818-0819: 18 shared pts, dy=-11879 dx=-14, extent=4421px
+  ? page_0816-0818 <-> page_0818-0819: 9 shared pts, dy=-4592 dx=-6, extent=3717px
+  ? page_0816-0818 <-> page_0819-0821: 94 shared pts, dy=-11912 dx=-18, extent=5406px
+  ? page_0818-0819 <-> page_0819-0821: 13 shared pts, dy=-4470 dx=-8, extent=2479px
+  ? page_0818-0819 <-> page_0820-0822: 47 shared pts, dy=-11917 dx=-19, extent=5182px
+  ? page_0819-0821 <-> page_0820-0822: 3 shared pts, dy=-7638 dx=-13, extent=2462px
+  ? page_0819-0821 <-> page_0822-0824: 137 shared pts, dy=-11975 dx=-20, extent=5476px
+  ? page_0820-0822 <-> page_0822-0824: 5 shared pts, dy=-4617 dx=-9, extent=1377px
+  ? page_0820-0822 <-> page_0823-0825: 12 shared pts, dy=-11970 dx=-7, extent=5237px
+  ? page_0822-0824 <-> page_0823-0825: 5 shared pts, dy=-4394 dx=-6, extent=2552px
+  ? page_0822-0824 <-> page_0825-0826: 84 shared pts, dy=-11966 dx=-11, extent=5540px
+  ? page_0823-0825 <-> page_0825-0826: 3 shared pts, dy=-8744 dx=-9, extent=25px
+  ? page_0823-0825 <-> page_0826-0828: 6 shared pts, dy=-13305 dx=-24, extent=2414px
+  ? page_0825-0826 <-> page_0826-0828: 2 shared pts, dy=-6080 dx=+36, extent=5px
+  ? page_0825-0826 <-> page_0827-0829: 59 shared pts, dy=-12002 dx=-18, extent=5527px
+  ? page_0826-0828 <-> page_0827-0829: 3 shared pts, dy=-6634 dx=-297, extent=9px
+  ? page_0826-0828 <-> page_0829-0830: 26 shared pts, dy=-11940 dx=-31, extent=5548px
+  ? page_0827-0829 <-> page_0829-0830: 4 shared pts, dy=-4432 dx=-3, extent=21px
+  ? page_0827-0829 <-> page_0830-0832: 71 shared pts, dy=-11900 dx=-19, extent=5506px
+  ? page_0829-0830 <-> page_0830-0832: 2 shared pts, dy=-9150 dx=-15, extent=21px
+  ? page_0829-0830 <-> page_0831-0833: 27 shared pts, dy=-11907 dx=-13, extent=5523px
+  ? page_0830-0832 <-> page_0831-0833: 3 shared pts, dy=-7274 dx=-12, extent=1508px
+  ? page_0830-0832 <-> page_0834-0834: 62 shared pts, dy=-11892 dx=-15, extent=5075px
+  ? page_0831-0833 <-> page_0834-0834: 5 shared pts, dy=-8671 dx=-22, extent=154px
+  ? page_0831-0833 <-> page_0835-0837: 15 shared pts, dy=-11990 dx=-33, extent=4281px
+  ? page_0834-0834 <-> page_0835-0837: 4 shared pts, dy=-4821 dx=-5, extent=182px
+  ? page_0834-0834 <-> page_0836-0838: 51 shared pts, dy=-11991 dx=-20, extent=5453px
+  ? page_0835-0837 <-> page_0836-0838: 3 shared pts, dy=-6528 dx=-1, extent=3676px
+  ? page_0835-0837 <-> page_0838-0840: 13 shared pts, dy=-11980 dx=-13, extent=5454px
+  ? page_0836-0838 <-> page_0838-0840: 6 shared pts, dy=-8665 dx=-13, extent=657px
+  ? page_0836-0838 <-> page_0839-0841: 31 shared pts, dy=-12025 dx=-13, extent=3035px
+  ? page_0838-0840 <-> page_0839-0841: 4 shared pts, dy=-5989 dx=+51, extent=1385px
+  ? page_0838-0840 <-> page_0841-0843: 18 shared pts, dy=-12007 dx=-18, extent=5323px
+  ? page_0839-0841 <-> page_0841-0843: 6 shared pts, dy=-4416 dx=-9, extent=1252px
+  ? page_0839-0841 <-> page_0842-0844: 28 shared pts, dy=-12019 dx=-16, extent=5509px
+  ? page_0841-0843 <-> page_0842-0844: 25 shared pts, dy=-5751 dx=-8, extent=431px
+  ? page_0841-0843 <-> page_0844-0845: 30 shared pts, dy=-12015 dx=-11, extent=5512px
+  ? page_0842-0844 <-> page_0844-0845: 7 shared pts, dy=-4327 dx=-4, extent=1873px
+  ? page_0842-0844 <-> page_0846-0846: 66 shared pts, dy=-11944 dx=-13, extent=5483px
+  ? page_0844-0845 <-> page_0846-0846: 4 shared pts, dy=-8593 dx=-14, extent=98px
+  ? page_0844-0845 <-> page_0847-0848: 11 shared pts, dy=-11897 dx=-20, extent=5395px
+  ? page_0846-0846 <-> page_0848-0850: 41 shared pts, dy=-11896 dx=-27, extent=5443px
+  ? page_0847-0848 <-> page_0848-0850: 1 shared pts, dy=-5802 dx=+273, extent=0px
+  ? page_0847-0848 <-> page_0850-0850: 13 shared pts, dy=-11894 dx=-15, extent=5248px
+  ? page_0848-0850 <-> page_0850-0850: 3 shared pts, dy=-4241 dx=-9, extent=6px
+  ? page_0848-0850 <-> page_0851-0852: 45 shared pts, dy=-11973 dx=-10, extent=3998px
+  ? page_0850-0850 <-> page_0851-0852: 4 shared pts, dy=-7874 dx=-30, extent=501px
+  ? page_0850-0850 <-> page_0852-0854: 7 shared pts, dy=-13168 dx=-19, extent=2759px
+  ? page_0851-0852 <-> page_0852-0854: 2 shared pts, dy=-7753 dx=-6, extent=16px
+  ? page_0851-0852 <-> page_0853-0855: 43 shared pts, dy=-11981 dx=-8, extent=5567px
+  ? page_0852-0854 <-> page_0853-0855: 2 shared pts, dy=-7951 dx=-9, extent=14px
+  ? page_0852-0854 <-> page_0855-0857: 20 shared pts, dy=-12033 dx=-9, extent=5321px
+  ? page_0853-0855 <-> page_0855-0857: 5 shared pts, dy=-4355 dx=-11, extent=1995px
+  ? page_0853-0855 <-> page_0856-0858: 21 shared pts, dy=-12029 dx=-23, extent=1470px
+  ? page_0855-0857 <-> page_0856-0858: 7 shared pts, dy=-8409 dx=-8, extent=1217px
+  ? page_0855-0857 <-> page_0858-0860: 34 shared pts, dy=-11951 dx=-23, extent=5519px
+  ? page_0856-0858 <-> page_0858-0860: 3 shared pts, dy=-7000 dx=-151, extent=11px
+  ? page_0856-0858 <-> page_0859-0861: 71 shared pts, dy=-11884 dx=-11, extent=4625px
+  ? page_0858-0860 <-> page_0859-0861: 4 shared pts, dy=-4128 dx=-0, extent=114px
+  ? page_0858-0860 <-> page_0861-0863: 10 shared pts, dy=-12773 dx=-11, extent=1359px
+  ? page_0859-0861 <-> page_0861-0863: 4 shared pts, dy=-4238 dx=-3, extent=1237px
+  ? page_0859-0861 <-> page_0863-0863: 104 shared pts, dy=-11943 dx=-25, extent=5483px
+  ? page_0861-0863 <-> page_0863-0863: 9 shared pts, dy=-8323 dx=-44, extent=1644px
+  ? page_0861-0863 <-> page_0864-0865: 16 shared pts, dy=-11902 dx=-19, extent=5549px
+  ? page_0863-0863 <-> page_0864-0865: 7 shared pts, dy=-4160 dx=-9, extent=2451px
+  ? page_0863-0863 <-> page_0866-0866: 56 shared pts, dy=-11855 dx=-20, extent=5091px
+  ? page_0864-0865 <-> page_0866-0866: 5 shared pts, dy=-8130 dx=-13, extent=2519px
+  ? page_0864-0865 <-> page_0866-0869: 23 shared pts, dy=-12161 dx=-18, extent=3601px
+  ? page_0866-0866 <-> page_0866-0869: 3 shared pts, dy=-4032 dx=-6, extent=2439px
+  ? page_0866-0866 <-> page_0868-0870: 40 shared pts, dy=-12030 dx=-21, extent=5082px
+  ? page_0866-0869 <-> page_0868-0870: 3 shared pts, dy=-7400 dx=-13, extent=1133px
+  ? page_0866-0869 <-> page_0870-0871: 11 shared pts, dy=-11619 dx=-24, extent=3579px
+  ? page_0868-0870 <-> page_0870-0871: 4 shared pts, dy=-4218 dx=-11, extent=1157px
+  ? page_0868-0870 <-> page_0872-0872: 116 shared pts, dy=-11985 dx=-21, extent=5450px
+  ? page_0870-0871 <-> page_0872-0872: 1 shared pts, dy=-11515 dx=-34, extent=0px
+  ? page_0870-0871 <-> page_0874-0874: 6 shared pts, dy=-14584 dx=-23, extent=2498px
+  ? page_0872-0872 <-> page_0874-0874: 3 shared pts, dy=-6194 dx=-10, extent=56px
+  ? page_0872-0872 <-> page_0874-0876: 64 shared pts, dy=-11928 dx=-15, extent=2125px
+  ? page_0874-0874 <-> page_0874-0876: 5 shared pts, dy=-5807 dx=+207, extent=37px
+  ? page_0874-0874 <-> page_0876-0878: 27 shared pts, dy=-11894 dx=-18, extent=4279px
+  ? page_0874-0876 <-> page_0876-0878: 5 shared pts, dy=-7981 dx=-15, extent=2452px
+  ? page_0874-0876 <-> page_0877-0879: 62 shared pts, dy=-11906 dx=-16, extent=5516px
+  ? page_0876-0878 <-> page_0877-0879: 7 shared pts, dy=-8270 dx=-8, extent=2667px
+  ? page_0876-0878 <-> page_0879-0881: 32 shared pts, dy=-11892 dx=-15, extent=5525px
+  ? page_0877-0879 <-> page_0879-0881: 5 shared pts, dy=-4096 dx=-9, extent=1697px
+  ? page_0877-0879 <-> page_0880-0882: 44 shared pts, dy=-11911 dx=-16, extent=5586px
+  ? page_0879-0881 <-> page_0883-0883: 27 shared pts, dy=-11891 dx=-12, extent=5554px
+  ? page_0880-0882 <-> page_0883-0883: 4 shared pts, dy=-2957 dx=-3, extent=25px
+  ? page_0880-0882 <-> page_0883-0885: 77 shared pts, dy=-11986 dx=-28, extent=5547px
+  ? page_0883-0883 <-> page_0883-0885: 3 shared pts, dy=-3929 dx=-8, extent=85px
+  ? page_0883-0883 <-> page_0886-0886: 27 shared pts, dy=-12038 dx=-31, extent=4349px
+  ? page_0883-0885 <-> page_0886-0886: 2 shared pts, dy=-8217 dx=-14, extent=118px
+  ? page_0883-0885 <-> page_0886-0888: 43 shared pts, dy=-12031 dx=-20, extent=5540px
+  ? page_0886-0886 <-> page_0886-0888: 5 shared pts, dy=-6345 dx=+332, extent=41px
+  ? page_0886-0886 <-> page_0888-0890: 12 shared pts, dy=-12034 dx=-23, extent=4146px
+  ? page_0886-0888 <-> page_0888-0890: 2 shared pts, dy=-8041 dx=-15, extent=10px
+  ? page_0886-0888 <-> page_0889-0892: 36 shared pts, dy=-12014 dx=-5, extent=1847px
+  ? page_0888-0890 <-> page_0889-0892: 3 shared pts, dy=-8340 dx=-6, extent=20px
+  ? page_0888-0890 <-> page_0891-0893: 23 shared pts, dy=-11947 dx=+3, extent=5507px
+  ? page_0889-0892 <-> page_0891-0893: 3 shared pts, dy=-3035 dx=-2, extent=1080px
+  ? page_0889-0892 <-> page_0893-0895: 41 shared pts, dy=-11898 dx=-15, extent=3075px
+  ? page_0891-0893 <-> page_0893-0895: 3 shared pts, dy=-8231 dx=-14, extent=8px
+  ? page_0891-0893 <-> page_0895-0895: 14 shared pts, dy=-11911 dx=-25, extent=3875px
+  ? page_0893-0895 <-> page_0895-0895: 3 shared pts, dy=-2705 dx=-142, extent=4px
+  ? page_0893-0895 <-> page_0896-0898: 36 shared pts, dy=-11897 dx=-23, extent=5217px
+  ? page_0895-0895 <-> page_0896-0898: 2 shared pts, dy=-5954 dx=-11, extent=19px
+  ? page_0895-0895 <-> page_0897-0899: 10 shared pts, dy=-11908 dx=-28, extent=5398px
+  ? page_0896-0898 <-> page_0897-0899: 3 shared pts, dy=-7200 dx=-17, extent=1065px
+  ? page_0896-0898 <-> page_0899-0901: 52 shared pts, dy=-11893 dx=-16, extent=5594px
+  ? page_0897-0899 <-> page_0899-0901: 5 shared pts, dy=-5209 dx=+402, extent=21px
+  ? page_0897-0899 <-> page_0900-0902: 15 shared pts, dy=-11958 dx=-11, extent=5343px
+  ? page_0899-0901 <-> page_0900-0902: 3 shared pts, dy=-6065 dx=-201, extent=7px
+  ? page_0899-0901 <-> page_0902-0904: 60 shared pts, dy=-11985 dx=-18, extent=5597px
+  ? page_0900-0902 <-> page_0902-0904: 2 shared pts, dy=-7895 dx=-15, extent=46px
+  ? page_0900-0902 <-> page_0903-0906: 13 shared pts, dy=-12002 dx=-22, extent=5508px
+  ? page_0902-0904 <-> page_0903-0906: 1 shared pts, dy=-10104 dx=-9, extent=0px
+  ? page_0902-0904 <-> page_0905-0907: 30 shared pts, dy=-12046 dx=-22, extent=2167px
+  ? page_0903-0906 <-> page_0905-0907: 2 shared pts, dy=-10084 dx=-19, extent=432px
+  ? page_0903-0906 <-> page_0907-0909: 11 shared pts, dy=-12021 dx=-20, extent=5538px
+  ? page_0905-0907 <-> page_0907-0909: 2 shared pts, dy=-6023 dx=-13, extent=33px
+  ? page_0905-0907 <-> page_0908-0911: 40 shared pts, dy=-11954 dx=-19, extent=5590px
+  ? page_0907-0909 <-> page_0908-0911: 2 shared pts, dy=-5925 dx=-6, extent=22px
+  ? page_0907-0909 <-> page_0910-0912: 14 shared pts, dy=-11893 dx=-13, extent=5541px
+  ? page_0908-0911 <-> page_0910-0912: 1 shared pts, dy=-8413 dx=-46, extent=0px
+  ? page_0908-0911 <-> page_0912-0914: 44 shared pts, dy=-11911 dx=-7, extent=5587px
+  ? page_0910-0912 <-> page_0912-0914: 4 shared pts, dy=-10513 dx=-76, extent=29px
+  ? page_0910-0912 <-> page_0913-0916: 16 shared pts, dy=-11896 dx=-7, extent=5422px
+  ? page_0912-0914 <-> page_0913-0916: 3 shared pts, dy=-7687 dx=-9, extent=9px
+  ? page_0912-0914 <-> page_0915-0917: 47 shared pts, dy=-11962 dx=-20, extent=1872px
+  ? page_0913-0916 <-> page_0915-0917: 4 shared pts, dy=-5898 dx=+66, extent=623px
+  ? page_0913-0916 <-> page_0917-0919: 22 shared pts, dy=-11968 dx=-26, extent=5555px
+  ? page_0915-0917 <-> page_0917-0919: 1 shared pts, dy=-6377 dx=-14, extent=0px
+  ? page_0915-0917 <-> page_0918-0921: 23 shared pts, dy=-11935 dx=-10, extent=5481px
+  ? page_0917-0919 <-> page_0918-0921: 2 shared pts, dy=-6404 dx=-13, extent=2px
+  ? page_0917-0919 <-> page_0920-0922: 5 shared pts, dy=-14304 dx=-22, extent=157px
+  ? page_0918-0921 <-> page_0920-0922: 7 shared pts, dy=-4017 dx=-8, extent=1527px
+  ? page_0918-0921 <-> page_0922-0924: 45 shared pts, dy=-11987 dx=-16, extent=5581px
+  ? page_0920-0922 <-> page_0922-0924: 2 shared pts, dy=-7430 dx=-9, extent=500px
+  ? page_0920-0922 <-> page_0923-0926: 9 shared pts, dy=-11934 dx=-11, extent=5295px
+  ? page_0922-0924 <-> page_0923-0926: 1 shared pts, dy=-9472 dx=-334, extent=0px
+  ? page_0922-0924 <-> page_0925-0927: 40 shared pts, dy=-11912 dx=-18, extent=5578px
+  ? page_0923-0926 <-> page_0925-0927: 1 shared pts, dy=-6717 dx=+38, extent=0px
+  ? page_0923-0926 <-> page_0928-0928: 14 shared pts, dy=-11930 dx=-26, extent=3906px
+  ? page_0925-0927 <-> page_0928-0928: 2 shared pts, dy=-3767 dx=-6, extent=61px
+  ? page_0925-0927 <-> page_0928-0931: 40 shared pts, dy=-11919 dx=-12, extent=5114px
+  ? page_0928-0928 <-> page_0928-0931: 1 shared pts, dy=-8861 dx=-416, extent=0px
+  ? page_0928-0928 <-> page_0930-0932: 12 shared pts, dy=-11999 dx=-1, extent=5398px
+  ? page_0928-0931 <-> page_0930-0932: 2 shared pts, dy=-8544 dx=+29, extent=5px
+  ? page_0928-0931 <-> page_0933-0933: 2 shared pts, dy=-12743 dx=-25, extent=0px
+  ? page_0930-0932 <-> page_0933-0933: 10 shared pts, dy=-7683 dx=-13, extent=399px
+  ? page_0930-0932 <-> page_0933-0933b: 9 shared pts, dy=-7681 dx=-12, extent=667px
+  ? page_0937-0939 <-> page_0938-0940: 4 shared pts, dy=-3418 dx=+0, extent=982px
+  ? page_0937-0939 <-> page_0941-0941: 18 shared pts, dy=-12002 dx=-26, extent=4359px
+  ? page_0938-0940 <-> page_0942-0944: 26 shared pts, dy=-12037 dx=-16, extent=5284px
+  ? page_0941-0941 <-> page_0942-0944: 1 shared pts, dy=-7583 dx=+54, extent=0px
+  ? page_0941-0941 <-> page_0943-0946: 8 shared pts, dy=-12027 dx=-13, extent=3584px
+  ? page_0942-0944 <-> page_0943-0946: 1 shared pts, dy=-8242 dx=-55, extent=0px
+  ? page_0942-0944 <-> page_0946-0946: 68 shared pts, dy=-11953 dx=-15, extent=3928px
+  ? page_0943-0946 <-> page_0946-0946: 2 shared pts, dy=-5931 dx=-14, extent=1px
+  ? page_0943-0946 <-> page_0947-0947: 5 shared pts, dy=-11606 dx=+94, extent=50px
+  ? page_0946-0946 <-> page_0947-0947: 1 shared pts, dy=-7926 dx=-17, extent=0px

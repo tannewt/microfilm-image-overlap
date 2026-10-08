@@ -598,6 +598,20 @@ content strips between consecutive bars. Each page plan records, under
 (vertical) and dx (horizontal), the page's film range and each scan's content
 bbox/size.
 
+Bar detection has two gates. The first is the classic one: the row projection
+of the scan's content columns (smoothed) must dip below a threshold that
+scales with the page content's median brightness. A dip alone is not proof of
+a bar, though: a full-page ad's black box border, a dark halftone ad or a too
+dark torn page all dip the row mean the same way (they leave the dark
+page's bright film margins / white page area out of the average, which is
+exactly how the 20260929 `05671_6200` scans got page1018/1019 shredded by the
+"Theatres to Reopen" ad's box rules, and page116/page908/page990 cut apart by
+dark pages and dark ads). The second gate requires the dark rows to be dark
+ACROSS THE ENTIRE scan: the per-column mean over the candidate rows (smoothed)
+must be below the same threshold for >= 95% of the content columns. A real
+film bar is black at every column (the film outside the page is black too),
+while dark page content always leaves bright columns beside it.
+
 `compose_pages.py` then composites each plan into a page image, assembling it
 from the one or two scans that cover it, with a HARD switch at the overlap
 (no blending/feathering, since the pages are OCRed and averaging two captures

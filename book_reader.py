@@ -14,9 +14,15 @@ the pages to skip (duplicates), and the confirmed page pairs:
         "skip": ["page005-scans011-011.png"],
         "confirmed_pairs": [["a.png", "b.png"], ...],
         "flagged_spreads": [["a.png", "b.png"], ...],
-        "blank_pages": ["blank:page009-...png"],   # blank inserted before that page
+        "page_roles": {"page009-....png": "front",   # front | left | right | back
+                       ...},
+        "page_rotations": {"page012-....png": 90},   # degrees, clockwise
         "reverse": false                            # reverse (from the back) mode
     }
+
+Marked pages shape the spreads: ``front`` pages get a blank before (solo
+on the right half, like a cover), ``back`` pages get a blank after (solo
+on the left half), and a ``left`` page pairs with a ``right`` page.
 
 Usage:
     python book_reader.py [directory-or-project.json]
@@ -33,7 +39,12 @@ Controls:
     N                 jump to the next unconfirmed pair
     F                 flag the spread for review (toggle)
     G                 jump to the next flagged spread
-    I / Shift+I       insert a blank page before / after the spread (toggle)
+    Q / E             mark the left / right shown page as front (blank
+                      before), back (blank after), left or right — or clear
+                      the mark (menu)
+    S                 mark the shown spread: left page back, right page front
+    J / K             rotate the left / right shown page 90° clockwise
+                      (display only; wraps back to 0)
     Right / Space     next spread (Left in reverse mode)
     Left              previous spread (Right in reverse mode)
     PageDown / Up     next / previous spread
@@ -79,6 +90,7 @@ from PySide6.QtGui import (
     QPainter,
     QPixmap,
     QRegion,
+    QTransform,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -90,6 +102,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QMainWindow,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSlider,
@@ -140,20 +153,51 @@ def build_spreads(n: int) -> list[tuple[int, ...]]:
     return spreads
 
 
-def build_spreads_from_back(n: int) -> list[tuple[int, ...]]:
-    """Mirror image of build_spreads: the last page alone, then pairs working
-    backwards, ending with the cover alone if the count is odd."""
-    if n == 0:
-        return []
-    spreads = [(n - 1,)]
-    i = n - 2
-    while i >= 0:
-        if i - 1 >= 0:
-            spreads.append((i - 1, i))
-            i -= 2
-        else:
-            spreads.append((i,))
-            i -= 1
+ROLE_FRONT = "front"   # solo on the right half, blank before (a cover)
+ROLE_LEFT = "left"     # pairs with the page that follows it
+ROLE_RIGHT = "right"   # pairs with the page that precedes it
+ROLE_BACK = "back"     # solo on the left half, blank after
+
+
+def build_marked_spreads(roles_by_index: list[str | None]) -> list[tuple[int | None, ...]]:
+    """Build spreads from per-page side roles.
+
+    Each spread is a 1–2 tuple of page indices, with ``None`` for a blank
+    half. ``front`` pages get a blank spread half before them, ``back``
+    pages one after; ``left``/``right`` pages pair up; unmarked pages pair
+    sequentially (and a lone leftover finishes solo on the right half).
+    """
+    spreads: list[tuple[int | None, ...]] = []
+    pending: int | None = None       # page awaiting its right-hand partner
+    for i, role in enumerate(roles_by_index):
+        if role == ROLE_FRONT:
+            if pending is not None:
+                spreads.append((pending,))       # previous page ends solo
+                pending = None
+            spreads.append((None, i))            # blank before the front
+        elif role == ROLE_BACK:
+            if pending is not None:
+                spreads.append((pending,))
+                pending = None
+            spreads.append((i, None))            # blank after the back
+        elif role == ROLE_RIGHT:
+            if pending is not None:
+                spreads.append((pending, i))     # pairs with the page before it
+                pending = None
+            else:
+                spreads.append((None, i))        # nothing before: blank left
+        elif role == ROLE_LEFT:
+            if pending is not None:
+                spreads.append((pending,))
+            pending = i                            # waits for a right partner
+        else:                                      # unmarked: pair sequentially
+            if pending is not None:
+                spreads.append((pending, i))
+                pending = None
+            else:
+                pending = i
+    if pending is not None:
+        spreads.append((pending,))
     return spreads
 
 
@@ -184,7 +228,16 @@ class Project:
         self.skip: set[str] = set()
         self.confirmed: set[frozenset[str]] = set()
         self.flagged: set[frozenset[str]] = set()   # spreads marked for review
-        self.blanks: set[str] = set()   # "blank:<pagekey>" = blank page inserted before that page
+        # Page marks: key -> "front" | "left" | "right" | "back". front gets
+        # a blank before (solo right half), back a blank after (solo left
+        # half); left pairs with right.
+        self.roles: dict[str, str] = {}
+        # Page rotations: key -> degrees (0, 90, 180, 270), clockwise,
+        # applied for display only (the files on disk are untouched).
+        self.rotations: dict[str, int] = {}
+        # "blank_pages" entries from pre-roles project files, converted to
+        # roles on the next rebuild of the page list.
+        self.legacy_blanks: set[str] = set()
         self.reverse: bool = False                   # reverse (read from the back) mode
 
     # ----- page identity ---------------------------------------------
@@ -224,7 +277,10 @@ class Project:
             "skip": sorted(self.skip),
             "confirmed_pairs": sorted([sorted(pair) for pair in self.confirmed]),
             "flagged_spreads": sorted([sorted(f) for f in self.flagged]),
-            "blank_pages": sorted(self.blanks),
+            "page_roles": {k: self.roles[k] for k in sorted(self.roles)},
+            "page_rotations": {
+                k: self.rotations[k] for k in sorted(self.rotations)
+            },
             "reverse": self.reverse,
         }
 
@@ -247,7 +303,25 @@ class Project:
         self.skip = set(data.get("skip", []))
         self.confirmed = {frozenset(pair) for pair in data.get("confirmed_pairs", [])}
         self.flagged = {frozenset(f) for f in data.get("flagged_spreads", [])}
-        self.blanks = set(data.get("blank_pages", []))
+        self.roles = {
+            k: r for k, r in (data.get("page_roles") or {}).items()
+            if r in (ROLE_FRONT, ROLE_LEFT, ROLE_RIGHT, ROLE_BACK)
+        }
+        self.rotations = {}
+        for k, r in (data.get("page_rotations") or {}).items():
+            try:
+                deg = int(r) % 360
+            except (TypeError, ValueError):
+                continue
+            if deg:
+                self.rotations[k] = deg
+        # Migration: pre-roles projects stored blanks as "blank:<pagekey>"
+        # (blank inserted before that page) or "blank:__end__" (after the
+        # last page). They map to front/back marks; applied in reload_book
+        # once the ordered page keys are known.
+        self.legacy_blanks = {
+            b for b in (data.get("blank_pages") or []) if "page_roles" not in data
+        }
         self.reverse = bool(data.get("reverse", False))
 
     def load(self, path: Path) -> None:
@@ -1030,8 +1104,10 @@ class SpreadWidget(QWidget):
         cache.imageLoaded.connect(self._on_image_loaded)
         self._pages: list[Path] = []
         self._keys: list[str] = []
-        self._spreads: list[tuple[int, ...]] = []
-        self._spreads_back: list[tuple[int, ...]] = []
+        self._spreads: list[tuple[int | None, ...]] = []
+        self._spreads_back: list[tuple[int | None, ...]] = []
+        self._roles: dict[str, str] = {}
+        self._rotations: dict[str, int] = {}
         self._confirmed: set[frozenset[str]] = set()
         self._flagged: set[frozenset[str]] = set()
         self._index = 0
@@ -1047,11 +1123,23 @@ class SpreadWidget(QWidget):
 
     # ---------- book --------------------------------------------------
 
-    def set_book(self, pages: list[Path], keys: list[str] | None = None) -> None:
+    def set_book(self, pages: list[Path], keys: list[str] | None = None,
+                 spreads: list[tuple[int | None, ...]] | None = None,
+                 roles: dict[str, str] | None = None,
+                 rotations: dict[str, int] | None = None) -> None:
+        """Set the book. ``spreads`` holds page indices per spread, with
+        ``None`` entries for the blank half of front/back spreads; when
+        omitted, spreads are built by plain sequential pairing. ``rotations``
+        maps page keys to display degrees (clockwise, 0/90/180/270)."""
         self._pages = pages
         self._keys = list(keys) if keys is not None else [str(p) for p in pages]
-        self._spreads = build_spreads(len(pages))
-        self._spreads_back = build_spreads_from_back(len(pages))
+        self._spreads = list(spreads) if spreads is not None \
+            else build_spreads(len(pages))
+        # Reverse mode reads the mirror image of the book: spreads in the
+        # opposite order, each one flipped left-to-right.
+        self._spreads_back = [tuple(reversed(s)) for s in reversed(self._spreads)]
+        self._roles = dict(roles) if roles else {}
+        self._rotations = dict(rotations) if rotations else {}
         self._index = 0
         self.relayout()
 
@@ -1080,29 +1168,32 @@ class SpreadWidget(QWidget):
         spread = self._spread_at(self._index)
         if spread is None:
             return ()
-        return tuple(i + 1 for i in spread)
+        return tuple(i + 1 for i in spread if i is not None)
 
     def current_page_keys(self) -> tuple[str, ...]:
         spread = self._spread_at(self._index)
         if spread is None:
             return ()
-        return tuple(self._keys[i] for i in spread)
+        return tuple(self._keys[i] for i in spread if i is not None)
 
     def visible_page_keys(self) -> tuple[str, ...]:
-        """Keys in on-screen order: left page first, right page second."""
-        return tuple(self._keys[i] for i in self._visible_entries())
+        """Real pages' keys in on-screen order: left page first, right second
+        (blank halves are skipped)."""
+        return tuple(self._keys[i] for i in self._visible_entries() if i is not None)
 
     def visible_pages(self) -> tuple[Path | None, ...]:
-        """Page paths (None = inserted blank) in on-screen order."""
-        return tuple(self._pages[i] for i in self._visible_entries())
+        """Page paths (None = blank half) in on-screen order."""
+        return tuple(None if i is None else self._pages[i]
+                     for i in self._visible_entries())
 
-    def visible_indices(self) -> tuple[int, ...]:
-        """Book indices (into _pages) of the shown pages, on-screen order."""
-        return tuple(self._visible_entries())
-
-    def visible_page_numbers(self) -> tuple[int, ...]:
-        """1-based page numbers in on-screen order."""
-        return tuple(i + 1 for i in self._visible_entries())
+    def visible_sides(self) -> list[tuple[Path | None, int | None, int | None]]:
+        """One (page, page_number, book_index) per on-screen side; a blank
+        half of a front/back spread shows as (None, None, None)."""
+        return [
+            (None, None, None) if i is None
+            else (self._pages[i], i + 1, i)
+            for i in self._visible_entries()
+        ]
 
     def is_current_pair_confirmed(self) -> bool:
         keys = self.current_page_keys()
@@ -1149,7 +1240,8 @@ class SpreadWidget(QWidget):
 
     # ---------- layout --------------------------------------------------
 
-    def _visible_entries(self) -> list[int]:
+    def _visible_entries(self) -> list[int | None]:
+        """Spread entries (page index, or None = blank half), on-screen order."""
         spread = self._spread_at(self._index)
         if spread is None:
             return []
@@ -1167,17 +1259,25 @@ class SpreadWidget(QWidget):
             return
 
         images = []
-        for i in entries:
-            page = self._pages[i]
-            images.append(None if page is None else self._cache.get_sync(str(page)))
         aspects = []
-        for i, img in enumerate(images):
+        rotated = []
+        for entry in entries:
+            if entry is None:            # blank half (front/back spread)
+                images.append(None)
+                aspects.append(BLANK_ASPECT)
+                rotated.append(0)
+                continue
+            img = self._cache.get_sync(str(self._pages[entry]))
+            images.append(img)
+            rot = self._rotations.get(self._keys[entry], 0)
             if img is not None and img.height():
-                aspects.append(img.width() / img.height())
-            elif self._pages[entries[i]] is None:
-                aspects.append(BLANK_ASPECT)   # inserted blank page
+                aspect = img.width() / img.height()
+                if rot % 180:          # 90/270: width and height swap
+                    aspect = img.height() / img.width()
+                aspects.append(aspect)
             else:
-                aspects.append(0.65)           # placeholder while loading
+                aspects.append(1 / 0.65 if rot % 180 else 0.65)
+            rotated.append(rot)
         widths = [a * BASE_H for a in aspects]
 
         if len(entries) == 1:
@@ -1211,28 +1311,47 @@ class SpreadWidget(QWidget):
         n_pages = len(self._pages)
         pair_confirmed = (
             len(entries) == 2
+            and all(e is not None for e in entries)
             and frozenset(self._keys[i] for i in entries) in self._confirmed
         )
-        flagged = frozenset(self._keys[i] for i in entries) in self._flagged
+        flagged = frozenset(self._keys[i] for i in entries if i is not None) \
+            in self._flagged
         suffix = ("  ✓" if pair_confirmed else "") + ("  ⚑" if flagged else "")
-        for i, page_idx in enumerate(entries):
+        for i, entry in enumerate(entries):
             rect = QRectF(xs[i], MARGIN, widths[i] * scale, page_h)
+            blank = entry is None
+            role = None if blank else self._roles.get(self._keys[entry])
+            rot = 0 if blank else rotated[i]
             pixmap = None
-            blank = self._pages[page_idx] is None
             img = images[i]
             if not blank and img is not None:
-                target = QSize(int(rect.width()), int(rect.height()))
-                pixmap = QPixmap.fromImage(img.scaled(target, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            self._items.append((rect, pixmap, f"{page_idx + 1} / {n_pages}{suffix}", blank))
+                if rot % 180:
+                    # Scale to the swapped (rotated) rectangle, then turn the
+                    # pixmap to fill rect exactly.
+                    scaled = img.scaled(
+                        QSize(int(rect.height()), int(rect.width())),
+                        Qt.KeepAspectRatio, Qt.SmoothTransformation,
+                    )
+                    pixmap = QPixmap.fromImage(scaled).transformed(
+                        QTransform().rotate(rot)
+                    )
+                else:
+                    target = QSize(int(rect.width()), int(rect.height()))
+                    pixmap = QPixmap.fromImage(img.scaled(target, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            caption = "" if blank else \
+                f"{entry + 1} / {n_pages}" \
+                + (f"  ·{role}" if role else "") \
+                + (f"  ⟳{rot}" if rot else "") \
+                + suffix
+            self._items.append((rect, pixmap, caption, blank))
 
         self.update()
 
     def _on_image_loaded(self, path: str) -> None:
         # A prefetched neighbor arrived; repaint only if it is visible now.
-        entries = self._visible_entries()
         if any(
-            self._pages[i] is not None and str(self._pages[i]) == path
-            for i in entries
+            entry is not None and str(self._pages[entry]) == path
+            for entry in self._visible_entries()
         ):
             self.relayout()
 
@@ -1244,7 +1363,7 @@ class SpreadWidget(QWidget):
             spread = self._spread_at(idx)
             if spread is not None:
                 paths.extend(
-                    str(self._pages[i]) for i in spread if self._pages[i] is not None
+                    str(self._pages[i]) for i in spread if i is not None
                 )
         self._cache.prefetch(paths)
 
@@ -1398,11 +1517,20 @@ class MainWindow(QMainWindow):
         self.act_next_unconfirmed = act("Next unconfirmed pair", "N", self.next_unconfirmed)
         self.act_flag = act("&Flag for review", "F", self.toggle_flag)
         self.act_next_flagged = act("Next flagged spread", "G", self.next_flagged)
-        self.act_blank_before = act(
-            "Insert blank &before", "I", lambda: self.toggle_blank(True)
+        self.act_mark_front = act(
+            "Mark &front (blank before)", "Q", lambda: self.mark_page(0)
         )
-        self.act_blank_after = act(
-            "Insert blank &after", "Shift+I", lambda: self.toggle_blank(False)
+        self.act_mark_other = act(
+            "Mark right / other &page", "E", lambda: self.mark_page(1)
+        )
+        self.act_mark_sides = act(
+            "Mark sides: left &back, right front", "S", self.mark_sides
+        )
+        self.act_rot_left = act(
+            "Rotate &left page", "J", lambda: self.rotate_page(0)
+        )
+        self.act_rot_right = act(
+            "Rotate ri&ght page", "K", lambda: self.rotate_page(1)
         )
 
         self.act_next = act("Next spread", "Right", lambda: self._turn(1))
@@ -1481,8 +1609,12 @@ class MainWindow(QMainWindow):
         review_menu.addAction(self.act_skip_right)
         review_menu.addAction(self.act_next_unconfirmed)
         review_menu.addSeparator()
-        review_menu.addAction(self.act_blank_before)
-        review_menu.addAction(self.act_blank_after)
+        review_menu.addAction(self.act_mark_front)
+        review_menu.addAction(self.act_mark_other)
+        review_menu.addAction(self.act_mark_sides)
+        review_menu.addSeparator()
+        review_menu.addAction(self.act_rot_left)
+        review_menu.addAction(self.act_rot_right)
         review_menu.addSeparator()
         review_menu.addAction(self.act_flag)
         review_menu.addAction(self.act_next_flagged)
@@ -1529,10 +1661,9 @@ class MainWindow(QMainWindow):
 
     # ---------- project / book management --------------------------------
 
-    def _collect_pages(self) -> tuple[list[Path | None], list[str]]:
-        """Concatenate pages from all project directories, minus skipped ones,
-        with blank placeholders inserted at the recorded spots."""
-        pages: list[Path | None] = []
+    def _collect_pages(self) -> tuple[list[Path], list[str]]:
+        """Concatenate pages from all project directories, minus skipped ones."""
+        pages: list[Path] = []
         keys: list[str] = []
         page_plans: list[Path | None] = []   # parallel: plans dir per page
         for di, d in enumerate(self.project.directories):
@@ -1542,19 +1673,34 @@ class MainWindow(QMainWindow):
                 key = self.project.key_for(d, p)
                 if key in self.project.skip:
                     continue
-                if f"blank:{key}" in self.project.blanks:
-                    pages.append(None)
-                    keys.append(f"blank:{key}")
-                    page_plans.append(None)
                 pages.append(p)
                 keys.append(key)
                 page_plans.append(plans_dir)
-        if "blank:__end__" in self.project.blanks:
-            pages.append(None)
-            keys.append("blank:__end__")
-            page_plans.append(None)
         self._page_plans = page_plans
         return pages, keys
+
+    def _build_spreads(self, keys: list[str]) -> list[tuple[int | None, ...]]:
+        """Spreads for the book: role-driven when any page is marked, plain
+        sequential pairing otherwise."""
+        roles = [self.project.roles.get(k) for k in keys]
+        if any(roles):
+            return build_marked_spreads(roles)
+        return build_spreads(len(keys))
+
+    def _apply_legacy_blank_marks(self, keys: list[str]) -> None:
+        """Convert pre-roles "blank_pages" marks into page roles (called once
+        per project load): a blank recorded before page X becomes a front mark
+        on X, and one recorded at the very end becomes a back mark on the last
+        page."""
+        if not self.project.legacy_blanks:
+            return
+        for entry in sorted(self.project.legacy_blanks):
+            if entry == "blank:__end__":
+                if keys:
+                    self.project.roles[keys[-1]] = ROLE_BACK
+            elif entry.startswith("blank:") and entry[6:] in set(keys):
+                self.project.roles[entry[6:]] = ROLE_FRONT
+        self.project.legacy_blanks = set()
 
     def reload_book(self, anchor_key: str | None = None) -> None:
         """Rebuild the page list from the project; keep position via anchor_key."""
@@ -1564,7 +1710,9 @@ class MainWindow(QMainWindow):
         self.act_rtl.setChecked(self.project.reverse)
         self.spread.set_rtl(self.project.reverse)
         pages, keys = self._collect_pages()
-        self.spread.set_book(pages, keys)
+        self._apply_legacy_blank_marks(keys)
+        self.spread.set_book(pages, keys, self._build_spreads(keys),
+                             self.project.roles, self.project.rotations)
         self.spread.set_confirmed(self.project.confirmed)
         self.spread.set_flagged(self.project.flagged)
         self.slider.blockSignals(True)
@@ -1573,7 +1721,8 @@ class MainWindow(QMainWindow):
         if anchor_key is not None and keys:
             for i in range(self.spread.spread_count()):
                 spread = self.spread._spread_at(i)
-                if spread and any(keys[j] == anchor_key for j in spread):
+                if spread and any(j is not None and keys[j] == anchor_key
+                                  for j in spread):
                     self._goto(i)
                     return
         self._goto(min(self.spread.spread_index(), max(0, self.spread.spread_count() - 1)))
@@ -1723,44 +1872,103 @@ class MainWindow(QMainWindow):
         key = keys[idx]
         partner = keys[1 - idx] if len(keys) == 2 else None
         anchor = None
-        if key.startswith("blank:"):
-            self.project.blanks.discard(key)   # skipping a blank removes it
-        elif key in self.project.skip:
+        if key in self.project.skip:
             self.project.skip.discard(key)
             anchor = key          # it comes back; keep it on screen
         else:
             self.project.skip.add(key)
+            self.project.roles.pop(key, None)   # skip clears the page's mark
             if partner is not None:
                 anchor = partner  # its partner stays put and re-pairs
             else:
                 nxt = self.spread._spread_at(self.spread.spread_index() + 1)
                 if nxt:
-                    anchor = self.spread._keys[nxt[0]]
+                    anchor = next((self.spread._keys[j] for j in nxt
+                                   if j is not None), None)
         self.reload_book(anchor_key=anchor)
 
-    def toggle_blank(self, before: bool) -> None:
-        """Insert (or remove) a blank page at the current spread boundary.
+    def mark_page(self, side: int) -> None:
+        """Pick a role for one shown page: side 0 = left, 1 = right (the left
+        one when the spread shows a single page).
 
-        ``before``: blank goes immediately before the spread's first page
-        (file order); otherwise immediately after its last page.
-        """
-        spread = self.spread._spread_at(self.spread.spread_index())
-        if not spread:
+        ``front`` pages get a blank before (solo on the right half, like a
+        cover), ``back`` pages get one after (solo on the left half), and
+        ``left``/``right`` pair with their neighbors."""
+        keys = self.spread.visible_page_keys()
+        if not keys:
             return
-        keys = self.spread._keys
-        if before:
-            blank_key = f"blank:{keys[spread[0]]}"
+        key = keys[min(side, len(keys) - 1)]
+        role = self.project.roles.get(key)
+        menu = QMenu(self)
+        choices = [
+            ("&Front  (blank before)", ROLE_FRONT),
+            ("&Left", ROLE_LEFT),
+            ("&Right", ROLE_RIGHT),
+            ("Bac&k  (blank after)", ROLE_BACK),
+        ]
+        actions = []
+        for label, r in choices:
+            a = menu.addAction(label)
+            a.setCheckable(True)
+            a.setChecked(role == r)
+            actions.append((a, r))
+        menu.addSeparator()
+        clear = menu.addAction("N&o role")
+        clear.setCheckable(True)
+        clear.setChecked(role is None)
+        chosen = menu.exec(self.cursor().pos())
+        if chosen is None:
+            return
+        for a, r in actions:
+            if chosen is a:
+                self.project.roles[key] = r
+                self.status.showMessage(
+                    f"{Path(key).name} marked {r}", 5000
+                )
+                break
         else:
-            after = spread[-1] + 1
-            anchor_key = keys[after] if after < len(keys) else "__end__"
-            blank_key = f"blank:{anchor_key}"
-        if blank_key in self.project.blanks:
-            self.project.blanks.discard(blank_key)
+            self.project.roles.pop(key, None)
+        # Keep the marked page on screen: the surrounding spreads shift as
+        # the blanks and pairings implied by the role take effect.
+        self.reload_book(anchor_key=key)
+
+    def rotate_page(self, side: int) -> None:
+        """Turn the shown page 90° clockwise per press (wraps through 90, 180,
+        270 and back to 0). Rotation is display-only: the files on disk are
+        not touched. side 0 = left, 1 = right (the left one when the spread
+        shows a single page)."""
+        keys = self.spread.visible_page_keys()
+        if not keys:
+            return
+        key = keys[min(side, len(keys) - 1)]
+        rot = (self.project.rotations.get(key, 0) + 90) % 360
+        if rot == 0:
+            self.project.rotations.pop(key, None)   # fully turned back: unmark
         else:
-            self.project.blanks.add(blank_key)
-        # Keep the current spread's first real page on screen.
-        anchor = next((k for k in self.spread.current_page_keys() if not k.startswith("blank:")), None)
-        self.reload_book(anchor_key=anchor)
+            self.project.rotations[key] = rot
+        self.reload_book(anchor_key=key)
+
+    def mark_sides(self) -> None:
+        """Mark the spread's left page as back and its right page as front:
+        the pair splits, the left page keeping its solo-left spread (blank
+        after) and the right page its solo-right one (blank before)."""
+        keys = self.spread.visible_page_keys()
+        if len(keys) != 2:
+            self.status.showMessage(
+                "Only two-page spreads can be marked left=back / right=front",
+                5000,
+            )
+            return
+        left, right = keys
+        self.project.roles[left] = ROLE_BACK
+        self.project.roles[right] = ROLE_FRONT
+        self.status.showMessage(
+            f"{Path(left).name} marked back, {Path(right).name} marked front",
+            5000,
+        )
+        # Keep the back page on screen (its front partner lands on the
+        # adjacent spread).
+        self.reload_book(anchor_key=left)
 
     def next_unconfirmed(self) -> None:
         count = self.spread.spread_count()
@@ -1846,21 +2054,19 @@ class MainWindow(QMainWindow):
     def _update_sidebars(self) -> None:
         """Fill each sidebar with the contributing scans of the page shown
         on that side (left sidebar = left page, even in reverse mode)."""
-        entries = self.spread.visible_pages()
-        numbers = self.spread.visible_page_numbers()
-        indices = self.spread.visible_indices()
-        page_plans = getattr(self, "_page_plans", [])
-        for side, sidebar in enumerate((self.left_sidebar, self.right_sidebar)):
-            if side >= len(entries):
-                sidebar.set_page("—", "no page on this side", [])
+        for side, (page, number, entry) in enumerate(self.spread.visible_sides()):
+            sidebar = (self.left_sidebar, self.right_sidebar)[side]
+            page_plans = getattr(self, "_page_plans", [])
+            if page is None and number is None:
+                sidebar.set_page("—", "blank", [])
                 continue
-            page = entries[side]
-            title = f"p. {numbers[side]} — {page.stem}" if page is not None else f"p. {numbers[side]}"
+            index = entry
+            title = f"p. {number} — {page.stem}" if page is not None else "blank"
             if page is None:
-                sidebar.set_page(title + " — blank", "inserted blank page", [])
+                sidebar.set_page(title, "blank (before a front / after a back)", [])
                 continue
-            plans_dir = (page_plans[indices[side]]
-                         if indices[side] < len(page_plans) else None)
+            plans_dir = (page_plans[index]
+                         if index is not None and index < len(page_plans) else None)
             info = self.plans.info_for(page, plans_dir)
             if info is None:
                 sidebar.set_page(
@@ -1935,6 +2141,18 @@ class MainWindow(QMainWindow):
         mark = "   ·   ✓ confirmed" if confirmed else ""
         if self.spread.is_current_spread_flagged():
             mark += "   ·   ⚑ flagged"
+        rots = [str(self.project.rotations[k])
+                for k in self.spread.current_page_keys()
+                if self.project.rotations.get(k)]
+        if rots:
+            mark += "   ·   ⟳" + "/".join(rots)
+        role_names = {
+            self.project.roles[k]
+            for k in self.spread.current_page_keys()
+            if k in self.project.roles
+        }
+        if role_names:
+            mark += "   ·   " + "+".join(sorted(role_names))
         self.status.showMessage(
             f"Spread {self.spread.spread_index() + 1} / {n}   ·   page "
             f"{'–'.join(str(p) for p in pages)}   ·   {mode}   ·   "

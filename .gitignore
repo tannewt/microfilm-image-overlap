@@ -1,22 +1,40 @@
-# Scan image data (large .tif/.jpg batches) -- not version controlled.
-scans/
-scans2/
-pages/
+# Scan image data (large .tif/.jpg batches) -- not version controlled./
+scans//
+scans2//
+pages//
+/
+# The microfilm scanner firmware is a separate project; keep it out of here./
+20260818-microfilm-scanner//
+/
+# Generated SIFT feature cache (SQLite), match visualizations, and run logs./
+sift_cache//
+overlap_viz//
+logs//
+__pycache__//
+*.pyc/
+/
+# Text outputs from sequence_overlap / extract_anomalies runs./
+scan_overlap_results.txt/
+*_anomalies.txt/
+*_run.txt/
+batch_report.txt/
+# Visual debug images from extract_pages tests./
+tests/debug_output//
+/
+# Raw scans: too big for git (207 GB on 20261007)./
+20261007-newspaper-scans//
+20260826-newspaper-scans//
+20260924-newspaper-scans//
+20260929-newspaper-scans//
+archive.org//
+/
+# SIFT feature caches and composed pages: regenerable, huge./
+sift_cache2//
+sift_cache_0929//
+sift_cache_20261007//
+*.sqlite/
+viz//
 
-# The microfilm scanner firmware is a separate project; keep it out of here.
-20260818-microfilm-scanner/
-
-# Generated SIFT feature cache (SQLite), match visualizations, and run logs.
-sift_cache/
-overlap_viz/
-logs/
-__pycache__/
-*.pyc
-
-# Text outputs from sequence_overlap / extract_anomalies runs.
-scan_overlap_results.txt
-*_anomalies.txt
-*_run.txt
-batch_report.txt
-# Visual debug images from extract_pages tests.
-tests/debug_output/
+# 31 GB image zip: external artifact.
+galesvilletranscript1894_images.zip
+*.zip
