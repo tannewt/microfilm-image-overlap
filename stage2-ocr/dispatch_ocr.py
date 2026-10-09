@@ -28,10 +28,15 @@ from pathlib import Path
 # P77-626 remain).
 PAGES_ROOT = Path("/home/tannewt/repos/image-overlap/pages")
 ROLLS = ("P71-1922-CENLIB9113", "P71-1921-CENLIB9102",
-         "P71-1990-CENLIB9113", "P71-678-CENLIB9113",
-         "P71-679-CENLIB9102")
+         "P71-1990-CENLIB9113", "P72-2696-CENLIB9102",
+         "P71-678-CENLIB9113", "P71-679-CENLIB9102")
+MAX_BODY = 32 * 1024 * 1024   # workers cap request bodies; bigger pages
+                              # are plan anomalies (multi-page gap joins
+                              # from stalled/odd-film runs) -- SKIPPED
+                              # from dispatch and logged for replanning
 OUT = Path("ocr_results/paddle")
 LOG = OUT / "dispatch.log"
+SKIP_LOG = Path("tmp/skipped_pages.txt")
 
 
 def pending_pages():
@@ -40,10 +45,21 @@ def pending_pages():
         for j in (OUT / roll).glob("*.json"):
             done.add(f"{roll}/{j.stem}")
     pages = []
+    skipped = []
     for roll in ROLLS:
-        for p in sorted((PAGES_ROOT / roll).glob("page_*.png")):
-            if f"{roll}/{p.stem}" not in done:
-                pages.append((roll, p.stem, str(p)))
+        for p in sorted((PAGES_ROOT / roll).glob("page*.png")):
+            if f"{roll}/{p.stem}" in done:
+                continue
+            mb = p.stat().st_size / 1e6
+            if mb * 1e6 > MAX_BODY:
+                skipped.append((roll, p.stem, mb))
+                continue
+            pages.append((roll, p.stem, str(p)))
+    if skipped:
+        SKIP_LOG.parent.mkdir(exist_ok=True)
+        with open(SKIP_LOG, "a") as f:
+            for roll, stem, mb in skipped:
+                f.write(f"{roll}\t{stem}\t{mb:.0f}MB\n")
     return pages
 
 
