@@ -188,6 +188,84 @@ def detect_bars(gray, win=51, thr_frac=0.5, thr_min=50, thr_max=100,
     return bars
 
 
+def detect_white_gaps(gray, bbox=None, win=201, ink_frac=0.12,
+                      ink_thresh=200, min_run=80, merge_within=350,
+                      min_band=100, side_mean=170):
+    """Detect page-boundary bands where two pages butt with NO dark bar:
+    a head-to-tail film junction shows only the pages' own blank top/bottom
+    margins (often with a thin printed rule inside) running across the
+    page area, while the film's dark side margins keep running alongside.
+
+    The dark-bar detector can't see these (the band's rows are white; at
+    most a thin rule crosses them), but for page layout they are exactly
+    what a bar is: the interval between two pages' content. Returned rows
+    are formatted like detect_bars' (start, end) inclusive intervals in
+    original-pixel coordinates, so the callers can concatenate both lists.
+
+    Gate: every candidate row band must (a) carry almost no ink across
+    the page's width (rows smoothed by `win`, ink fraction of pixels
+    darker than `ink_thresh` under `ink_frac`) and (b) not be blown-out
+    white film -- the side margins (film edges) must stay dark on
+    average (`side_mean`), which separates a real junction on BLACK
+    film stock from a blank/unexposed film leader, whose margins are
+    white too. Blank runs inside the band (e.g. the pages' two
+    margins split by a thin rule) merge when they sit within
+    `merge_within` rows of each other; bands under `min_band` rows are
+    the page-area brightness dips too small to bound a page and are
+    dropped.
+
+    `bbox` is the content bbox (frame border excluded) so the page area
+    and the film side margins are measured inside the scan's content
+    and frame-border rows never count as "blank film".
+
+    Returns a sorted list of (row_start, row_end).
+    """
+    if bbox is None:
+        bbox = content_bbox(gray)
+    top, bottom, left, right = bbox
+    if bottom <= top or right <= left:
+        return []
+    side_w = max(8, int((right - left) * 0.06))
+    area = gray[top:bottom + 1, left + side_w:right - side_w + 1]
+    ink = (area < ink_thresh).mean(axis=1)
+    sm = np.convolve(ink, np.ones(win) / win, mode="same")
+    light = np.where(sm < ink_frac)[0]
+    if not len(light):
+        return []
+
+    runs = []
+    i = 0
+    while i < len(light):
+        j = i
+        while j + 1 < len(light) and light[j + 1] == light[j] + 1:
+            j += 1
+        if j - i >= min_run:
+            runs.append([light[i], light[j]])
+        i = j + 1
+
+    # merge runs bridged by a thin rule / short white-print strip
+    if not runs:
+        return []
+    bands = [runs[0]]
+    for r0, r1 in runs[1:]:
+        if r0 - bands[-1][1] <= merge_within:
+            bands[-1][1] = r1
+        else:
+            bands.append([r0, r1])
+
+    # side gate: the film's side margins stay dark through a junction
+    out = []
+    lside = gray[top:bottom + 1, left:left + side_w].mean(axis=1)
+    rside = gray[top:bottom + 1, right - side_w:right + 1].mean(axis=1)
+    for r0, r1 in bands:
+        if r1 - r0 < min_band:
+            continue
+        if lside[r0:r1 + 1].mean() < side_mean \
+                and rside[r0:r1 + 1].mean() < side_mean:
+            out.append((top + r0, top + r1))
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Horizontal batches: orientation handling
 # --------------------------------------------------------------------------- #
@@ -1843,7 +1921,15 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
             img = _transpose_frame(img, orient)
         h, w = img.shape
         bbox = content_bbox(img) if trim_border else (0, h - 1, 0, w - 1)
-        scans.append(ScanMeta(p, os.path.basename(p), h, w, detect_bars(img),
+        # Page boundaries: dark bars AND the head-to-tail white junctions
+        # (pages butt with no bar on some film; a full-width blank band
+        # across the page area, film margins still dark, is the same kind
+        # of interval as a bar). detect_white_gaps needs the content bbox
+        # to exclude the bright frame border and measure the film margins.
+        bars = detect_bars(img) + (detect_white_gaps(img, bbox)
+                                   if trim_border else [])
+        bars.sort()
+        scans.append(ScanMeta(p, os.path.basename(p), h, w, bars,
                               bbox))
         # print(scans[-1])
         if verbose and len(scans) % 10 == 0:
