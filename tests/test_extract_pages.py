@@ -9,6 +9,8 @@ on small synthetic bands.
 Black-bar / frame-border detection and the assembled-page + seam are checked
 on REAL scans (with debug images) in `test_extract_pages_visual.py`.
 """
+import tomllib
+
 import cv2
 import numpy as np
 import pytest
@@ -298,7 +300,7 @@ def pair_env(tmp_path, monkeypatch):
         images = {pa: A, pb: B}
 
         def fake_get_kd(path, cache_dir, contrast, min_size, max_dim=0,
-                        force=False, table=None):
+                        force=False, table=None, n_features=0):
             img = images[path]
             if max_dim and max(img.shape) > max_dim:
                 scale = max_dim / max(img.shape)
@@ -736,7 +738,7 @@ def _horiz_batch(tmp_path, monkeypatch, seed=21, n=4, drift="left"):
     images = {p: cv2.imread(p, cv2.IMREAD_GRAYSCALE) for p in paths}
 
     def fake_get_kd(path, cache_dir, contrast, min_size, max_dim=0,
-                    force=False, table=None):
+                    force=False, table=None, n_features=0):
         img = images[path]
         if max_dim and max(img.shape) > max_dim:
             scale = max_dim / max(img.shape)
@@ -1079,7 +1081,7 @@ def pair_env(tmp_path, monkeypatch):
         images = {pa: A, pb: B}
 
         def fake_get_kd(path, cache_dir, contrast, min_size, max_dim=0,
-                        force=False, table=None):
+                        force=False, table=None, n_features=0):
             img = images[path]
             if max_dim and max(img.shape) > max_dim:
                 scale = max_dim / max(img.shape)
@@ -1517,7 +1519,7 @@ def _horiz_batch(tmp_path, monkeypatch, seed=21, n=4, drift="left"):
     images = {p: cv2.imread(p, cv2.IMREAD_GRAYSCALE) for p in paths}
 
     def fake_get_kd(path, cache_dir, contrast, min_size, max_dim=0,
-                    force=False, table=None):
+                    force=False, table=None, n_features=0):
         img = images[path]
         if max_dim and max(img.shape) > max_dim:
             scale = max_dim / max(img.shape)
@@ -1646,3 +1648,219 @@ def test_detect_bars_dark_but_narrow_band_ignored():
     img, _ = _bar_scan()
     _dark_band(img, 800, 812, (0, 2999))
     assert pp.detect_bars(img) == []
+
+
+# ---------------------------------------------------------------------------
+# Vertical reversed batches (--reverse, orientation 'F')
+# ---------------------------------------------------------------------------
+
+def _reversed_vertical_batch(tmp_path, pages=7):
+    """A VERTICAL batch scanned the reversed way, production-like: the film
+    strip runs along the scan's rows (pages separated by horizontal black
+    bars), each frame holds ~1.75 pages, and consecutive frames advance
+    LESS than a page+bar pitch -- so every pair's overlap strip contains
+    the shared page-boundary bar. Content drifts UP frame-to-frame
+    (dy < 0), the 20261007 'forward' rolls. Returns (paths, strip, advance)."""
+    hstrip, hbars = _film_strip(23, rows=600, cols=2800, pitch=400)
+    strip = cv2.transpose(hstrip)          # film axis on rows: (2800, 600)
+    n, advance, fw = 7, 300, 700
+    paths = []
+    for k in range(n):
+        fr = strip[k * advance:k * advance + fw]
+        pa = tmp_path / f"scan{k:04d}.tif"
+        cv2.imwrite(str(pa), fr)
+        paths.append(str(pa))
+    return paths, strip, advance
+
+
+def test_reversed_vertical_batch_plans_and_composes(tmp_path):
+    """The full vertical pipeline on a reversed (dy < 0) batch (--reverse):
+    no scan is transformed -- the film frame keeps the measured offsets and
+    runs in the scans' on-disk orientation (film coord = strip row here) --
+    and compositing returns the strip's page regions as-is: complete (no
+    interior black bar), pixel-identical to the film."""
+    paths, strip, advance = _reversed_vertical_batch(tmp_path)
+
+    res = pp.analyze_batch(str(tmp_path), reverse=True,
+                           stall_frac=0.2, min_page_height=150.0,
+                           bar_gap_tol=10.0, verbose=False)
+    assert res["axis"] == "y"
+    assert res["orient"] is None
+    assert res["reverse"] is True
+    assert len(res["runs"]) == 1           # every pair must link
+    assert len(res["redundant"]) == 0      # no near-dup dedups needed here
+    pages = res["all_pages"]
+    assert len(pages) >= 3                 # 7 pages' worth of strip
+    for lo, hi, contrib, _ in pages:
+        assert 250 <= hi - lo < 400        # full-page strips, not slivers
+        assert hi - lo >= 150
+
+    # ---- write plans (the real driver), then composite them --------------
+    plans_dir = tmp_path / "plans"
+    pp.run(str(tmp_path), output_dir=str(plans_dir), stall_frac=0.2,
+           min_page_height=150.0, bar_gap_tol=10.0, reverse=True,
+           verbose=False)
+    written = sorted(plans_dir.glob("*.toml"))
+    assert written
+    flagged = [p for p in written
+               if tomllib.load(open(p, "rb")).get("page", {}).get("reverse")]
+    assert flagged                         # reverse = true recorded
+
+    R = strip.shape[0]
+    for p in written:
+        plan = cp.apply_manual(tomllib.load(open(p, "rb")))
+        if plan.get("kind") != "page":
+            continue
+        img, _ = cp.compose_page(plan, {}, cp._LRU(2), str(tmp_path))
+        assert img is not None, plan.get("label")
+        lo, hi = (int(round(v)) for v in plan["film"])
+        g = img if img.ndim == 2 else img[:, :, 0]
+        # no interior black bar (the user-visible failure)
+        row_mean = cv2.blur(g, (1, 5)).mean(axis=1)
+        dark = row_mean < 80
+        interior = dark[20:-20] if len(dark) > 40 else np.zeros(0, bool)
+        assert not interior.any(), (plan.get("label"), np.where(dark)[0])
+        # content = the strip's page region (allowing the +/-1-row
+        # inclusive-range rounding at the page's edge rows)
+        best = 0.0
+        for off in (-2, -1, 0, 1, 2):
+            e = strip[max(0, lo + off):min(R, hi + 1 + off)]
+            e = e[:g.shape[0], :g.shape[1]]
+            a = g[:e.shape[0], :e.shape[1]]
+            frac = float((np.abs(a.astype(np.int16) - e.astype(np.int16))
+                          <= 8).mean())
+            best = max(best, frac)
+        assert best > 0.97, (plan.get("label"), best)
+
+
+def test_reversed_batch_slipped_reexposure_keeps_offsets(tmp_path):
+    """A slipped re-exposure (the film backs up ~120 px between two frames,
+    so the mid pair is a near-duplicate): the redundant frame still takes
+    its measured offset, so every scan's bars land on the strip's true bar
+    positions and the pages stay complete (the 20261007 '5,8,9' bug)."""
+    hstrip, hbars = _film_strip(23, rows=600, cols=2800, pitch=400)
+    strip = cv2.transpose(hstrip)          # film axis on rows: (2800, 600)
+    fw, advance, slip = 700, 300, 120
+    # frames at strip rows 0,300,600, then a RE-EXPOSURE of the 600 frame
+    # shifted back 120 (rows 720), then the march resumes at 1200 -- the
+    # pair (f600, f720) is a near-duplicate; its measured offset must not
+    # be dropped or every later S is wrong by 120.
+    los = [0, 300, 600, 720, 1200, 1500, 1800, 2100, 2400]
+    for k, lo in enumerate(los):
+        cv2.imwrite(str(tmp_path / f"scan{k:04d}.tif"), strip[lo:lo + fw])
+    res = pp.analyze_batch(str(tmp_path), reverse=True,
+                           stall_frac=0.2, min_page_height=150.0,
+                           bar_gap_tol=10.0, verbose=False)
+    assert res["orient"] is None
+    assert res["reverse"] is True
+    S_act = res["S_seed"]
+    # every scan anchored at its true offset (the layout's film coord of
+    # scan k's row 0 = los[k], the strip's own coordinates)
+    for k, s in enumerate(S_act):
+        if k < len(los) - 1:
+            assert abs(s - los[k]) <= 45, (k, s, los[k])   # thin-strip jitter
+    # the re-exposure frame is redundant but correctly placed
+    assert 3 in res["redundant"]
+    assert abs(S_act[3] - 720) <= 2
+    # the near-duplicate residual (120) survived into the NEXT scan's
+    # offset: without it every S after the slip is wrong by 120.
+    assert abs((S_act[5] - S_act[4]) - 300) <= 45
+    # the merged bars sit at the strip's true bar positions, not at
+    # phantom offsets (layout coord = S[k] + local as-shot row)
+    r0, r1 = res["runs"][0]
+    bar_its, _, _ = pp.collect_bar_intervals(
+        list(range(r0, r1 + 1)), res["valid"], S_act)
+    merged = pp.merge_intervals(bar_its, 10.0)
+    for (b0, b1) in hbars[:4]:
+        hits = [m for m in merged
+                if any(abs(m[0] - (S_act[k] + (b0 - los[k]))) <= 20
+                       and abs(m[1] - (S_act[k] + (b1 - los[k]))) <= 20
+                       for k in range(r0, r1 + 1)
+                       if b0 >= los[k] and b1 < los[k] + fw)]
+        assert len(hits) == 1, (b0, b1, merged)
+    # and every page matches a true page's extent (pitch - bar)
+    heights = sorted(round(hi - lo) for lo, hi, _, _ in res["all_pages"])
+    assert heights and max(heights) >= 340
+
+
+# ---------------------------------------------------------------------------
+# Gap-junction planning (`plan_gap_merges`) -- forward (reverse=False)
+# ---------------------------------------------------------------------------
+
+def test_gap_merges_forward_boundary_strips(tmp_path):
+    """A forward (dy > 0) batch whose runs are split by a gap: the junction
+    page's A piece is the strip from the earlier run's film-low edge to
+    A's last bar's START, and the B piece from B's first bar's END to the
+    later run's film-high edge. Guards the forward (reverse=False) branch
+    of the strip selection (an `if reverse` without `else` previously left
+    the pieces unbound -> NameError on any forward batch with a gap)."""
+    def sm(k, bars, h=1000):
+        return pp.ScanMeta(f"/r/scan{k:04d}.tif", f"scan{k:04d}.tif", h, 800,
+                           bars, (0, h, 0, 800))
+
+    valid = [sm(0, [(900, 950)]), sm(1, [(450, 500)]),
+             sm(2, [(300, 350)]), sm(3, [(50, 100)])]
+    S_seed = [0.0, -400.0, -1200.0, -1600.0]   # forward: film coord descends
+    runs = [(0, 1), (2, 3)]
+    # pages all contributed by NON-boundary scans, so both strips must be
+    # synthesized from the boundary scans' bar geometry
+    all_pages = [(100.0, 900.0, [0], 0), (950.0, 1700.0, [0], 0),
+                 (-1500.0, -1000.0, [3], 1), (-1000.0, -300.0, [3], 1)]
+    pair_results = [{}, {"status": "no_overlap"}, {}, {}]
+
+    merges = pp.plan_gap_merges(all_pages, runs, valid, S_seed,
+                                bar_gap_tol=200.0, pair_results=pair_results,
+                                reverse=False)
+    assert len(merges) == 1
+    m = merges[0]
+    # A piece: fmin_a (0) is NOT within tol of s_1 + bbox[0] (-400), so lo
+    # falls back to the boundary scan's own frame top; hi = its last bar's
+    # start (-400 + 450 = 50).
+    assert m["a_piece"][0:2] == (-400.0, 50.0)
+    assert m["a_piece"][2] == [1] and m["a_piece"][3] == 0
+    # B piece: fmax_b (-1200 + 1000 = -200) IS within tol of
+    # s_2 + bbox[1] (-200), so hi = -200; lo = its first bar's end
+    # (-1200 + 350 = -850).
+    assert m["b_piece"][0:2] == (-850.0, -200.0)
+    assert m["b_piece"][2] == [2] and m["b_piece"][3] == 1
+    # joined (450 + 650 = 1100) is taller than both neighbors (750, 500):
+    # no red band needed
+    assert m["red"] == 0
+    assert m["a_idx"] == 1 and m["b_idx"] == 2
+
+
+def test_gap_merges_reverse_boundary_strips():
+    """Same junction on a reversed (--reverse, dy < 0) batch: the strips sit
+    at the other film edges -- A's piece from its last bar's END to the
+    run's film-high edge, B's from the run's film-low edge to its first
+    bar's START."""
+    def sm(k, bars, h=1000):
+        return pp.ScanMeta(f"/r/scan{k:04d}.tif", f"scan{k:04d}.tif", h, 800,
+                           bars, (0, h, 0, 800))
+
+    valid = [sm(0, [(300, 350)]), sm(1, [(500, 550)]),
+             sm(2, [(650, 700)]), sm(3, [(900, 950)])]
+    # reversed: dy < 0, so the film coordinates ASCEND with the scan index
+    S_seed = [0.0, 300.0, 600.0, 900.0]
+    runs = [(0, 1), (2, 3)]
+    # run 0's film-high page belongs to the boundary scan 1 (a_idx), and
+    # run 1's film-low page belongs to the boundary scan 2 (b_idx)
+    all_pages = [(350.0, 800.0, [0, 1], 0), (850.0, 1300.0, [1], 0),
+                 (600.0, 1250.0, [2], 1), (1300.0, 1800.0, [3], 1)]
+    pair_results = [{}, {"status": "no_overlap"}, {}, {}]
+
+    merges = pp.plan_gap_merges(all_pages, runs, valid, S_seed,
+                                bar_gap_tol=200.0, pair_results=pair_results,
+                                reverse=True)
+    assert len(merges) == 1
+    m = merges[0]
+    # A piece (a_run[-1] is scan 1's film-high page): (850, 1300).
+    assert m["a_piece"][0:2] == (850.0, 1300.0)
+    assert m["a_piece"][2] == [1] and m["a_piece"][3] == 0
+    # B piece (b_run[0] is scan 2's film-low page): (600, 1250).
+    assert m["b_piece"][0:2] == (600.0, 1250.0)
+    assert m["b_piece"][2] == [2] and m["b_piece"][3] == 1
+    # joined (450 + 650 = 1100) is taller than both neighbors (450, 500):
+    # no red band needed
+    assert m["red"] == 0
+    assert m["a_idx"] == 1 and m["b_idx"] == 2

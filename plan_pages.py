@@ -389,7 +389,7 @@ def detect_film_direction(scans_paths, max_pairs=10, max_dim=1600,
 def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
                      min_y_b=None, max_y_a=None, min_ncc=0.65, min_prom=0.10,
                      win=150, reach=600, margin=40, band=220, step=60,
-                     twin=1700, max_dx_abs=100, orient=None):
+                     twin=1700, max_dx_abs=100, orient=None, reverse=False):
     """Independently verify a small SIFT cluster on the pixels.
 
     A very thin overlap strip (~250-400 px at 600 dpi) yields only a handful
@@ -428,7 +428,10 @@ def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
 
     A horizontal (`--horizontal`) batch stores its scans rotated, so both
     frames are loaded through `_transpose_frame` (all coordinates are in
-    the transposed film axis).
+    the transposed film axis). A REVERSED vertical batch's bounds/shift
+    describe A's bottom <-> B's top overlap geometry; the frames are
+    mirrored on entry (and the refined shift mirrored back on exit), so
+    the dy > 0 strip math runs unchanged.
     """
     a = cv2.imread(path_a, cv2.IMREAD_GRAYSCALE)
     b = cv2.imread(path_b, cv2.IMREAD_GRAYSCALE)
@@ -440,6 +443,17 @@ def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
     ha, wa = a.shape
     hb, wb = b.shape
     dy, dx = int(round(med_dy)), int(round(med_dx))
+    if reverse:
+        # Mirror the A's-bottom <-> B's-top overlap into the assumed
+        # A's-top <-> B's-bottom geometry: flip both frames, negate dy,
+        # and mirror the strip bounds. The refined shift is mirrored
+        # back (rdy -> -rdy) before returning.
+        a, b = cv2.flip(a, 0), cv2.flip(b, 0)
+        dy, dx = -dy, dx
+        if max_y_a is not None:
+            max_y_a = ha - 1 - max_y_a
+        if min_y_b is not None:
+            min_y_b = hb - 1 - min_y_b
     # Overlap strip: A rows [0, ov) map to B rows [dy, dy+ov). Shared width:
     # A columns [x0a, x1a) must stay inside B after the dx shift.
     ov = min(ha - dy, hb - dy, ha)
@@ -447,7 +461,7 @@ def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
     if ov < 80 or x1a - x0a < 300:
         return None
     xs = [p[0] for p in pts_a]
-    ys = [p[1] for p in pts_a]
+    ys = [(ha - 1.0 - p[1]) if reverse else p[1] for p in pts_a]
     # Candidate template x-windows spanning pairs of cluster points (+-100):
     # the sharpest, text-dense region is where the matches agree, but a stray
     # cluster member in a blurry area would poison a single full-span window,
@@ -534,12 +548,14 @@ def ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
             continue
         if best is None or peak > best[2]:
             best = (rdx, rdy, float(peak))
+    if reverse and best is not None:
+        best = (best[0], -best[1], best[2])
     return best
 
 
 def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                          params, full_cache=None, bars_a=None, bars_b=None,
-                         orient=None):
+                         orient=None, reverse=False):
     """Full-resolution A->B translation for one consecutive pair.
 
     Reuses the SIFT dominant-cluster detector (and the pixel-NCC fallback),
@@ -550,13 +566,22 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         ok (bool), full_dx, full_dy (float px, original), matches (int),
         via_ncc (bool), status ('ok' | 'no_overlap').
 
-    Geometry: the film always advances the same direction, so the overlap is
-    always A's TOP rows <-> B's BOTTOM rows (dy > 0). The page that spans the
-    frame boundary is the strip bounded by B's first bar above and A's last
-    bar below, and the overlap always lies inside it. So the strip-restricted
-    match keeps A's rows at/above `max_y_a` (its last bar's start) and B's
-    rows at/below `min_y_b` (its first bar's end), which drops distracting
-    matches from the other pages each frame contains.
+    Geometry: under normal advance (dy > 0) the overlap is A's TOP rows <->
+    B's BOTTOM rows. The page that spans the frame boundary is the strip
+    bounded by B's first bar above and A's last bar below, and the overlap
+    always lies inside it. So the strip-restricted match keeps A's rows
+    at/above `max_y_a` (its last bar's start) and B's rows at/below
+    `min_y_b` (its first bar's end), which drops distracting matches from
+    the other pages each frame contains.
+
+    A REVERSED batch (`reverse`, --reverse: content drifts UP frame-to-
+    frame, the 20261007 rolls) mirrors that: the overlap is A's BOTTOM
+    rows <-> B's TOP rows, so the bounds passed in are A's last bar's END
+    (keep A's rows at/below it) and B's first bar's START (keep B's rows
+    at/above it). The dy < 0 advance is kept as measured; the film frame
+    still ascends along the reading direction (capture order = ascending
+    rows), so everything downstream stays in the scans' on-disk
+    orientation.
 
     A horizontal batch (`--horizontal`) works on TRANSPOSED frames: the
     scans' bars/bbox/`params['shapes']` arrive already transposed and the
@@ -622,12 +647,13 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
     max_iqr = params["max_iqr"]
     max_dim = params["max_dim"]
     force = params["force_cache"]
+    n_features = params.get("n_features", 0)
 
     def get_kd(path):
         if path not in cache:
             kp, des, shape = get_or_compute_keypoints(
                 path, cache_dir, contrast, min_size, max_dim=max_dim,
-                force=force)
+                force=force, n_features=n_features)
             if orient is not None:
                 kp = _transpose_keypoints(kp, shape, orient)
                 shape = (shape[1], shape[0])
@@ -647,7 +673,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         if full_cache is None:
             kp, des, shape = get_or_compute_keypoints(
                 path, cache_dir, contrast, min_size, max_dim=0, force=force,
-                table="images_fullres")
+                table="images_fullres", n_features=n_features)
             if orient is not None:
                 kp = _transpose_keypoints(kp, shape, orient)
                 shape = (shape[1], shape[0])
@@ -655,7 +681,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         if path not in full_cache:
             kp, des, shape = get_or_compute_keypoints(
                 path, cache_dir, contrast, min_size, max_dim=0, force=force,
-                table="images_fullres")
+                table="images_fullres", n_features=n_features)
             if orient is not None:
                 kp = _transpose_keypoints(kp, shape, orient)
                 shape = (shape[1], shape[0])
@@ -708,24 +734,70 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         good = filter_matches(kp_a, kp_b, good, max_dx=max_dx)
         real, n, mdx, mdy, iqr, mask = assess_overlap(
             kp_a, kp_b, good, min_matches=min_matches, max_iqr=max_iqr)
-        # cluster-member A-keypoint coordinates (full-res here, scaled in
-        # stage 1) -- the thin-overlap rescue centers its pixel verification
-        # template on them.
+        # cluster-member keypoint coordinates (full-res here, scaled in
+        # stage 1): (x_a, y_a, y_b) -- the thin-overlap rescue centers its
+        # pixel verification template on (x, y_a), and the near-duplicate
+        # guard checks the cluster's frame coverage from (y_a, y_b).
         pts = None
         if mask is not None:
-            pts = [(kp_a[m.queryIdx].pt[0], kp_a[m.queryIdx].pt[1])
+            pts = [(kp_a[m.queryIdx].pt[0], kp_a[m.queryIdx].pt[1],
+                    kp_b[m.trainIdx].pt[1])
                    for m, keep in zip(good, mask) if keep]
         return real, n, mdx, mdy, iqr, pts
 
+    # 0. Near-duplicate guard. A pair only counts as a re-exposed frame
+    #    when the shots are ALMOST IDENTICAL: a confident whole-frame
+    #    cluster whose |dy| sits under the stall threshold (5% of the
+    #    frame by default) -- an accidental double-fire of the shutter.
+    #    The strip-restricted stages below CANNOT see that alignment: it
+    #    runs A's bottom rows <-> B's top rows (dy < 0), the strip bounds
+    #    amputate precisely those rows, and the stages would then settle
+    #    on a page-furniture repeat -- so the layout double-counts the
+    #    page. Match the whole downscaled frames first (both dy signs)
+    #    and hand such a pair to the layout's stall handling to dedup.
+    #    A re-shot frame that SLIPS (hundreds of px, e.g. P71-1922's
+    #    0037 -> 0038 at ~+809) is NOT a near-duplicate: it holds a full
+    #    page of its own content and must keep contributing pages -- so
+    #    only a cluster within the stall threshold qualifies, and even
+    #    then only when it covers the whole frame. That coverage gate
+    #    matters because a film that doubled back over a strip
+    #    re-photographs it a few hundred px into the next frame: 0005 ->
+    #    0006 aligns a ~2500 px band at dy ~ +818 with 3900 agreeable
+    #    matches, while the frames' true relation is a full page advance
+    #    (dy ~ -5445, NCC-verified against the neighbors' strip
+    #    baseline) -- the band spans just 40% of the frame, the true
+    #    whole-frame slip covers 82-83%. A band repeat falls through to
+    #    the strip stages, which resolve the true page advance.
+    stall_frac = params.get("stall_frac")
+    if stall_frac is not None:
+        near_thr = stall_frac * orig_h_a
+        nd_real, nd_n, nd_dx, nd_dy, nd_iqr, nd_pts = _sift_verdict(
+            kp_a, des_a, kp_b, des_b)
+        near_dup = (nd_real and nd_n and abs(nd_dy * sy) < near_thr)
+        if near_dup and nd_pts:
+            # both frames must be covered: the cluster's row span on each
+            # side must reach well past 2/3 of the frame (a repeat band,
+            # or any strip-limited alignment, falls short)
+            ya = [p[1] for p in nd_pts]
+            yb = [p[2] for p in nd_pts]
+            near_dup = ((max(ya) - min(ya)) >= 0.7 * ha_s and
+                        (max(yb) - min(yb)) >= 0.7 * sb[0])
+        if near_dup:
+            return dict(ok=True, full_dx=nd_dx * sx, full_dy=nd_dy * sy,
+                        matches=nd_n, via_ncc=False, via_band=False,
+                        status="ok", near_dup=True)
+
     # 1. Strip-restricted match: A at/above its last bar, B at/below its
     #    first bar -- the boundary-spanning page strip, which always contains
-    #    the overlap.
-    strip_kp_a, strip_des_a = _at_or_above(kp_a, des_a,
-                                           max_y_a / sy if max_y_a is not None
-                                           else None)
-    strip_kp_b, strip_des_b = _at_or_below(kp_b, des_b,
-                                           min_y_b / sy_b if min_y_b is not None
-                                           else None)
+    #    the overlap (stage 0 above has already removed near-duplicates).
+    lo_a, hi_b = (max_y_a / sy if max_y_a is not None else None,
+                  min_y_b / sy_b if min_y_b is not None else None)
+    if reverse:                      # A's bottom rows <-> B's top rows
+        strip_kp_a, strip_des_a = _at_or_below(kp_a, des_a, lo_a)
+        strip_kp_b, strip_des_b = _at_or_above(kp_b, des_b, hi_b)
+    else:                            # A's top rows <-> B's bottom rows
+        strip_kp_a, strip_des_a = _at_or_above(kp_a, des_a, lo_a)
+        strip_kp_b, strip_des_b = _at_or_below(kp_b, des_b, hi_b)
     is_real, n_good, med_dx, med_dy, iqr_dy, _ = _sift_verdict(
         strip_kp_a, strip_des_a, strip_kp_b, strip_des_b)
 
@@ -738,8 +810,16 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         fk_a, fdes_a, fa_shape = get_full_kd(path_a)
         fk_b, fdes_b, fb_shape = get_full_kd(path_b)
         if fa_shape[0] and fb_shape[0]:
-            fstrip_kp_a, fstrip_des_a = _at_or_above(fk_a, fdes_a, max_y_a)
-            fstrip_kp_b, fstrip_des_b = _at_or_below(fk_b, fdes_b, min_y_b)
+            if reverse:
+                fstrip_kp_a, fstrip_des_a = _at_or_below(fk_a, fdes_a,
+                                                         max_y_a)
+                fstrip_kp_b, fstrip_des_b = _at_or_above(fk_b, fdes_b,
+                                                         min_y_b)
+            else:
+                fstrip_kp_a, fstrip_des_a = _at_or_above(fk_a, fdes_a,
+                                                         max_y_a)
+                fstrip_kp_b, fstrip_des_b = _at_or_below(fk_b, fdes_b,
+                                                         min_y_b)
             is_real, n_good, med_dx, med_dy, iqr_dy, pts_a = _sift_verdict(
                 fstrip_kp_a, fstrip_des_a, fstrip_kp_b, fstrip_des_b)
             if not is_real and 5 <= n_good and iqr_dy <= 100:
@@ -748,7 +828,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                 # pixels before trusting it (see ncc_verify_strip).
                 v = ncc_verify_strip(path_a, path_b, med_dx, med_dy, pts_a,
                                      min_y_b=min_y_b, max_y_a=max_y_a,
-                                     orient=orient)
+                                     orient=orient, reverse=reverse)
                 if v is not None:
                     med_dx, med_dy, _ = v
                     is_real = True
@@ -783,7 +863,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                 r = pixel_ncc_overlap(ga, gb)
                 if r[0]:
                     _, ncc_dy, ncc_dx, _, _ = r
-                    is_real = ncc_dy > 0
+                    is_real = (ncc_dy < 0 if reverse else ncc_dy > 0)
                     med_dx, med_dy = ncc_dx, ncc_dy
                     n_good = 0
                     via_ncc = True
@@ -1457,6 +1537,10 @@ def page_contribs(film, contrib_idx, valid, S_seed, axis=None, orient=None):
     the mirrored orientation ('R', content drifting left) the transposed
     film axis runs column-descending, so the offsets/ranges are flipped:
     film col offset = -S_seed - (w - 1), page film = [-hi, -lo].
+    A vertical batch with --reverse keeps everything in the scans' on-disk
+    orientation -- the measured (negative) dy already accumulates film
+    coordinates that ascend along the reading direction -- so nothing
+    changes here; the plan records `reverse = true` for provenance.
     """
     recs = []
     for k in contrib_idx:
@@ -1477,9 +1561,9 @@ def page_contribs(film, contrib_idx, valid, S_seed, axis=None, orient=None):
 
 def convert_film(film, orient):
     """Convert a film range (lo, hi) in transposed coordinates to the plan's
-    written form (see `page_contribs`): unchanged for orientation 'T' / a
-    vertical batch; flipped to [-hi, -lo] for 'R' (column-descending film
-    axis)."""
+    written form (see `page_contribs`): unchanged for orientation 'T' or a
+    plain vertical batch (normal or --reverse); flipped to [-hi, -lo] for
+    'R' (column-descending film axis)."""
     lo, hi = film
     return [-float(hi), -float(lo)] if orient == "R" else [float(lo), float(hi)]
 
@@ -1551,6 +1635,7 @@ axis = "x" (a --horizontal batch): the film coordinates here are film
   on disk (untransposed).
 """
 
+
 MANUAL_DOC_GAP = """\
 Override [auto] here to fine-tune this page without re-planning.
   [manual.sections.0]                  tweak one section (0-based index)
@@ -1570,7 +1655,7 @@ Override [auto] here to fine-tune this page without re-planning.
 
 
 def write_plan_toml(path, label, kind, source_dir, auto, axis=None,
-                    missing_note=None):
+                    reverse=False, missing_note=None):
     """Write one page plan: `[auto]` holds the computed data, `[manual]`
     (empty, self-documenting) is where hand edits override it.
 
@@ -1579,6 +1664,9 @@ def write_plan_toml(path, label, kind, source_dir, auto, axis=None,
     COLUMNS (scan column c sits at film column film_offset + c) while
     bbox/size stay in the scans' on-disk orientation. `missing_note`
     replaces the missing-page placeholder note.
+
+    `reverse` records a reversed-advance vertical batch (--reverse) in
+    `[page]` for provenance only; compositing is direction-agnostic.
     """
     lines = [
         f"# Page plan for {label} -- generated by plan_pages.py.",
@@ -1592,6 +1680,8 @@ def write_plan_toml(path, label, kind, source_dir, auto, axis=None,
     ]
     if axis:
         lines.append(f"axis = {_toml_str(axis)}")
+    if reverse:
+        lines.append("reverse = true")
     lines += ["", "[auto]"]
     if kind == "page":
         lines.append(f"film = {_toml_val(auto['film'])}")
@@ -1634,6 +1724,13 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv, stall_frac,
 
     Pure data -- no image loading, no printing -- so it is reused by `run()`
     and by the visual tests.
+
+    A near-duplicate / stalled re-scan (|dy| under the stall threshold) is
+    marked redundant (excluded from page contributions) but STILL anchored
+    at its measured offset: the slip is real film motion, and dropping it
+    maps the redundant frame's boundary bar to a phantom position -- the
+    neighbors' bar copies then fail to merge and the region's pages shred
+    into below-min-height slivers with mis-joined seams.
     """
     redundant, S_seed = set(), [0.0] * nv
     runs = []
@@ -1648,9 +1745,7 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv, stall_frac,
             continue
         if abs(res["full_dy"]) < stall_frac * valid[k].h:
             redundant.add(k + 1)            # stalled / near-duplicate re-scan
-            S_seed[k + 1] = S_seed[k]
-        else:
-            S_seed[k + 1] = S_seed[k] - res["full_dy"]
+        S_seed[k + 1] = S_seed[k] - res["full_dy"]
     runs.append((run_start, nv - 1))
 
     # Cumulative horizontal offset per scan, relative to its run start.
@@ -1831,17 +1926,17 @@ def select_subset(scans_paths, only):
 def resolve_stall_frac(stall_frac, horizontal):
     """Fill in the stall threshold when the caller didn't set one.
 
-    Vertical batches advance ~a full page per capture -- anything under 30%
-    of the (tall) frame height is a stalled/near-duplicate re-shoot. A
-    horizontal batch is different by nature: the frames advance a FRACTION
-    of the (wide) frame each capture (the 20260929 uncat212 batch advances
-    ~8-24% per pair), so the stalled-re-scan threshold must be far smaller
-    (default 0.05) or every real advance would be dropped as redundant.
-    An explicit `stall_frac` always wins.
+    The default is 0.05 of the frame height for every batch kind: a real
+    re-exposed / slipped frame repeats the previous capture within a
+    fraction of the film advance (P71-1922's 0037 -> 0038 reshot slips
+    ~809 px -- 13% of the 6300 px frame), while a genuine re-shot-of-the-
+    same-page frame holds a whole extra page of its own content and must
+    keep contributing (the 0005 -> 0006 / 0006 -> 0007 slides, 13-17%,
+    each yield their own pages). An explicit `stall_frac` always wins.
     """
     if stall_frac is not None:
         return stall_frac
-    return 0.05 if horizontal else 0.3
+    return 0.05
 
 
 def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
@@ -1849,7 +1944,7 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                   max_iqr=500.0, max_dim=3200, force_cache=False,
                   stall_frac=None, bar_gap_tol=200.0, min_page_height=1000.0,
                   trim_border=True, verbose=True, only=None,
-                  horizontal=False):
+                  horizontal=False, reverse=False, n_features=0):
     """Phases 1-3 of `run()` without writing anything: load per-scan metadata
     (black bars + frame border), compute the per-pair overlap (reusing the
     SIFT cache), and build the film-coordinate layout. `only` optionally
@@ -1865,6 +1960,18 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
     dimensions/bars/bbox are then in transposed coordinates, and the
     returned dict gains `axis` ("x" under --horizontal, else "y") --
     the axis the written plans describe (see `run`).
+
+    `reverse=True` marks a vertical batch scanned the other way (--reverse:
+    content drifts UP frame-to-frame, A's bottom rows <-> B's top rows,
+    dy < 0 -- the 20261007 rolls). No scan is transformed: film
+    coordinates just keep the measured (negative) dy, so they still run
+    in the scans' on-disk orientation and compose_pages.py is untouched.
+    Only the DETECTION geometry flips: the pair-overlap strip is A's
+    BOTTOM rows (below A's last bar) <-> B's TOP rows (above B's first
+    bar), and the pixel fallbacks' / side checks' dy signs mirror. Film
+    coordinates still ascend along the page's reading direction, since
+    the reads go (later scan, higher rows) in the same row order -- see
+    `compute_pair_overlap`.
     """
     stall_frac = resolve_stall_frac(stall_frac, horizontal)
     scans_paths = list_scans(scan_dir, pattern=pattern)
@@ -1905,6 +2012,11 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                   f"(new content enters at the "
                   f"{'left' if orient == 'T' else 'right'} edge); "
                   f"transposing scans so the film axis is the frame rows")
+    elif reverse and verbose:
+        print("Vertical batch with --reverse: content drifts UP "
+              "frame-to-frame (the pair overlaps are A's BOTTOM rows <-> "
+              "B's TOP rows, dy < 0); no scans are transformed -- only the "
+              "pair-detection strip bounds and dy signs flip.")
 
     if verbose:
         print("\n[1/3] Detecting black bars and frame borders in each scan...")
@@ -1950,7 +2062,8 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
     full_kp_cache = {}   # full-res SIFT (images_fullres rows), retry-only
     params = dict(ratio=ratio, contrast=contrast, min_size=min_size,
                   max_dx=max_dx, min_matches=min_matches, max_iqr=max_iqr,
-                  max_dim=max_dim, force_cache=force_cache, shapes=shapes)
+                  max_dim=max_dim, force_cache=force_cache, shapes=shapes,
+                  n_features=n_features, stall_frac=stall_frac)
     pair_results = []
     missing_seqs = []    # sequence numbers absent from the directory
     for k in range(nv - 1):
@@ -1975,16 +2088,23 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                       f"({mb - ma - 1} file(s) absent; forcing page break)")
             continue
 
-        # Strip bounds for the pair match: A at/above its last bar's start,
-        # B at/below its first bar's end (the boundary-spanning page strip;
-        # see compute_pair_overlap). A barless scan imposes no bound.
-        max_y_a = a.bars[-1][0] if a.bars else None
-        min_y_b = b.bars[0][1] if b.bars else None
+        # Strip bounds for the pair match: the boundary-spanning page strip
+        # (see compute_pair_overlap). Normal advance (dy > 0): A at/above its
+        # last bar's start, B at/below its first bar's end. Reversed (--reverse,
+        # dy < 0): A at/below its last bar's END, B at/above its first bar's
+        # START (the same shared boundary bar, mirrored). A barless scan
+        # imposes no bound.
+        if reverse:
+            max_y_a = a.bars[-1][1] if a.bars else None
+            min_y_b = b.bars[0][0] if b.bars else None
+        else:
+            max_y_a = a.bars[-1][0] if a.bars else None
+            min_y_b = b.bars[0][1] if b.bars else None
         res = compute_pair_overlap(a.path, max_y_a, b.path, min_y_b,
                                    kp_cache, cache_dir, params,
                                    full_cache=full_kp_cache,
                                    bars_a=a.bars, bars_b=b.bars,
-                                   orient=orient)
+                                   orient=orient, reverse=reverse)
         res["__h_a"] = a.h
         if res['status'] != "ok" or res.get("via_ncc") or res.get("via_band"):
             tag = (f"  full dy={res['full_dy']:+.0f} dx={res['full_dx']:+.0f}"
@@ -2006,11 +2126,11 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                 gap_after=gap_after, nv=nv, runs=runs, S_seed=S_seed,
                 redundant=redundant, all_pages=all_pages,
                 missing_seqs=missing_seqs, axis="x" if horizontal else "y",
-                orient=orient)
+                orient=orient, reverse=reverse)
 
 
 def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
-                    pair_results):
+                    pair_results, reverse=False):
     """Plan the gap-junction fallback pages (one per run boundary).
 
     A no-overlap / missing-frame pair splits the batch into runs, and the page
@@ -2031,9 +2151,14 @@ def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
     An edge strip shorter than `min_page_height` never became a page (the
     stock layout drops it, silently losing that part of the junction page),
     so a missing side is synthesized here from the boundary scan's own bar
-    geometry: the A piece is the film range from the run's bottom edge to A's
-    last bar's start, the B piece from B's first bar's end to the run's top
-    edge. Barless boundary scans are skipped (no page edges to anchor to).
+    geometry: under normal advance the A piece is the film range from the
+    run's film-low edge to A's last bar's start (the strip ABOVE A's last
+    bar -- the pair's overlap was A's top rows) and the B piece from B's
+    first bar's end to the run's film-high edge; under a reversed advance
+    (--reverse) the same physical junction is A's strip BELOW its last bar
+    to the run's film-high edge, and B's first bar's start to the run's
+    film-low edge. Barless boundary scans are skipped (no page edges to
+    anchor to).
 
     Returns a list of dicts with keys `a_piece` / `b_piece` (page tuples:
     earlier-run / later-run pieces), `red` (red-band rows, 0 = none), and
@@ -2055,41 +2180,71 @@ def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
         if not a_run or not b_run:
             continue
         a_idx, b_idx = runs[j][1], runs[j + 1][0]
-        _, fmin_a, _ = collect_bar_intervals(list(runs[j]), valid, S_seed)
-        _, _, fmax_b = collect_bar_intervals(list(runs[j + 1]), valid, S_seed)
-        # Existing edge page if there is one; else synthesize the strip.
-        a_piece = a_run[0] if (a_run[0][2] == [a_idx] and
-                               abs(a_run[0][0] - fmin_a) <= bar_gap_tol) \
-            else None
-        b_piece = b_run[-1] if (b_run[-1][2] == [b_idx] and
-                                abs(b_run[-1][1] - fmax_b) <= bar_gap_tol) \
-            else None
+        _, fmin_a, fmax_a = collect_bar_intervals(list(runs[j]), valid, S_seed)
+        _, fmin_b, fmax_b = collect_bar_intervals(list(runs[j + 1]), valid,
+                                                  S_seed)
+        # The boundary strips sit at the run's film-edge that touches the
+        # gap: under normal advance the run's film-descending capture puts
+        # the boundary scan's pages at the film-asc START of the page list
+        # (fmin/fmax anchored); a reversed advance runs the pages in
+        # capture = film-asc order, so the boundary scan's pages sit at the
+        # FILM-ASC END of the run's list (anchored the other end).
+        if reverse:
+            a_piece = a_run[-1] if (a_run[-1][2] == [a_idx] and
+                                    abs(a_run[-1][1] - fmax_a) <= bar_gap_tol) \
+                else None
+            b_piece = b_run[0] if (b_run[0][2] == [b_idx] and
+                                   abs(b_run[0][0] - fmin_b) <= bar_gap_tol) \
+                else None
+        else:
+            a_piece = a_run[0] if (a_run[0][2] == [a_idx] and
+                                   abs(a_run[0][0] - fmin_a) <= bar_gap_tol) \
+                else None
+            b_piece = b_run[-1] if (b_run[-1][2] == [b_idx] and
+                                    abs(b_run[-1][1] - fmax_b) <= bar_gap_tol) \
+                else None
         sm_a, sm_b = valid[a_idx], valid[b_idx]
         s_a, s_b = S_seed[a_idx], S_seed[b_idx]
         if a_piece is None:
             if not sm_a.bars:
                 continue           # no bar edge to anchor the strip to
-            lo = fmin_a if abs(fmin_a - (s_a + sm_a.bbox[0])) <= bar_gap_tol \
-                else s_a + sm_a.bbox[0]
-            hi = s_a + sm_a.bars[-1][0]
+            if reverse:
+                # A's bottom-most strip: from its last bar's END to the
+                # run's film-high edge.
+                lo = s_a + sm_a.bars[-1][1]
+                hi = fmax_a if abs(fmax_a - (s_a + sm_a.bbox[1])) \
+                    <= bar_gap_tol else s_a + sm_a.bbox[1]
+            else:
+                lo = fmin_a if abs(fmin_a - (s_a + sm_a.bbox[0])) <= bar_gap_tol \
+                    else s_a + sm_a.bbox[0]
+                hi = s_a + sm_a.bars[-1][0]
             if hi - lo < 2:
                 continue
             a_piece = (lo, hi, [a_idx], j)
         if b_piece is None:
             if not sm_b.bars:
                 continue
-            hi = fmax_b if abs(fmax_b - (s_b + sm_b.bbox[1])) <= bar_gap_tol \
-                else s_b + sm_b.bbox[1]
-            lo = s_b + sm_b.bars[0][1]
+            if reverse:
+                # B's top-most strip: from the run's film-low edge to B's
+                # first bar's START.
+                hi = fmin_b if abs(fmin_b - (s_b + sm_b.bbox[0])) \
+                    <= bar_gap_tol else s_b + sm_b.bbox[0]
+                lo = s_b + sm_b.bars[0][0]
+            else:
+                hi = fmax_b if abs(fmax_b - (s_b + sm_b.bbox[1])) <= bar_gap_tol \
+                    else s_b + sm_b.bbox[1]
+                lo = s_b + sm_b.bars[0][1]
             if hi - lo < 2:
                 continue
             b_piece = (lo, hi, [b_idx], j + 1)
         merged = (b_piece[1] - b_piece[0]) + (a_piece[1] - a_piece[0])
-        # Neighbor pages: the strip below A's piece (next page in the earlier
-        # run) and the strip above B's piece (previous page in the later run).
+        # Neighbor pages: the next page past A's piece (earlier run, in
+        # reading order) and the previous page past B's piece (later run).
         spans = [p[1] - p[0] for p in
-                 ([a_run[1]] if len(a_run) > 1 else []) +
-                 ([b_run[-2]] if len(b_run) > 1 else [])]
+                 ([a_run[-2]] if reverse and len(a_run) > 1 else
+                  [a_run[1]] if len(a_run) > 1 else []) +
+                 ([b_run[1]] if reverse and len(b_run) > 1 else
+                  [b_run[-2]] if len(b_run) > 1 else [])]
         red = 0
         if spans and merged < max(spans):
             red = int(round(max(spans) - merged))
@@ -2121,7 +2276,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         max_iqr=500.0, max_dim=3200, force_cache=False, stall_frac=None,
         bar_gap_tol=200.0, min_page_height=1000.0, dry_run=False,
         trim_border=True, reverse=False, only=None, horizontal=False,
-        verbose=True):
+        verbose=True, n_features=0):
     """Run the page PLANNING: analyze the batch (phases 1-3 via
     `analyze_batch`), then write one TOML plan per page under `[auto]`
     (phase 4). Compositing the plans into images is `compose_pages.py`'s job.
@@ -2130,6 +2285,15 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     `analyze_batch`); all its plans are written with `axis = "x"`, i.e. film
     coordinates are film COLUMNS and the contributors' bbox/size are in the
     scans' on-disk orientation.
+
+    `reverse=True` marks a vertical batch scanned the other way (content
+    drifts UP frame-to-frame: A's bottom rows <-> B's top rows, dy < 0 --
+    the 20261007 "forward" rolls). No scan is transformed: the film frame
+    keeps the measured dy, and only the pair-detection geometry / gap-join
+    ordering flip (see `analyze_batch`). The plans record `reverse = true`
+    for provenance only -- compose_pages.py is direction-agnostic.
+    (Replaces the old meaning of --reverse, 'number pages bottom-of-film
+    first': page numbers come from scan sequence order either way.)
     """
     res = analyze_batch(scan_dir, pattern=pattern, cache_dir=cache_dir,
                         ratio=ratio, contrast=contrast, min_size=min_size,
@@ -2138,7 +2302,8 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                         stall_frac=stall_frac, bar_gap_tol=bar_gap_tol,
                         min_page_height=min_page_height,
                         trim_border=trim_border, verbose=verbose, only=only,
-                        horizontal=horizontal)
+                        horizontal=horizontal, reverse=reverse,
+                        n_features=n_features)
     valid = res["valid"]; runs = res["runs"]; S_seed = res["S_seed"]
     all_pages = res["all_pages"]
     missing_seqs = res["missing_seqs"]
@@ -2146,16 +2311,9 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     orient = res["orient"]
     horizontal = axis == "x"
 
-    # Order pages: runs in scan order, and within each run by film coordinate.
-    # Ascending film coord = top-of-film first; --reverse flips the within-run
-    # order to bottom-of-film / capture order.
+    # Order pages: runs in scan order, and within each run by film coordinate
+    # (top-of-film first). Page NUMBERS below come from scan-sequence order.
     all_pages.sort(key=lambda p: (p[3], p[0], p[1]))
-    if reverse:
-        from itertools import groupby
-        ordered = []
-        for ri, grp in groupby(all_pages, key=lambda p: p[3]):
-            ordered.extend(sorted(grp, key=lambda p: (-p[0], -p[1])))
-        all_pages = ordered
 
     if verbose:
         print(f"\n  {len(runs)} run(s); {len(all_pages)} page(s) detected.")
@@ -2165,7 +2323,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     # above the earlier scan's top strip, no overlap); a red band fills any
     # shortfall vs. the neighboring pages. Missing files get a full red page.
     merges = plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
-                             res["pair_results"])
+                             res["pair_results"], reverse=reverse)
     merged_piece_ids = {id(m["a_piece"]) for m in merges} | \
                         {id(m["b_piece"]) for m in merges}
     if merges and verbose:
@@ -2245,7 +2403,8 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                                            S_seed, axis=axis, orient=orient))
         path = os.path.join(output_dir, f"{labels[pi]}.toml")
         write_plan_toml(path, labels[pi], "page", source_dir, auto,
-                        axis="x" if horizontal else None)
+                        axis="x" if horizontal else None,
+                        reverse=reverse)
         written += 1
 
     # Gap-junction fallback plans: re-join the page split by each gap.
@@ -2257,12 +2416,16 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         label = (f"page{page_no[('join', mi)]:03d}-"
                  f"scans{rng[0]:03d}-{rng[1]:03d}-gap")
         # Stack the sections in the plan's film-axis order (compose_pages
-        # vstacks them as written): on a vertical batch the later-run piece
-        # (smaller film rows) comes first: [B, red, A]. Under the mirrored
-        # column-descending 'R' mapping the written (converted) film columns
-        # run the other way, so the order flips too: [A, red, B].
-        first, second = (b_piece, a_piece) if orient != "R" else (a_piece,
-                                                                 b_piece)
+        # vstacks them as written; the film axis ascends along the reading
+        # direction in every orientation): on a vertical batch the
+        # later-run piece (smaller film rows) comes first: [B, red, A].
+        # Under the mirrored column-descending 'R' mapping and for a
+        # reversed-advance vertical batch (--reverse: the later scans sit
+        # at higher film rows) the order flips to [A, red, B].
+        first, second = (
+            (a_piece, b_piece) if (orient == "R"
+                                   or (not horizontal and reverse))
+            else (b_piece, a_piece))
         sections = [dict(film=convert_film(first[0:2], orient),
                          contribs=page_contribs(
                              first[0:2], list(first[2]), valid, S_seed,
@@ -2276,7 +2439,8 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         path = os.path.join(output_dir, f"{label}.toml")
         write_plan_toml(path, label, "gap_join", source_dir,
                         dict(sections=sections),
-                        axis="x" if horizontal else None)
+                        axis="x" if horizontal else None,
+                        reverse=reverse)
         written += 1
         if verbose:
             note = f", red band {m['red']} px" if m["red"] > 0 else ""
@@ -2307,6 +2471,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
             write_plan_toml(path, label, "missing", source_dir,
                             dict(size=[int(ph), int(pw)]),
                             axis="x" if horizontal else None,
+                            reverse=reverse,
                             missing_note=missing_note)
             written += 1
             if verbose:
@@ -2343,14 +2508,18 @@ def main():
     ap.add_argument("--max-iqr", type=float, default=500.0)
     ap.add_argument("--max-dim", type=int, default=3200,
                     help="SIFT downscale (must match the cache to reuse it).")
+    ap.add_argument("--n-features", type=int, default=0,
+                    help="Cap SIFT keypoints per image (best-response first; "
+                         "0 = all, matches legacy caches; must match the "
+                         "cache to reuse it). Slashes cache size ~5x and "
+                         "speeds matching; parity tested before rollout.")
     ap.add_argument("--force-cache", action="store_true")
 
     # Page-planning params.
     ap.add_argument("--stall-frac", type=float, default=None,
                     help="Pairs whose vertical advance is below this fraction "
                          "of the scan height are treated as stalled "
-                         "(near-duplicate) re-scans and skipped (default 0.3, "
-                         "or 0.05 under --horizontal).")
+                         "(near-duplicate) re-scans and skipped (default 0.05).")
     ap.add_argument("--bar-gap-tol", type=float, default=200.0,
                     help="Merge bar intervals within this many film-px "
                          "(same bar captured in two scans) (default 200).")
@@ -2361,8 +2530,13 @@ def main():
                     help="Keep the scans' white frame border instead of "
                          "cropping it out of each page.")
     ap.add_argument("--reverse", action="store_true",
-                    help="Number pages bottom-of-film first (capture order) "
-                         "instead of top-of-film first.")
+                    help="Vertical batch scanned the other way: content "
+                         "drifts UP frame-to-frame (A's bottom rows overlap "
+                         "B's top, dy < 0 -- the 20261007 'forward' rolls). "
+                         "No scans are transformed; the film coordinates "
+                         "keep the measured dy, and the pair-strip bounds / "
+                         "gap-join ordering flip (plans record "
+                         "reverse = true).")
     ap.add_argument("--horizontal", action="store_true",
                     help="The batch advances the film HORIZONTALLY (film "
                          "strip runs left-right through each frame, pages "
@@ -2387,7 +2561,7 @@ def main():
         stall_frac=args.stall_frac, bar_gap_tol=args.bar_gap_tol,
         min_page_height=args.min_page_height, dry_run=args.dry_run,
         trim_border=args.trim_border, reverse=args.reverse, only=args.only,
-        horizontal=args.horizontal)
+        horizontal=args.horizontal, n_features=args.n_features)
 
 
 if __name__ == "__main__":

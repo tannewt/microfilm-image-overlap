@@ -71,7 +71,7 @@ def load_images(path_a, path_b):
     return img_a_color, img_b_color, gray_a, gray_b
 
 
-def detect_keypoints(gray, contrast=0.08, min_size=0.0):
+def detect_keypoints(gray, contrast=0.08, min_size=0.0, n_features=0):
     """
     Detect SIFT keypoints and descriptors in a grayscale image.
 
@@ -80,10 +80,14 @@ def detect_keypoints(gray, contrast=0.08, min_size=0.0):
     `min_size` filters out keypoints whose feature diameter (in pixels) is
     smaller than this; useful to avoid matching small text characters and
     keep only larger structural features.
+    `n_features` caps the number of keypoints OPENcv keeps (best response
+    first; 0 = unlimited). Cache sizes and pair-matching time scale with
+    this; a 4-6x cap (10-15k of the fog-dense ~60-135k/keypoints pages)
+    has matched the unlimited detector's pair verdicts in testing.
 
     Returns (kp, des).
     """
-    sift = cv2.SIFT_create(contrastThreshold=contrast)
+    sift = cv2.SIFT_create(contrastThreshold=contrast, nfeatures=int(n_features or 0))
     kp, des = sift.detectAndCompute(gray, None)
 
     # Keep only keypoints at least min_size pixels across (drops tiny
@@ -180,6 +184,7 @@ CREATE TABLE IF NOT EXISTS images_fullres (
     contrast   REAL,
     min_size   REAL,
     max_dim    INTEGER DEFAULT 0,
+    n_features INTEGER DEFAULT 0,
     n_kp       INTEGER,
     kp         BLOB,        -- float32, n_kp x 3 (x, y, size)
     des        BLOB         -- uint8,   n_kp x 128
@@ -219,6 +224,15 @@ def _open_cache(db_path):
             con.execute(
                 "ALTER TABLE images ADD COLUMN max_dim INTEGER DEFAULT 0")
             con.commit()
+        # Migration for caches created before n_features existed. Rows
+        # pre-date it with 0 (unlimited) so they validate against
+        # unlimited requests and stay stale for capped ones.
+        for t in ("images", "images_fullres"):
+            cols = {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
+            if "n_features" not in cols:
+                con.execute(
+                    f"ALTER TABLE {t} ADD COLUMN n_features INTEGER DEFAULT 0")
+                con.commit()
     # Migration for caches created before the full-res table existed (no-op if
     # already present).
     con.executescript(_FULLRES_SCHEMA)
@@ -227,7 +241,8 @@ def _open_cache(db_path):
 
 
 def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
-                             max_dim=0, force=False, table="images"):
+                             max_dim=0, force=False, table="images",
+                             n_features=0):
     """
     Detect SIFT keypoints for `path`, reusing a single on-disk SQLite store
     under `cache_dir` when given (and when the cache matches the requested
@@ -250,13 +265,14 @@ def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
         con = _open_cache(sift_cache_db_path(cache_dir))
         if not force:
             row = con.execute(
-                f"SELECT n_kp, kp, des, h, w, contrast, min_size, max_dim "
-                f"FROM {table} WHERE path = ?", (abspath,)
+                f"SELECT n_kp, kp, des, h, w, contrast, min_size, max_dim, "
+                f"n_features FROM {table} WHERE path = ?", (abspath,)
             ).fetchone()
             if row is not None:
-                n_kp, kp_blob, des_blob, h, w, c, ms, md = row
+                n_kp, kp_blob, des_blob, h, w, c, ms, md, nfx = row
                 if (float(c) == float(contrast) and float(ms) == float(min_size)
-                        and int(md or 0) == int(max_dim or 0)):
+                        and int(md or 0) == int(max_dim or 0)
+                        and int(nfx or 0) == int(n_features or 0)):
                     kp = _keypoints_from_blob(kp_blob, n_kp)
                     des = _descriptors_from_blob(des_blob, n_kp)
                     con.close()
@@ -267,9 +283,11 @@ def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
         if con:
             con.execute(
                 f"INSERT OR REPLACE INTO {table} (path, name, h, w, contrast, "
-                "min_size, max_dim, n_kp, kp, des) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "min_size, max_dim, n_features, n_kp, kp, des) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (abspath, os.path.basename(path), 0, 0,
-                 float(contrast), float(min_size), int(max_dim or 0), 0,
+                 float(contrast), float(min_size), int(max_dim or 0),
+                 int(n_features or 0), 0,
                  _keypoints_to_blob([])[0], _descriptors_to_blob(None)))
             con.commit(); con.close()
         return [], None, (0, 0)
@@ -277,14 +295,16 @@ def get_or_compute_keypoints(path, cache_dir=None, contrast=0.08, min_size=0.0,
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = downscale_gray(gray, max_dim)
     shape = gray.shape[:2]
-    kp, des = detect_keypoints(gray, contrast, min_size)
+    kp, des = detect_keypoints(gray, contrast, min_size, n_features)
     if con:
         kp_blob, n_kp = _keypoints_to_blob(kp)
         con.execute(
             f"INSERT OR REPLACE INTO {table} (path, name, h, w, contrast, "
-            "min_size, max_dim, n_kp, kp, des) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "min_size, max_dim, n_features, n_kp, kp, des) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (abspath, os.path.basename(path), shape[0], shape[1],
-             float(contrast), float(min_size), int(max_dim or 0), n_kp, kp_blob,
+             float(contrast), float(min_size), int(max_dim or 0),
+             int(n_features or 0), n_kp, kp_blob,
              _descriptors_to_blob(des)))
         con.commit(); con.close()
     return kp, des, shape

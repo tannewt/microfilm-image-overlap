@@ -27,11 +27,18 @@ on the left half), and a ``left`` page pairs with a ``right`` page.
 Usage:
     python book_reader.py [directory-or-project.json]
 
+Opening a directory of pages (from the command line or Ctrl+O) creates a
+project file named after it next to it (<directory>.json) unless one
+already exists -- in that case it is loaded and the book resumes from its
+saved state. All state autosaves to the project file as you work.
+
 Controls:
     Ctrl+O            open a directory of page images
     Ctrl+N            new (empty) project
     Ctrl+Shift+O      open a project file
     Ctrl+S / Shift+Ctrl+S  save project / save as
+                      (all state autosaves to the project file whenever it
+                      changes, once the project has been saved once)
     Ctrl+E            edit project (directories, skip list)
     C                 confirm the pair, then jump to the next unconfirmed pair
     U                 unconfirm the showing pair (toggle off only)
@@ -65,7 +72,10 @@ scan provided outlined in amber. Each page directory is mapped to the
 plans/ directory holding its plan TOMLs -- guessed once when a book is
 opened (conservatively: an ambiguous guess is left unset), or set or fixed
 per directory in the project editor (Ctrl+E) and stored in the project's
-plans_dirs. Click a thumbnail to open the full scan externally.
+plans_dirs. Click a thumbnail to open the full scan externally. Reverse
+batches (plan_pages.py --reverse: dy < 0 as-shot) keep their film
+coordinates in the scans' on-disk orientation too, so the outlined
+regions are directly the contributed rows of the stored scans.
 """
 
 from __future__ import annotations
@@ -78,7 +88,7 @@ from pathlib import Path
 
 import tomllib
 
-from PySide6.QtCore import QRect, QObject, QPointF, QRectF, QRunnable, QSize, Qt, QThreadPool, QUrl, Signal
+from PySide6.QtCore import QRect, QObject, QPointF, QRectF, QRunnable, QSize, Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -246,33 +256,35 @@ class Project:
         return self.path.parent.resolve() if self.path else None
 
     def key_for(self, page_dir: Path, page: Path) -> str:
-        """Stable identifier for a page, relative to the project file if possible."""
-        base = self._base()
-        page = page.resolve()
-        if base is not None:
-            try:
-                return str(page.relative_to(base))
-            except ValueError:
-                pass
-        return str(page)
+        """Stable identifier for a page: its full absolute path.
+
+        Independent of the project file location, so saving or moving the
+        project file never invalidates recorded state.
+        """
+        return str(page.resolve())
+
+    # ----- id normalization -------------------------------------------
+
+    @staticmethod
+    def abs_id(key: str, project_dir: Path) -> str:
+        """Convert a stored page id to a full absolute path.
+
+        Older project files stored ids relative to the project file's
+        directory (or mixed relative and absolute); resolve them so all
+        forms match the ids key_for() generates.
+        """
+        p = Path(key)
+        if not p.is_absolute():
+            p = project_dir / p
+        return str(p.resolve())
 
     # ----- serialization ----------------------------------------------
 
     def to_dict(self) -> dict:
-        base = self._base()
-
-        def rel(p: Path) -> str:
-            if base is not None:
-                try:
-                    return str(p.resolve().relative_to(base))
-                except ValueError:
-                    pass
-            return str(p.resolve())
-
         return {
             "version": self.VERSION,
-            "directories": [rel(d) for d in self.directories],
-            "plans_dirs": [rel(d) if d is not None else ""
+            "directories": [str(d.resolve()) for d in self.directories],
+            "plans_dirs": [str(d.resolve()) if d is not None else ""
                            for d in self.plans_dirs],
             "skip": sorted(self.skip),
             "confirmed_pairs": sorted([sorted(pair) for pair in self.confirmed]),
@@ -300,11 +312,22 @@ class Project:
         # Projects saved before plans_dirs existed: the UI may fall back to
         # guessing the assignment on open.
         self.plans_dirs_saved = "plans_dirs" in data
-        self.skip = set(data.get("skip", []))
-        self.confirmed = {frozenset(pair) for pair in data.get("confirmed_pairs", [])}
-        self.flagged = {frozenset(f) for f in data.get("flagged_spreads", [])}
+        # Ids are full absolute paths; older project files stored ids
+        # relative to the project file's directory.  Resolve them so all
+        # forms match the ids key_for() generates.
+        project_dir = project_dir.resolve()
+        norm = lambda k: self.abs_id(k, project_dir)  # noqa: E731
+        self.skip = {norm(k) for k in data.get("skip", [])}
+        self.confirmed = {
+            frozenset(norm(k) for k in pair)
+            for pair in data.get("confirmed_pairs", [])
+        }
+        self.flagged = {
+            frozenset(norm(k) for k in pair)
+            for pair in data.get("flagged_spreads", [])
+        }
         self.roles = {
-            k: r for k, r in (data.get("page_roles") or {}).items()
+            norm(k): r for k, r in (data.get("page_roles") or {}).items()
             if r in (ROLE_FRONT, ROLE_LEFT, ROLE_RIGHT, ROLE_BACK)
         }
         self.rotations = {}
@@ -314,13 +337,14 @@ class Project:
             except (TypeError, ValueError):
                 continue
             if deg:
-                self.rotations[k] = deg
+                self.rotations[norm(k)] = deg
         # Migration: pre-roles projects stored blanks as "blank:<pagekey>"
         # (blank inserted before that page) or "blank:__end__" (after the
         # last page). They map to front/back marks; applied in reload_book
         # once the ordered page keys are known.
         self.legacy_blanks = {
-            b for b in (data.get("blank_pages") or []) if "page_roles" not in data
+            norm(b) for b in (data.get("blank_pages") or [])
+            if "page_roles" not in data
         }
         self.reverse = bool(data.get("reverse", False))
 
@@ -335,13 +359,22 @@ class Project:
             self.path = Path(path).resolve()
         if self.path is None:
             raise ValueError("no project file path")
-        # Store keys relative to the new location if possible.
-        old_base = self.path.parent
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Page ids are absolute paths, so saving to (or moving to) a new
+        # location never invalidates recorded state.
         self.path.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
 
     def title(self) -> str:
         return self.path.name if self.path else "(unsaved project)"
+
+    @staticmethod
+    def default_path_for(directory: Path) -> Path:
+        """Project-file path for a book opened from a page-image directory:
+        a sibling file named after it (<parent>/<book name>.json)."""
+        d = directory.resolve()
+        if d.parent == d:                       # filesystem root: avoid junk
+            return Path.cwd() / "book.json"
+        return d.parent / f"{d.name}.json"
 
 
 class ProjectDialog(QDialog):
@@ -660,8 +693,10 @@ class PlanLibrary:
     `skip = true` contributor is absent); ``crop`` is the region each scan
     provided in the scan's on-disk coordinates (the composited page shares
     the scans' reading orientation, so thumbnails show the scan as stored;
-    for axis="x" plans the film axis runs along the scan's width), with
-    ``display_size`` the scan's on-disk (width, height).
+    for axis="x" plans the film axis runs along the scan's width, and for
+    `reverse = true` (--reverse) plans the film coordinates already are the
+    scans' on-disk rows), with ``display_size`` the scan's
+    on-disk (width, height).
     Returns None when `plans_dir` is None (no plans directory assigned for
     the page's directory); a stub with toml=None when the plan file is just
     absent, so the UI can report each case precisely.
@@ -1486,6 +1521,13 @@ class MainWindow(QMainWindow):
         self._make_toolbar()
         self._make_statusbar()
 
+        # Debounced autosave: state changes save the project on their own
+        # once it has a file.
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.setInterval(800)
+        self._autosave_timer.timeout.connect(self._autosave_now)
+
         self.spread.zoomRequested.connect(self._zoom_step)
 
     # ---------- UI setup -----------------------------------------------
@@ -1718,6 +1760,7 @@ class MainWindow(QMainWindow):
         self.slider.blockSignals(True)
         self.slider.setRange(0, max(0, self.spread.spread_count() - 1))
         self.slider.blockSignals(False)
+        self._update_title()
         if anchor_key is not None and keys:
             for i in range(self.spread.spread_count()):
                 spread = self.spread._spread_at(i)
@@ -1738,17 +1781,32 @@ class MainWindow(QMainWindow):
     def open_directory(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "Open directory of pages", str(Path.cwd()))
         if d:
-            self.project = Project()
-            self.project.directories = [Path(d)]
-            self.project.plans_dirs = [guess_plans_dir(Path(d), None)]
-            self.act_rtl.setChecked(False)   # fresh implicit project starts forward
-            self.reload_book()
+            self.load_directory(Path(d))
 
     def load_directory(self, directory: Path) -> None:
+        # No project file given: start one next to the pages so state
+        # autosaves from the first change on.  If one already exists there
+        # (same book opened again), load it instead and resume where you
+        # left off.
+        proj_path = Project.default_path_for(directory)
+        if proj_path.exists():
+            self.open_project_path(proj_path)
+            return
         self.project = Project()
         self.project.directories = [directory]
         self.project.plans_dirs = [guess_plans_dir(Path(directory), None)]
-        self.act_rtl.setChecked(False)
+        self.act_rtl.setChecked(False)   # fresh implicit project starts forward
+        self.project.path = proj_path
+        try:
+            self.project.save()
+        except OSError as e:
+            self.project.path = None
+            self.status.showMessage(
+                f"Could not create project file: {e}; use Ctrl+S to pick "
+                "a location", 8000)
+        else:
+            self.status.showMessage(
+                f"Project file {self.project.path} — state autosaves", 5000)
         self.reload_book()
 
     def new_project(self) -> None:
@@ -1787,6 +1845,7 @@ class MainWindow(QMainWindow):
         if self.project.path is None:
             self.save_project_as()
             return
+        self._autosave_timer.stop()
         try:
             self.project.save()
         except OSError as e:
@@ -1794,6 +1853,28 @@ class MainWindow(QMainWindow):
             return
         self._update_title()
         self.status.showMessage(f"Project saved to {self.project.path}", 5000)
+
+    def _autosave(self) -> None:
+        """State changed: schedule a save shortly (does nothing until the
+        project has a file; Ctrl+S / Save as… creates it once)."""
+        if self.project.path is not None:
+            self._autosave_timer.start()
+
+    def _autosave_now(self) -> None:
+        try:
+            self.project.save()
+        except OSError as e:
+            self.status.showMessage(f"Could not save project: {e}", 8000)
+            return
+        self._update_title()
+        self.status.showMessage("Autosaved", 3000)
+
+    def closeEvent(self, event) -> None:      # noqa: N802 (Qt naming)
+        """Flush any pending autosave before the window closes."""
+        if self._autosave_timer.isActive():
+            self._autosave_timer.stop()
+            self._autosave_now()
+        super().closeEvent(event)
 
     def save_project_as(self) -> None:
         start = str(self.project.path) if self.project.path else str(Path.cwd() / "book.json")
@@ -1838,6 +1919,7 @@ class MainWindow(QMainWindow):
                 d = self.project.directories[i] if i < len(self.project.directories) else None
                 self.project.plans_dirs[i] = guess_plans_dir(d, base) if d else None
         self.project.skip = set(dialog.skip())
+        self._autosave()
         self.reload_book(anchor_key=anchor[0] if anchor else None)
 
     # ---------- pair confirmation / skipping -------------------------------
@@ -1851,6 +1933,7 @@ class MainWindow(QMainWindow):
         if pair not in self.project.confirmed:
             self.project.confirmed.add(pair)
             self.spread.set_confirmed(self.project.confirmed)
+            self._autosave()
         # Move on to the next unconfirmed pair (in the current reading order).
         self.next_unconfirmed()
 
@@ -1861,6 +1944,7 @@ class MainWindow(QMainWindow):
             return
         self.project.confirmed.discard(frozenset(keys))
         self.spread.set_confirmed(self.project.confirmed)
+        self._autosave()
         self._update_status()
 
     def toggle_skip(self, side: int) -> None:
@@ -1885,6 +1969,7 @@ class MainWindow(QMainWindow):
                 if nxt:
                     anchor = next((self.spread._keys[j] for j in nxt
                                    if j is not None), None)
+        self._autosave()          # skip / roles mutated above
         self.reload_book(anchor_key=anchor)
 
     def mark_page(self, side: int) -> None:
@@ -1930,6 +2015,7 @@ class MainWindow(QMainWindow):
             self.project.roles.pop(key, None)
         # Keep the marked page on screen: the surrounding spreads shift as
         # the blanks and pairings implied by the role take effect.
+        self._autosave()          # role set or cleared above
         self.reload_book(anchor_key=key)
 
     def rotate_page(self, side: int) -> None:
@@ -1946,6 +2032,7 @@ class MainWindow(QMainWindow):
             self.project.rotations.pop(key, None)   # fully turned back: unmark
         else:
             self.project.rotations[key] = rot
+        self._autosave()
         self.reload_book(anchor_key=key)
 
     def mark_sides(self) -> None:
@@ -1962,6 +2049,7 @@ class MainWindow(QMainWindow):
         left, right = keys
         self.project.roles[left] = ROLE_BACK
         self.project.roles[right] = ROLE_FRONT
+        self._autosave()
         self.status.showMessage(
             f"{Path(left).name} marked back, {Path(right).name} marked front",
             5000,
@@ -1995,6 +2083,7 @@ class MainWindow(QMainWindow):
         else:
             self.project.flagged.add(flag)
         self.spread.set_flagged(self.project.flagged)
+        self._autosave()
         self._update_status()
 
     def next_flagged(self) -> None:
@@ -2103,6 +2192,7 @@ class MainWindow(QMainWindow):
     def _toggle_rtl(self) -> None:
         self.spread.set_rtl(self.act_rtl.isChecked())
         self.project.reverse = self.act_rtl.isChecked()
+        self._autosave()
         # Start from the beginning of the current reading order:
         # the cover forward, the last page in reverse.
         self._goto(0)

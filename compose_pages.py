@@ -466,7 +466,7 @@ def assemble_page(film, contribs, lru, debug=False, field_lru=None,
             img = _load_gray_cached(c["path"], lru, key=key, transpose=True)
         else:
             key = c["path"]
-            img = _load_gray_cached(c["path"], lru)
+            img = _load_gray_cached(c["path"], lru, key=key)
         if img is None:
             print(f"  WARNING: failed to load {c['path']}; skipping its part "
                   "of this page")
@@ -736,10 +736,10 @@ def _axis_bbox(contribs, axis):
 
 
 def _axis_canvas(img, axis):
-    """Map an axis="x" page's transposed assembly back to the scans'
-    reading orientation (a plain transpose -- the assembly's film axis is
-    the scan columns in ascending order). cv2.transpose works on 2-D and
-    3-D (BGR) arrays alike."""
+    """Map an assembled page back to the scans' (reading) orientation: a
+    plain transpose for axis="x" (the assembly's film axis is the scan
+    columns in ascending order, cv2.transpose works on 2-D and 3-D (BGR)
+    arrays alike)."""
     if axis == "x" and img is not None:
         return cv2.transpose(img)
     return img

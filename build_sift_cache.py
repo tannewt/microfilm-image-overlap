@@ -65,20 +65,21 @@ def _sift_worker(args):
     """
     # Single-threaded SIFT per worker (see module docstring).
     cv2.setNumThreads(0)
-    path, contrast, min_size, max_dim = args
+    path, contrast, min_size, max_dim, n_features = args
     name = os.path.basename(path)
     img = cv2.imread(path)
     if img is None:
         return (os.path.abspath(path), name, 0, 0, 0, int(max_dim or 0),
+                int(n_features or 0),
                 _keypoints_to_blob([])[0], _descriptors_to_blob(None))
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = downscale_gray(gray, max_dim)
     h, w = gray.shape[:2]
-    kp, des = detect_keypoints(gray, contrast, min_size)
+    kp, des = detect_keypoints(gray, contrast, min_size, n_features)
     kp_blob, n_kp = _keypoints_to_blob(kp)
     des_blob = _descriptors_to_blob(des)
     return (os.path.abspath(path), name, h, w, n_kp, int(max_dim or 0),
-            kp_blob, des_blob)
+            int(n_features or 0), kp_blob, des_blob)
 
 
 def list_images(directory, pattern=None):
@@ -94,7 +95,7 @@ def list_images(directory, pattern=None):
 
 
 def build(scan_dir, cache_dir, pattern=None, contrast=0.08, min_size=3.0,
-          max_dim=3200, workers=None, force=False):
+          max_dim=3200, workers=None, force=False, n_features=0):
     """Populate the SQLite feature store for every image in `scan_dir`."""
     import multiprocessing as mp
     paths = list_images(scan_dir, pattern=pattern)
@@ -105,14 +106,23 @@ def build(scan_dir, cache_dir, pattern=None, contrast=0.08, min_size=3.0,
 
     db_path = sift_cache_db_path(cache_dir)
     con = _open_cache(db_path)
-    cached = set()
+    rows = {}
     if not force:
-        cached = {r[0] for r in con.execute("SELECT path FROM images")}
-    todo = [p for p in paths if os.path.abspath(p) not in cached]
+        # param-aware: a cached row at other params is stale, not done
+        rows = {r[0]: (int(r[1]), r[2], int(r[3] or 0), int(r[4] or 0))
+                for r in con.execute(
+                    "SELECT path, n_features, contrast, min_size, max_dim "
+                    "FROM images")}
+    todo = [p for p in paths
+            if rows.get(os.path.abspath(p)) != (int(n_features or 0),
+                                                float(contrast),
+                                                float(min_size),
+                                                int(max_dim or 0))]
     print(f"Directory: {scan_dir}" + (f"  pattern=/{pattern}/" if pattern else ""))
     print(f"Cache: {db_path}")
-    print(f"max_dim={max_dim}  contrast={contrast}  min_size={min_size}")
-    print(f"Images: {len(paths)} total, {len(cached)} already cached, "
+    print(f"max_dim={max_dim}  contrast={contrast}  min_size={min_size}  "
+          f"n_features={int(n_features or 0)}")
+    print(f"Images: {len(paths)} total, {len(paths) - len(todo)} cached, "
           f"{len(todo)} to compute")
     if not todo:
         print("Nothing to do.")
@@ -123,19 +133,19 @@ def build(scan_dir, cache_dir, pattern=None, contrast=0.08, min_size=3.0,
         workers = os.cpu_count() or 1
     print(f"Workers: {workers}")
 
-    args = [(p, contrast, min_size, max_dim) for p in todo]
+    args = [(p, contrast, min_size, max_dim, n_features) for p in todo]
     t0 = time.time()
     done = 0
     ctx = mp.get_context("fork")  # fork inherits the imported cv2/numpy
     with ctx.Pool(workers) as pool:
-        for abspath, name, h, w, n_kp, md, kp_blob, des_blob in \
+        for abspath, name, h, w, n_kp, md, nf, kp_blob, des_blob in \
                 pool.imap_unordered(_sift_worker, args, chunksize=1):
             con.execute(
                 "INSERT OR REPLACE INTO images (path, name, h, w, contrast, "
-                "min_size, max_dim, n_kp, kp, des) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "min_size, max_dim, n_features, n_kp, kp, des) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (abspath, name, h, w, float(contrast), float(min_size),
-                 int(md), n_kp, kp_blob, des_blob))
+                 int(md), int(n_features or 0), n_kp, kp_blob, des_blob))
             con.commit()
             done += 1
             if done % 25 == 0 or done == len(todo):
@@ -168,10 +178,12 @@ def main():
                    help="Number of parallel SIFT workers (default: all cores)")
     p.add_argument("--force", action="store_true",
                    help="Recompute even images already in the cache")
+    p.add_argument("--n-features", type=int, default=0,
+                   help="Cap SIFT keypoints per image (0 = all)")
     args = p.parse_args()
     build(args.scan_dir, args.cache_dir, pattern=args.pattern,
           contrast=args.contrast, min_size=args.min_size, max_dim=args.max_dim,
-          workers=args.workers, force=args.force)
+          workers=args.workers, force=args.force, n_features=args.n_features)
 
 
 if __name__ == "__main__":
