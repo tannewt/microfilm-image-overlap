@@ -1864,3 +1864,273 @@ def test_gap_merges_reverse_boundary_strips():
     # no red band needed
     assert m["red"] == 0
     assert m["a_idx"] == 1 and m["b_idx"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Film-side margins, white junctions, faint bars, anticipated page breaks
+# ---------------------------------------------------------------------------
+
+def _margined_frame(h, w, margin=60, paper=235.0, rng=None):
+    """A film frame with narrow dark film stock beside bright page paper
+    (the 20261007 geometry: ~60 px of stock, far less than the old fixed
+    6% side window, so the stock-to-paper edge matters)."""
+    rng = rng or np.random.default_rng(5)
+    img = np.full((h, w), paper)
+    img += rng.normal(0, 4, img.shape)
+    img[:, :margin] = rng.uniform(5, 40, (h, margin))
+    img[:, w - margin:] = rng.uniform(5, 40, (h, margin))
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
+def test_film_side_widths_measures_stock_beside_page():
+    img = _margined_frame(600, 1200, margin=50)
+    lw, rw = pp.film_side_widths(img)
+    assert 40 <= lw <= 60 and 40 <= rw <= 60
+
+
+def test_film_side_widths_blank_leader_has_no_dark_stock():
+    img = np.full((600, 1200), 240, np.uint8)
+    assert pp.film_side_widths(img) == (0, 0)
+
+
+def test_detect_white_gaps_junction_beside_narrow_film_stock():
+    # 1922 reel: real head-to-tail junctions (pages' blank margins butting
+    # with no bar, film stock dark beside them) are REJECTED by the
+    # default side gate when the stock is narrower than the fixed 6%
+    # window -- the window averages in the page's white margins and
+    # reads bright (scans 0221/0252 measured 176-194 against the 170
+    # gate). The global pass stays this strict on purpose: a full-width
+    # blank band INSIDE a page (scans 0065/0069) looks pixel-identical,
+    # and only the page cadence can tell them apart. The anticipated-
+    # window probe passes adaptive_sides=True, and there the side windows
+    # follow the scan's own film margins.
+    img = _margined_frame(700, 2000, margin=30)
+    rng = np.random.default_rng(11)
+    # printed content above and below a 300-row blank junction (the two
+    # pages' own blank margins, no ink across the page)
+    img[40:200, 80:1920] = rng.integers(60, 190, (160, 1840))
+    img[500:660, 80:1920] = rng.integers(60, 190, (160, 1840))
+    assert pp.detect_white_gaps(img, pp.content_bbox(img)) == []
+    gaps = pp.detect_white_gaps(img, pp.content_bbox(img),
+                                adaptive_sides=True)
+    assert len(gaps) == 1
+    assert 270 <= gaps[0][0] <= 290 and 410 <= gaps[0][1] <= 435
+
+
+def test_detect_white_gaps_still_rejects_blank_leader():
+    # A blank / unexposed film leader: no ink anywhere, and its margins
+    # are white too -- the side gate must keep rejecting it, even with
+    # the adaptive side windows.
+    img = np.full((700, 2000), 240.0)
+    img += np.random.default_rng(3).normal(0, 3, img.shape)
+    img = np.clip(img, 0, 255).astype(np.uint8)
+    assert pp.detect_white_gaps(img, pp.content_bbox(img)) == []
+    assert pp.detect_white_gaps(img, pp.content_bbox(img),
+                                adaptive_sides=True) == []
+
+
+def test_detect_faint_bars_finds_hairline_gap():
+    # The 1922 reel's smallest gaps are 1-3 px black lines across the
+    # film (scan 0348's boundary): far below detect_bars' 30-row minimum
+    # -- invisible to its 51-row moving average, obvious in the raw
+    # projection.
+    img = _margined_frame(600, 1200, margin=60)
+    rng = np.random.default_rng(7)
+    img[100:290, 80:1120] = rng.integers(60, 190, (190, 1040))
+    img[310:500, 80:1120] = rng.integers(60, 190, (190, 1040))
+    img[290:292, :] = 12                      # the hairline, full width
+    bands = pp.detect_faint_bars(img, pp.content_bbox(img), 200, 400)
+    assert len(bands) == 1
+    assert 288 <= bands[0][0] <= 291 and 290 <= bands[0][1] <= 293
+
+
+def test_detect_faint_bars_accepts_white_overlapped_bar():
+    # A thin bar with the following (skewed) page's white top margin
+    # overlapping part of it: black -> white -> black across the scan
+    # (scan 0269's boundary is 89% black with a white bite). Strict
+    # black-across-the-whole-width would reject it.
+    img = _margined_frame(600, 1200, margin=60)
+    rng = np.random.default_rng(13)
+    img[100:290, 80:1120] = rng.integers(60, 190, (190, 1040))
+    img[330:500, 80:1120] = rng.integers(60, 190, (170, 1040))
+    img[290:310, :] = 12                      # the bar, full width
+    img[290:310, 800:1000] = 232              # white page margin overlap
+    bands = pp.detect_faint_bars(img, pp.content_bbox(img), 200, 400)
+    assert len(bands) == 1
+    assert 288 <= bands[0][0] <= 291 and 308 <= bands[0][1] <= 311
+    # ...and the strict black-across check alone would have rejected it
+    strip_dark = img[290:310, :].mean(axis=0)
+    assert float((np.convolve(strip_dark, np.ones(31) / 31, mode="same")
+                  < 56.7).mean()) < 0.90
+
+
+def test_detect_faint_bars_rejects_dark_page_content():
+    # Dense dark content (a torn dark page / dark halftone ad) dips the
+    # row projection like a bar, but its columns are mid-gray ink --
+    # neither black bar nor white page background -- so the
+    # black-to-white-to-black acceptance must reject it.
+    img = _margined_frame(600, 1200, margin=60)
+    rng = np.random.default_rng(17)
+    img[100:280, 80:1120] = rng.integers(60, 190, (180, 1040))
+    img[340:510, 80:1120] = rng.integers(60, 190, (170, 1040))
+    # 40 rows where 60% of each row is black: row mean ~ 90 (below the
+    # ~thr), columns mixed black / bright paper
+    band = np.where(rng.random((40, 1040)) < 0.6, 20, 205).astype(np.uint8)
+    img[280:320, 80:1120] = band
+    assert pp.detect_faint_bars(img, pp.content_bbox(img), 200, 400) == []
+
+
+def _flush_hairline_batch(tmp_path, pages=9, pitch=440, bar=80, frame=700,
+                          advance=400, w=900, margin=60, flush=(2,),
+                          hairline=(3,)):
+    """A vertical batch whose page boundaries are mostly regular black
+    bars, except `flush` (pages butt with NO gap at all -- invisible) and
+    `hairline` (a 2-px black line): the 1922 reel's failure modes. The
+    pages between the two invisible boundaries merge into one too-tall
+    page. Returns (strip, paths)."""
+    rng = np.random.RandomState(41)
+    total = pages * pitch + frame
+    strip = np.full((total, w), 225, np.uint8)
+    strip[:, :margin] = 15
+    strip[:, w - margin:] = 15
+    for p in range(pages):
+        r0 = p * pitch + (2 if p in hairline else 0 if p in flush else bar)
+        r1 = (p + 1) * pitch
+        block = np.where(rng.random((r1 - r0, w - 2 * margin - 40)) < 0.3,
+                         40, 225).astype(np.uint8)
+        strip[r0:r1, margin + 20:w - margin - 20] = block
+    for k in range(1, pages):
+        r = k * pitch
+        if k in flush:
+            continue                            # no gap at all
+        if k in hairline:
+            strip[r:r + 2, :] = 15              # hairline
+        else:
+            strip[r:r + bar, :] = 15            # regular bar
+    paths = []
+    for k in range((total - frame) // advance + 1):
+        pa = tmp_path / f"scan{k:04d}.tif"
+        cv2.imwrite(str(pa), strip[k * advance:k * advance + frame])
+        paths.append(str(pa))
+    return strip, paths
+
+
+def test_anticipate_page_breaks_splits_flush_and_hairline_pages(tmp_path):
+    # Anticipation: a page spanning ~3 cycles of the film's page cadence
+    # must hold 2 missed boundaries. The hairline one is found by the
+    # weak-evidence probe and the cut snaps to it; the flush one shows
+    # nothing at all and is cut at the anticipated (even-division)
+    # position.
+    strip, paths = _flush_hairline_batch(tmp_path)
+
+    res = pp.analyze_batch(str(tmp_path), reverse=True, stall_frac=0.1,
+                           min_page_height=100.0, bar_gap_tol=60.0,
+                           verbose=False)
+    pages = res["all_pages"]
+    spans = sorted((round(lo), round(hi)) for lo, hi, _, _ in pages)
+    # 9 pages: the bar-separated ones plus the two the anticipation pass
+    # cut out of the merged middle page.
+    assert len(pages) == 9
+    # the middle page [bar-end, bar-start] was split at the anticipated
+    # flush position (even division of the span) and snapped to the
+    # hairline band
+    tall = [s for s in spans if 400 < s[0] < 1800]
+    assert len(tall) == 3
+    lo_cut, hair_lo, hair_hi = tall[0][1], tall[1][1], tall[2][0]
+    # flush cut: even division, no evidence to snap to
+    assert abs(lo_cut - (520 + (1760 - 520) / 3)) <= 5
+    # hairline cut: snapped to the 2-px band at film 3 * 440
+    assert abs(hair_lo - 3 * 440) <= 6
+    assert abs(hair_hi - (3 * 440 + 2)) <= 6
+    # every page is a plausible page (the full pitch minus its bars)
+    for lo, hi in spans:
+        assert 300 <= hi - lo <= 460
+
+
+# ---------------------------------------------------------------------------
+# Blank-margin absorption: cadence-short pages grow into their own blanks
+# ---------------------------------------------------------------------------
+
+def _absorb_batch(pages, blacks, whites, h=20000):
+    """One run of one scan (S=0) with the given film-coordinate black-bar
+    and white-gap sub-band lists; pages are (lo, hi, contrib, run) tuples."""
+    sm = pp.ScanMeta("/r/scan0000.tif", "scan0000.tif", h, 800,
+                     sorted(blacks + whites), (0, h, 0, 800),
+                     black=blacks, white=whites)
+    return pp.absorb_blank_margins(pages, [(0, 0)], [sm], [0.0], set(),
+                                   bar_gap_tol=200.0)
+
+
+def test_absorb_merges_blank_interior_between_fragments():
+    # The 1922 scans 0131-0132 shape: one page whose big blank middle is
+    # detected as a junction, shredding it into 2278 + 1875 px fragments.
+    # The blank band holds no black bar anywhere -- it is the page's own
+    # interior -- so the fragments merge into one on-cadence page. (The
+    # cycle comes from the run's median page height, so the fragments
+    # must stay a minority, like on a real reel.)
+    blacks = [(6100, 6300), (12300, 12500), (18800, 19000),
+              (25100, 25300)]
+    whites = [(14800, 16700)]
+    pages = [(6300.0, 12100.0, [0], 0),     # normal (5800)
+             (12500.0, 14800.0, [0], 0),    # 2300 px fragment
+             (16700.0, 18600.0, [0], 0),    # 1900 px fragment
+             (19000.0, 24800.0, [0], 0),    # normal (5800)
+             (25300.0, 31100.0, [0], 0)]    # normal (5800)
+    out = _absorb_batch(pages, blacks, whites)
+    spans = sorted((round(p[0]), round(p[1])) for p in out)
+    assert spans == [(6300, 12100), (12500, 18600), (19000, 24800),
+                     (25300, 31100)]
+    assert out[1][1] - out[1][0] == 6100     # ~one cycle, fragments merged
+
+
+def test_absorb_grows_short_page_into_its_blank_margins():
+    # The 1922 scans 0145-0146 shape: a nearly-blank page cropped to its
+    # content core by white "junctions" that are really its own margins.
+    # The real black bars stay its edges; the whites on its side of the
+    # bars are absorbed from both directions.
+    blacks = [(6300, 6500), (11850, 12150), (18650, 18850)]
+    whites = [(6600, 9000), (11100, 11650), (12300, 12450)]
+    pages = [(100.0, 6300.0, [0], 0),        # normal (6200)
+             (9000.0, 11100.0, [0], 0),      # 2100 px cropped core
+             (12450.0, 18250.0, [0], 0),     # normal (5800)
+             (18850.0, 24650.0, [0], 0)]     # normal (5800)
+    out = _absorb_batch(pages, blacks, whites)
+    spans = sorted((round(p[0]), round(p[1])) for p in out)
+    # the cropped page grew into its margins, up to its real bars
+    assert spans == [(100, 6300), (6600, 11650), (12450, 18250),
+                     (18850, 24650)]
+    assert out[1][1] - out[1][0] == 5050
+
+
+def test_absorb_leaves_normal_pages_and_real_junctions_alone():
+    # A pure-white REAL junction between two normal on-cadence pages:
+    # merging would give two cycles, so nothing moves.
+    blacks = [(6100, 6300), (12900, 13100), (19400, 19600)]
+    whites = [(12150, 12500)]                 # a real junction band
+    pages = [(6300.0, 12150.0, [0], 0),       # normal (5850)
+             (12500.0, 18550.0, [0], 0),      # normal (6050)
+             (13100.0, 12900.0, [0], 0)]      # placeholder, replaced below
+    pages[2] = (19600.0, 25400.0, [0], 0)     # normal (5800)
+    pages.append((25800.0, 31600.0, [0], 0))  # normal (5800)
+    out = _absorb_batch(pages, blacks, whites)
+    spans = sorted((round(p[0]), round(p[1])) for p in out)
+    assert spans == [(6300, 12150), (12500, 18550), (19600, 25400),
+                     (25800, 31600)]
+
+
+def test_absorb_never_crosses_a_black_bar():
+    # Whites on the far side of a band's bars belong to the NEIGHBOR
+    # page, not the short one: absorption is clipped at the bar core,
+    # and the 1.15-cycle cap bounds the growth.
+    blacks = [(6300, 6600), (12900, 13100), (19400, 19600)]
+    whites = [(5300, 6200), (6700, 6900)]     # short page's side / neighbor's
+    pages = [(100.0, 5300.0, [0], 0),         # 5200 px, just under cadence
+             (6900.0, 12700.0, [0], 0),       # normal (5800)
+             (13100.0, 18900.0, [0], 0),       # normal (5800)
+             (19600.0, 25400.0, [0], 0)]       # normal (5800)
+    out = _absorb_batch(pages, blacks, whites)
+    spans = sorted((round(p[0]), round(p[1])) for p in out)
+    # only the white on the short page's side of the bar was absorbed;
+    # the one beyond the bar (the normal page's margin) was not
+    assert spans == [(100, 6200), (6900, 12700), (13100, 18900),
+                     (19600, 25400)]

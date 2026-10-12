@@ -118,7 +118,7 @@ def content_bbox(gray, white_thresh=250):
 
 
 def detect_bars(gray, win=51, thr_frac=0.5, thr_min=50, thr_max=100,
-                min_thick=30, col_win=31, col_frac=0.95):
+                min_thick=8, col_win=31, col_frac=0.95):
     """Detect dark horizontal bands (the black bars between microfilm pages).
 
     Operates on the row projection of the scan's *content* columns (the white
@@ -188,9 +188,52 @@ def detect_bars(gray, win=51, thr_frac=0.5, thr_min=50, thr_max=100,
     return bars
 
 
+def film_side_widths(gray, bbox=None, dark_thresh=100):
+    """Width (in columns) of the dark film stock beside the page, left and
+    right, estimated from the per-column MEDIAN brightness over the scan's
+    content rows.
+
+    Microfilm frames carry black film at both ends of every row -- the page
+    paper sits on dark stock -- but the stock is narrow: on the 20261007
+    6300x4633 newspaper scans only the outermost ~120 columns each side are
+    film; the page's own white margins begin right after (the frames jitter
+    horizontally, so the exact edge varies a few columns per scan). A column
+    whose median is dark is film; a bright median is paper (or the frame
+    border). Measuring "the film margins" over a fixed 6% strip can
+    therefore average in white paper and read bright exactly when it matters
+    (see `detect_white_gaps`' side gate).
+
+    The left width is the contiguous dark run from the content's left edge;
+    on the right the bright frame-border columns are skipped first, then the
+    contiguous dark run is counted. A blank / unexposed film leader has
+    bright columns throughout, so both widths come out 0 -- which is what
+    the callers use to reject it.
+
+    Returns (left_width, right_width) in columns, relative to the bbox's
+    left/right edges.
+    """
+    if bbox is None:
+        bbox = content_bbox(gray)
+    top, bottom, left, right = bbox
+    if bottom <= top or right <= left:
+        return 0, 0
+    colmed = np.median(gray[top:bottom + 1, left:right + 1], axis=0)
+    n = len(colmed)
+    lw = 0
+    while lw < n and colmed[lw] < dark_thresh:
+        lw += 1
+    r = n - 1
+    while r >= 0 and colmed[r] >= dark_thresh:   # skip the frame border
+        r -= 1
+    rw = 0
+    while r - rw >= 0 and colmed[r - rw] < dark_thresh:
+        rw += 1
+    return lw, rw
+
+
 def detect_white_gaps(gray, bbox=None, win=201, ink_frac=0.12,
                       ink_thresh=200, min_run=80, merge_within=350,
-                      min_band=100, side_mean=170):
+                      min_band=100, side_mean=170, adaptive_sides=False):
     """Detect page-boundary bands where two pages butt with NO dark bar:
     a head-to-tail film junction shows only the pages' own blank top/bottom
     margins (often with a thin printed rule inside) running across the
@@ -208,7 +251,24 @@ def detect_white_gaps(gray, bbox=None, win=201, ink_frac=0.12,
     white film -- the side margins (film edges) must stay dark on
     average (`side_mean`), which separates a real junction on BLACK
     film stock from a blank/unexposed film leader, whose margins are
-    white too. Blank runs inside the band (e.g. the pages' two
+    white too.
+
+    The side windows are a fixed 6% of the content width by default,
+    and that gate is deliberately strict: a full-width blank band
+    INSIDE a page (a strip of white between stacked ads, the 1922
+    scans 0065 / 0069) looks exactly like a junction -- white page area,
+    dark stock beside it -- so the global pass must not go looking for
+    junctions on fainter evidence. On the 20261007 frames the stock
+    beside the page is only ~60-190 px wide though, so the fixed strip
+    also averages in the page's white margins and reads bright,
+    rejecting REAL head-to-tail junctions too (the 1922 scans 0221 /
+    0252 sit at 176-194 against the 170 gate while their outermost
+    film columns are black at ~4). `adaptive_sides=True` follows the
+    scan's own film margins (`film_side_widths`, still capped at 6%)
+    and accepts those: it belongs in the ANTICIPATED window probe
+    (`_anticipate_refine_cut`), where a boundary is expected and the
+    page's cadence has already vouched for the position -- never in the
+    global pass. Blank runs inside the band (e.g. the pages' two
     margins split by a thin rule) merge when they sit within
     `merge_within` rows of each other; bands under `min_band` rows are
     the page-area brightness dips too small to bound a page and are
@@ -226,7 +286,13 @@ def detect_white_gaps(gray, bbox=None, win=201, ink_frac=0.12,
     if bottom <= top or right <= left:
         return []
     side_w = max(8, int((right - left) * 0.06))
-    area = gray[top:bottom + 1, left + side_w:right - side_w + 1]
+    if adaptive_sides:
+        film_lw, film_rw = film_side_widths(gray, bbox)
+        side_l = min(side_w, film_lw) if film_lw else 8
+        side_r = min(side_w, film_rw) if film_rw else 8
+    else:
+        side_l = side_r = side_w
+    area = gray[top:bottom + 1, left + side_l:right - side_r + 1]
     ink = (area < ink_thresh).mean(axis=1)
     sm = np.convolve(ink, np.ones(win) / win, mode="same")
     light = np.where(sm < ink_frac)[0]
@@ -255,14 +321,127 @@ def detect_white_gaps(gray, bbox=None, win=201, ink_frac=0.12,
 
     # side gate: the film's side margins stay dark through a junction
     out = []
-    lside = gray[top:bottom + 1, left:left + side_w].mean(axis=1)
-    rside = gray[top:bottom + 1, right - side_w:right + 1].mean(axis=1)
+    lside = gray[top:bottom + 1, left:left + side_l].mean(axis=1)
+    rside = gray[top:bottom + 1, right - side_r:right + 1].mean(axis=1)
     for r0, r1 in bands:
         if r1 - r0 < min_band:
             continue
         if lside[r0:r1 + 1].mean() < side_mean \
                 and rside[r0:r1 + 1].mean() < side_mean:
             out.append((top + r0, top + r1))
+    return out
+
+
+def detect_faint_bars(gray, bbox=None, row_lo=None, row_hi=None,
+                      thr_frac=0.5, thr_min=50, thr_max=100, col_win=31,
+                      col_frac=0.90, white_thresh=200, content_max=0.12,
+                      side_max=125, merge_within=40):
+    """Weak page-boundary bands -- for ANTICIPATED positions only.
+
+    Some reels' page gaps carry almost no evidence: hairline bars (1-3 px
+    of black), bars below `detect_bars`' smoothed-dip minimum, or a bar
+    partially overlapped by the next page's white top margin on a skewed
+    page -- BLACK, then WHITE, then BLACK across the scan. The 1922
+    CENLIB9113 reel has all of these between its flush-butted pages
+    (scan 0348's boundary is a 2-px line at ~18 gray; scan 0269's is a
+    thin bar with the following page's white margin overlapping ~11% of
+    the columns). `detect_bars` demands black across >= 95% of the
+    columns; that rejects the overlapped bars (a white bite reads as a
+    bright column) where the black-across check still applies.
+
+    This detector accepts them, at a price: it also accepts full-width
+    printed rules (a solid black rule crossing the page is black at
+    every column, and the film stock beside the page is black on every
+    row anyway) and boxed-ad borders that span the whole page width. So
+    it is NOT a drop-in replacement: call it only inside the row window
+    around a film position where a page boundary is ANTICIPATED (see
+    `anticipate_page_breaks`) -- never as a global pass. The window
+    itself is what tells a page-boundary hairline from a section rule.
+
+    Candidates are runs of RAW (unsmoothed) row-projection below the
+    same adaptive threshold `detect_bars` uses (a hairline survives no
+    smoothing at all), merged when they sit within `merge_within` rows.
+    Each candidate band then passes a column check over its own rows:
+    either black across >= `col_frac` of the content columns (as in
+    `detect_bars`, relaxed to 0.90 for this gated use), or the black-to-
+    white-to-black shape -- the film stock at both scan edges stays
+    black (mean under `side_max`; stock reads 1-90 even beside a thin
+    gradient-exposed bar, while white page background sits at 200+),
+    the middle is black bar or white page background (> `white_thresh`),
+    and printed CONTENT columns are rare (<= `content_max`). A dark
+    halftone or torn page fails that last gate: its columns are neither
+    black nor white but mid-gray ink.
+
+    `row_lo` / `row_hi` restrict candidates to that inclusive original-
+    pixel row range (the anticipated window); the projections and the
+    margin estimates still use the whole scan. Returns a sorted list of
+    (row_start, row_end) inclusive intervals, like `detect_bars`.
+    """
+    if bbox is None:
+        bbox = content_bbox(gray)
+    top, bottom, left, right = bbox
+    if bottom <= top or right <= left:
+        return []
+    # Content columns (frame border excluded), as in `detect_bars`.
+    cp = gray.mean(axis=0)
+    clo = 0
+    while clo < len(cp) and cp[clo] > 250:
+        clo += 1
+    chi = len(cp) - 1
+    while chi >= 0 and cp[chi] > 250:
+        chi -= 1
+    if chi <= clo:
+        clo, chi = 0, gray.shape[1] - 1
+    proj = gray[:, clo:chi + 1].mean(axis=1).astype(np.float64)
+    med = float(np.median(proj))
+    thr = max(thr_min, min(thr_max, thr_frac * med))
+
+    lo = top if row_lo is None else max(top, int(row_lo))
+    hi = bottom if row_hi is None else min(bottom, int(row_hi))
+    if hi < lo:
+        return []
+    black = proj < thr
+    runs = []
+    i = lo
+    while i <= hi:
+        if black[i]:
+            j = i
+            while j <= hi and black[j]:
+                j += 1
+            runs.append([i, j - 1])
+            i = j
+        else:
+            i += 1
+    if not runs:
+        return []
+    bands = [runs[0]]
+    for r in runs[1:]:
+        if r[0] - bands[-1][1] <= merge_within:
+            bands[-1][1] = max(bands[-1][1], r[1])
+        else:
+            bands.append(r)
+
+    film_lw, film_rw = film_side_widths(gray, (top, bottom, clo, chi))
+    out = []
+    for r0, r1 in bands:
+        strip = gray[r0:r1 + 1, clo:chi + 1]
+        colproj = strip.mean(axis=0)
+        csmooth = np.convolve(colproj, np.ones(col_win) / col_win,
+                              mode="same")
+        dark = csmooth < thr
+        ok = float(dark.mean()) >= col_frac
+        if not ok and film_lw and film_rw:
+            # Black to white to black: the film stock at both edges of
+            # the scan stays dark, the page area over the band is black
+            # bar or white page background -- never printed content
+            # (mid-gray ink columns).
+            white = csmooth > white_thresh
+            content = ~(dark | white)
+            ok = (float(csmooth[:film_lw].mean()) < side_max
+                  and float(csmooth[-film_rw:].mean()) < side_max
+                  and float(content.mean()) <= content_max)
+        if ok:
+            out.append((int(r0), int(r1)))
     return out
 
 
@@ -1423,9 +1602,10 @@ def featureless_band_overlap(path_a, path_b, kp_a, kp_b,
 
 class ScanMeta:
     """Per-scan metadata kept in memory (pixels are freed between phases)."""
-    __slots__ = ("path", "name", "h", "w", "bars", "bbox", "dx_cum")
+    __slots__ = ("path", "name", "h", "w", "bars", "bbox", "dx_cum",
+                 "black", "white")
 
-    def __init__(self, path, name, h, w, bars, bbox):
+    def __init__(self, path, name, h, w, bars, bbox, black=None, white=None):
         self.path = path
         self.name = name
         self.h = h          # original height
@@ -1433,6 +1613,15 @@ class ScanMeta:
         self.bars = bars    # list of (r0, r1) original rows
         self.bbox = bbox    # (top, bottom, left, right) original rows/cols
         self.dx_cum = 0.0   # cumulative horizontal film offset (set by layout)
+        # Boundary-band classification, for the cadence passes: `black` is
+        # the dark bars alone (detect_bars), `white` the head-to-tail blank
+        # junctions alone (detect_white_gaps). `bars` stays the merged,
+        # sorted list the layout consumes. A blank band is ambiguous --
+        # a page's own blank interior looks exactly like a junction -- so
+        # the passes that decide what is a boundary need to know which
+        # sub-bands are backed by real black film bars.
+        self.black = list(bars) if black is None else black
+        self.white = [] if white is None else white
 
     def __repr__(self):
         return f"ScanMeta({self.path}, {self.name}, {self.h}, {self.w}, {self.bars}, {self.bbox})"
@@ -1803,6 +1992,325 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv, stall_frac,
     return runs, S_seed, redundant, all_pages
 
 
+def _piece_contribs(lo, hi, run_range, valid, S_seed, redundant):
+    """Indices of the scans that contribute film rows to [lo, hi] -- the
+    same rule `build_layout` uses for its pages (redundant re-scans
+    excluded)."""
+    contrib = []
+    for k in run_range:
+        if k in redundant:
+            continue
+        sm = valid[k]
+        top, bottom, _, _ = sm.bbox
+        s = S_seed[k]
+        if max(lo, s + top) < min(hi, s + bottom):
+            contrib.append(k)
+    return contrib
+
+
+def absorb_blank_margins(all_pages, runs, valid, S_seed, redundant,
+                         bar_gap_tol, verbose=False):
+    """Grow cadence-short pages into the blank bands around them.
+
+    A nearly-blank newspaper page is its own worst enemy: the white-gap
+    detector sees a full-width blank band with dark film stock beside it
+    -- pixel-identical to a head-to-tail junction -- and the page gets
+    shredded into its content slivers. On the 1922 reel, scans 0131-0132
+    hold ONE page whose big blank middle reads as a junction (split into
+    2278 + 1875 px fragments), and scans 0145-0146 hold a page whose
+    blank margins are cut off (cropped to its 2864-px content core).
+    Both were wrong in every previous pass over this reel; the page
+    cadence is what tells a page's own blanks from a real boundary: real
+    boundaries sit ~one cycle apart, so a page FAR SHORTER than the
+    cycle is a shredded or cropped one, and the blank bands flanking it
+    are its own blanks.
+
+    Two operations, both gated on a page under 0.9x the run's median
+    page height (normal pages never move):
+
+    * a PURE-white band between two pages (no black bar anywhere in
+      it -- like scan 0131's 1854-px blank) merges the two pages when
+      the joined span still fits one cycle: the blank was the page's
+      interior, not a boundary;
+    * white sub-bands on the short page's side of the black bars inside
+      a band are absorbed into the page (the joined height capped at
+      1.15 cycles): the blank was the page's own margin, and the black
+      bars stay its real edges (scans 0145-0146: the page grows from
+      2864 to ~5750 px between the same two bars).
+
+    Bands at a run's edge (no page on the far side) are left alone:
+    run boundaries belong to the gap-join fallback. Runs with under
+    three pages have no cadence to test against and are skipped.
+
+    Returns the new page list; the input list is left untouched.
+    """
+    run_results = {}
+    for ri, (r0, r1) in enumerate(runs):
+        pages = sorted((p for p in all_pages if p[3] == ri),
+                       key=lambda p: p[0])
+        if len(pages) < 3:
+            continue
+        cyc = float(np.median([p[1] - p[0] for p in pages]))
+        if cyc <= 0:
+            continue
+        run_range = list(range(r0, r1 + 1))
+        # Film-coordinate sub-bands, classified: the same boundary seen
+        # by two scans merges within bar_gap_tol.
+        blacks = merge_intervals(
+            [(S_seed[k] + b0, S_seed[k] + b1)
+             for k in run_range for b0, b1 in valid[k].black], bar_gap_tol)
+        whites = merge_intervals(
+            [(S_seed[k] + w0, S_seed[k] + w1)
+             for k in run_range for w0, w1 in valid[k].white], bar_gap_tol)
+        bands = merge_intervals(
+            [(lo, hi) for lo, hi in blacks]
+            + [(lo, hi) for lo, hi in whites], bar_gap_tol)
+        for _ in range(6):
+            changed = False
+            # Which pages are cadence-short, snapshotted at round start:
+            # a page that is absorbing its blanks keeps doing so for the
+            # whole round even once it crosses the trigger height (the
+            # 1922 scans 0145-0146 page must grow into BOTH its margins,
+            # top and bottom, in one go).
+            flags = [p[1] - p[0] < 0.9 * cyc for p in pages]
+            i = 0
+            while i + 1 < len(pages):
+                P, Q = pages[i], pages[i + 1]
+                if not (flags[i] or flags[i + 1]):
+                    i += 1
+                    continue
+                B = next((b for b in bands
+                          if abs(b[0] - P[1]) < 2 and abs(b[1] - Q[0]) < 2),
+                         None)
+                if B is None:
+                    i += 1
+                    continue
+                w_in = [w for w in whites
+                        if w[0] >= B[0] - 2 and w[1] <= B[1] + 2]
+                if not w_in:
+                    i += 1
+                    continue
+                core = [b for b in blacks
+                        if b[0] >= B[0] - 2 and b[1] <= B[1] + 2]
+                if not core:
+                    # Pure-white band: the blank is one page's interior.
+                    # Merge only when the joined span fits one cycle --
+                    # two whole pages plus a real junction never do.
+                    if Q[1] - P[0] > 1.15 * cyc:
+                        i += 1
+                        continue
+                    merged = (P[0], Q[1],
+                              _piece_contribs(P[0], Q[1], run_range, valid,
+                                               S_seed, redundant), ri)
+                    pages[i:i + 2] = [merged]
+                    flags[i:i + 2] = [False]   # merged page fits one cycle
+                    changed = True
+                    if verbose:
+                        print(f"  blank interior: merged [{P[0]:.0f}, "
+                              f"{Q[1]:.0f}] ({Q[1] - P[0]:.0f} px, was "
+                              f"{P[1] - P[0]:.0f} + {Q[1] - Q[0]:.0f})")
+                    continue          # re-examine the merged page at i
+                core_lo = min(b[0] for b in core)
+                core_hi = max(b[1] for b in core)
+                newP, newQ = P, Q
+                if flags[i]:
+                    # Whites on P's side of the bars (below the core).
+                    hi = max((min(w[1], core_lo) for w in w_in
+                              if w[0] < core_lo), default=P[1])
+                    if hi > P[1] and hi - P[0] <= 1.15 * cyc:
+                        newP = (P[0], hi,
+                                _piece_contribs(P[0], hi, run_range, valid,
+                                                S_seed, redundant), ri)
+                if flags[i + 1]:
+                    # Whites on Q's side of the bars (above the core).
+                    lo = min((max(w[0], core_hi) for w in w_in
+                              if w[1] > core_hi), default=Q[0])
+                    if lo < Q[0] and Q[1] - lo <= 1.15 * cyc:
+                        newQ = (lo, Q[1],
+                                _piece_contribs(lo, Q[1], run_range, valid,
+                                                S_seed, redundant), ri)
+                if newP is not P or newQ is not Q:
+                    pages[i:i + 2] = [newP, newQ]
+                    changed = True
+                    if verbose:
+                        for old, new in ((P, newP), (Q, newQ)):
+                            if new is not old:
+                                print(f"  blank margins: grew [{new[0]:.0f}, "
+                                      f"{new[1]:.0f}] ({new[1] - new[0]:.0f}"
+                                      f" px, was {old[1] - old[0]:.0f})")
+                i += 1
+            if not changed:
+                break
+        run_results[ri] = pages
+    out = [p for p in all_pages if p[3] not in run_results]
+    for pages in run_results.values():
+        out.extend(pages)
+    out.sort(key=lambda p: (p[3], p[0], p[1]))
+    return out
+
+
+def _anticipate_refine_cut(cut, run_range, valid, S_seed, bar_gap_tol,
+                           window, orient):
+    """Snap an anticipated page boundary to the best weak evidence.
+
+    Loads every scan of the run whose film span reaches the +/-'window'
+    film-px neighborhood of the anticipated position 'cut' and collects
+    the weak boundary bands there -- hairline / thin / white-overlapped
+    bars (`detect_faint_bars`) and head-to-tail white junctions
+    (`detect_white_gaps`, relaxed) -- mapped to film coordinates and
+    merged with 'bar_gap_tol' (the same boundary seen by two overlapping
+    scans merges). Returns the (lo, hi) film range of the boundary band
+    closest to 'cut', or (cut, cut) when nothing in the window looks like
+    a boundary: pages that butt flush with no gap at all are cut at the
+    anticipated position itself.
+    """
+    bands = []
+    for k in run_range:
+        sm = valid[k]
+        s = S_seed[k]
+        if s + sm.bbox[1] < cut - window or s + sm.bbox[0] > cut + window:
+            continue
+        img = cv2.imread(sm.path, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            continue
+        if orient:
+            img = _transpose_frame(img, orient)
+        lo_r = max(sm.bbox[0], int(cut - window - s))
+        hi_r = min(sm.bbox[1], int(cut + window - s))
+        if hi_r > lo_r:
+            for r0, r1 in detect_faint_bars(img, sm.bbox, lo_r, hi_r):
+                bands.append((s + r0, s + r1))
+            # White junctions are found scan-wide (the ink smoothing and
+            # the side-margin estimates need full-scan context), then
+            # filtered down to the ones centered in the window. The side
+            # gate follows the scan's own film margins here: this probe
+            # only runs where the page cadence anticipates a boundary,
+            # which is what separates a real head-to-tail junction from
+            # a full-width blank strip inside a page.
+            for r0, r1 in detect_white_gaps(img, sm.bbox, min_run=40,
+                                            min_band=60,
+                                            adaptive_sides=True):
+                if lo_r <= (r0 + r1) / 2 <= hi_r:
+                    bands.append((s + r0, s + r1))
+        del img
+    if not bands:
+        return cut, cut
+    merged = merge_intervals(bands, bar_gap_tol)
+    best = min(merged, key=lambda b: abs((b[0] + b[1]) / 2 - cut))
+    if abs((best[0] + best[1]) / 2 - cut) > window:
+        return cut, cut
+    return float(best[0]), float(best[1])
+
+
+def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
+                           bar_gap_tol, min_page_height, orient=None,
+                           window=450.0, verbose=False):
+    """Split too-tall pages at ANTICIPATED page boundaries.
+
+    The scanner advances the film ~one page per capture, so page
+    boundaries recur in film coordinates with a steady cadence (the
+    "cycle": page + boundary band, ~6.1-6.5 kpx on the 20261007 frames)
+    and every boundary lands inside some scan's frame. When a boundary
+    carries no bar the detectors can see -- pages butted flush, a
+    hairline gap, a white junction too faint for the global gates --
+    `build_layout`'s pages run tall: two, three, four cycles in one page
+    (the 1922 reel's flagged pages are exactly this).
+
+    Anticipation closes the loop: a page whose film span is >= 1.5x the
+    run's cycle must hold 'round(span / cycle) - 1' missed boundaries,
+    placed by even division of the span (the max-likelihood guess for a
+    steady cadence bracketed by the observed boundaries on both sides).
+    Each anticipated position is then REFINED against the weak evidence
+    in its +/-'window' neighborhood -- the gap evidence the global pass
+    must ignore (hairline bars, thin bars, white-overlapped bars: see
+    `detect_faint_bars`) becomes decisive exactly where a boundary is
+    expected, and a printed rule that happens to sit in the window is
+    the residual risk of that trade. Pages that still show nothing (a
+    flush butt with no visible seam) are cut at the anticipated position
+    itself.
+
+    The cycle is the median spacing of the run's observed boundary-band
+    starts (merged bars, `bar_gap_tol`), robust to the odd merged black
+    stretch; runs with too few observed boundaries fall back to the
+    median cycle over all runs. Split pieces keep the run index and get
+    their contributor lists recomputed (see `_piece_contribs`); pieces
+    are re-checked so a mis-cut remainder gets split again.
+
+    Returns the new page list (the input list is left untouched).
+    """
+    # Per-run cycle: median spacing between consecutive boundary bands.
+    cycles = {}
+    fallback = []
+    for ri, (r0, r1) in enumerate(runs):
+        run_range = list(range(r0, r1 + 1))
+        intervals, _, _ = collect_bar_intervals(run_range, valid, S_seed)
+        starts = [lo for lo, _ in merge_intervals(intervals, bar_gap_tol)]
+        spacings = [b - a for a, b in zip(starts, starts[1:]) if b > a]
+        if len(spacings) >= 3:
+            cycles[ri] = float(np.median(spacings))
+            fallback.append(cycles[ri])
+    overall = float(np.median(fallback)) if fallback else None
+
+    out = []
+    for page in all_pages:
+        lo, hi, contrib, ri = page
+        cyc = cycles.get(ri, overall)
+        run_range = list(range(runs[ri][0], runs[ri][1] + 1))
+        if not cyc or hi - lo < 1.5 * cyc:
+            out.append(page)
+            continue
+        # Split this page, re-checking each piece (a bad cycle or a
+        # snapped band can leave a piece still >= 1.5 cycles).
+        span = hi - lo
+        pieces = [page]
+        stable = False
+        while not stable:
+            stable = True
+            next_pieces = []
+            for lo, hi, contrib, ri in pieces:
+                n = int(round((hi - lo) / cyc - 0.1)) - 1
+                if n < 1 or hi - lo < 1.5 * cyc:
+                    next_pieces.append((lo, hi, contrib, ri))
+                    continue
+                stable = False
+                win = min(window, 0.3 * cyc)
+                cuts = [lo + t * (hi - lo) / (n + 1)
+                        for t in range(1, n + 1)]
+                bounds = [_anticipate_refine_cut(
+                    c, run_range, valid, S_seed, bar_gap_tol, win,
+                    orient) for c in cuts]
+                edges = [lo]
+                for b_lo, b_hi in bounds:
+                    edges.append(b_lo)
+                    edges.append(b_hi)
+                edges.append(hi)
+                added = False
+                for a, b in zip(edges[::2], edges[1::2]):
+                    # Keep every piece a plausible page: clamp a snapped
+                    # band that wandered into the neighbor's territory.
+                    a = max(a, edges[0])
+                    b = min(b, edges[-1])
+                    if b - a < min_page_height:
+                        continue
+                    next_pieces.append(
+                        (a, b, _piece_contribs(a, b, run_range, valid,
+                                               S_seed, redundant), ri))
+                    added = True
+                if not added:
+                    # Never lose film: a degenerate snap (every piece
+                    # below min_page_height) keeps the page unsplit.
+                    next_pieces.append((lo, hi, contrib, ri))
+            pieces = next_pieces
+        if len(pieces) > 1 and verbose:
+            spans = ", ".join(f"[{p[0]:.0f}, {p[1]:.0f}]"
+                             for p in sorted(pieces, key=lambda p: p[0]))
+            print(f"  anticipated split (cycle {cyc:.0f}): "
+                  f"{span:.0f} px page -> {spans}")
+        out.extend(pieces)
+    out.sort(key=lambda p: (p[3], p[0], p[1]))
+    return out
+
+
 def load_roll_defaults(scan_dir):
     """Load `roll.json` from the roll directory, if it exists.
 
@@ -2038,11 +2546,14 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         # across the page area, film margins still dark, is the same kind
         # of interval as a bar). detect_white_gaps needs the content bbox
         # to exclude the bright frame border and measure the film margins.
-        bars = detect_bars(img) + (detect_white_gaps(img, bbox)
-                                   if trim_border else [])
-        bars.sort()
+        # The two lists are kept separately on the ScanMeta (black/white):
+        # the cadence passes need to know which boundary bands are backed
+        # by real black film bars.
+        black = detect_bars(img)
+        white = (detect_white_gaps(img, bbox) if trim_border else [])
+        bars = sorted(black + white)
         scans.append(ScanMeta(p, os.path.basename(p), h, w, bars,
-                              bbox))
+                              bbox, black=black, white=white))
         # print(scans[-1])
         if verbose and len(scans) % 10 == 0:
             print(f"  ...{len(scans)}/{n}")
@@ -2122,6 +2633,17 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
     runs, S_seed, redundant, all_pages = build_layout(
         valid, pair_results, valid_idx, gap_after, nv, stall_frac,
         bar_gap_tol, min_page_height)
+    # Cadence-short pages are shredded or cropped by blank bands that
+    # look exactly like junctions: grow them back into their own blanks.
+    all_pages = absorb_blank_margins(
+        all_pages, runs, valid, S_seed, redundant, bar_gap_tol,
+        verbose=verbose)
+    # Anticipated page breaks: too-tall pages hold boundaries the bar
+    # detectors can't see (flush-butted pages, hairline gaps) -- split
+    # them where the film's page cadence says a boundary must be.
+    all_pages = anticipate_page_breaks(
+        all_pages, runs, valid, S_seed, redundant, bar_gap_tol,
+        min_page_height, orient=orient, verbose=verbose)
     return dict(valid=valid, pair_results=pair_results, valid_idx=valid_idx,
                 gap_after=gap_after, nv=nv, runs=runs, S_seed=S_seed,
                 redundant=redundant, all_pages=all_pages,
