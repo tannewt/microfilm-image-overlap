@@ -770,7 +770,7 @@ def test_horizontal_batch_finds_pages(tmp_path, monkeypatch):
     """The full horizontal pipeline on a synthetic right-to-left batch."""
     paths, strip, strip_bars = _horiz_batch(tmp_path, monkeypatch)
     res = pp.analyze_batch(str(tmp_path), horizontal=True,
-                           stall_frac=0.2, min_page_height=150.0,
+                           min_page_height=150.0,
                            bar_gap_tol=10.0, verbose=False)
     assert res["axis"] == "x"
     assert res["orient"] == "R"
@@ -1551,7 +1551,7 @@ def test_horizontal_batch_finds_pages(tmp_path, monkeypatch):
     """The full horizontal pipeline on a synthetic right-to-left batch."""
     paths, strip, strip_bars = _horiz_batch(tmp_path, monkeypatch)
     res = pp.analyze_batch(str(tmp_path), horizontal=True,
-                           stall_frac=0.2, min_page_height=150.0,
+                           min_page_height=150.0,
                            bar_gap_tol=10.0, verbose=False)
     assert res["axis"] == "x"
     assert res["orient"] == "R"
@@ -1682,13 +1682,12 @@ def test_reversed_vertical_batch_plans_and_composes(tmp_path):
     paths, strip, advance = _reversed_vertical_batch(tmp_path)
 
     res = pp.analyze_batch(str(tmp_path), reverse=True,
-                           stall_frac=0.2, min_page_height=150.0,
+                           min_page_height=150.0,
                            bar_gap_tol=10.0, verbose=False)
     assert res["axis"] == "y"
     assert res["orient"] is None
     assert res["reverse"] is True
     assert len(res["runs"]) == 1           # every pair must link
-    assert len(res["redundant"]) == 0      # no near-dup dedups needed here
     pages = res["all_pages"]
     assert len(pages) >= 3                 # 7 pages' worth of strip
     for lo, hi, contrib, _ in pages:
@@ -1697,7 +1696,7 @@ def test_reversed_vertical_batch_plans_and_composes(tmp_path):
 
     # ---- write plans (the real driver), then composite them --------------
     plans_dir = tmp_path / "plans"
-    pp.run(str(tmp_path), output_dir=str(plans_dir), stall_frac=0.2,
+    pp.run(str(tmp_path), output_dir=str(plans_dir),
            min_page_height=150.0, bar_gap_tol=10.0, reverse=True,
            verbose=False)
     written = sorted(plans_dir.glob("*.toml"))
@@ -1735,21 +1734,21 @@ def test_reversed_vertical_batch_plans_and_composes(tmp_path):
 
 def test_reversed_batch_slipped_reexposure_keeps_offsets(tmp_path):
     """A slipped re-exposure (the film backs up ~120 px between two frames,
-    so the mid pair is a near-duplicate): the redundant frame still takes
-    its measured offset, so every scan's bars land on the strip's true bar
-    positions and the pages stay complete (the 20261007 '5,8,9' bug)."""
+    so the mid pair is a near-duplicate): every scan is used -- the
+    re-exposure frame takes its measured offset and contributes, and the
+    slip survives into the next scan's offset (the 20261007 '5,8,9' bug)."""
     hstrip, hbars = _film_strip(23, rows=600, cols=2800, pitch=400)
     strip = cv2.transpose(hstrip)          # film axis on rows: (2800, 600)
     fw, advance, slip = 700, 300, 120
     # frames at strip rows 0,300,600, then a RE-EXPOSURE of the 600 frame
     # shifted back 120 (rows 720), then the march resumes at 1200 -- the
-    # pair (f600, f720) is a near-duplicate; its measured offset must not
-    # be dropped or every later S is wrong by 120.
+    # a near-duplicate; its measured offset drives the layout, it is not
+    # skipped or every later S would be wrong by 120.
     los = [0, 300, 600, 720, 1200, 1500, 1800, 2100, 2400]
     for k, lo in enumerate(los):
         cv2.imwrite(str(tmp_path / f"scan{k:04d}.tif"), strip[lo:lo + fw])
     res = pp.analyze_batch(str(tmp_path), reverse=True,
-                           stall_frac=0.2, min_page_height=150.0,
+                           min_page_height=150.0,
                            bar_gap_tol=10.0, verbose=False)
     assert res["orient"] is None
     assert res["reverse"] is True
@@ -1759,11 +1758,11 @@ def test_reversed_batch_slipped_reexposure_keeps_offsets(tmp_path):
     for k, s in enumerate(S_act):
         if k < len(los) - 1:
             assert abs(s - los[k]) <= 45, (k, s, los[k])   # thin-strip jitter
-    # the re-exposure frame is redundant but correctly placed
-    assert 3 in res["redundant"]
+    # the re-exposure frame is anchored at its measured offset and used
+    # like any other scan
     assert abs(S_act[3] - 720) <= 2
-    # the near-duplicate residual (120) survived into the NEXT scan's
-    # offset: without it every S after the slip is wrong by 120.
+    # the slip (120) survived into the NEXT scan's offset: without it every
+    # S after the slip would be wrong by 120.
     assert abs((S_act[5] - S_act[4]) - 300) <= 45
     # the merged bars sit at the strip's true bar positions, not at
     # phantom offsets (layout coord = S[k] + local as-shot row)
@@ -1781,6 +1780,11 @@ def test_reversed_batch_slipped_reexposure_keeps_offsets(tmp_path):
     # and every page matches a true page's extent (pitch - bar)
     heights = sorted(round(hi - lo) for lo, hi, _, _ in res["all_pages"])
     assert heights and max(heights) >= 340
+    # the re-exposure frame still contributes film rows to a page (every
+    # scan is used, not skipped as a duplicate)
+    used = {k for lo, hi, cs, _ in res["all_pages"] for k in cs}
+    assert 3 in used
+    assert len(used) >= len(los) - 1
 
 
 # ---------------------------------------------------------------------------
@@ -2023,7 +2027,7 @@ def test_anticipate_page_breaks_splits_flush_and_hairline_pages(tmp_path):
     # position.
     strip, paths = _flush_hairline_batch(tmp_path)
 
-    res = pp.analyze_batch(str(tmp_path), reverse=True, stall_frac=0.1,
+    res = pp.analyze_batch(str(tmp_path), reverse=True,
                            min_page_height=100.0, bar_gap_tol=60.0,
                            verbose=False)
     pages = res["all_pages"]
@@ -2057,7 +2061,7 @@ def _absorb_batch(pages, blacks, whites, h=20000):
     sm = pp.ScanMeta("/r/scan0000.tif", "scan0000.tif", h, 800,
                      sorted(blacks + whites), (0, h, 0, 800),
                      black=blacks, white=whites)
-    return pp.absorb_blank_margins(pages, [(0, 0)], [sm], [0.0], set(),
+    return pp.absorb_blank_margins(pages, [(0, 0)], [sm], [0.0],
                                    bar_gap_tol=200.0)
 
 
@@ -2147,7 +2151,7 @@ def test_anticipate_terminates_on_band_denser_than_min_page_height():
     sm = pp.ScanMeta("/r/scan0000.tif", "scan0000.tif", 20000, 800,
                      sorted(bars), (0, 20000, 0, 800), black=bars, white=[])
     pages = [(80.0, 6080.0, [0], 0), (6160.0, 12560.0, [0], 0)]
-    out = pp.anticipate_page_breaks(pages, [(0, 0)], [sm], [0.0], set(),
+    out = pp.anticipate_page_breaks(pages, [(0, 0)], [sm], [0.0],
                                     bar_gap_tol=200.0,
                                     min_page_height=1000.0, verbose=False)
     # The pass TERMINATED (an earlier version looped forever here) and

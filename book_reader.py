@@ -94,6 +94,10 @@ plans_dirs. Click a thumbnail to open the full scan externally. Reverse
 batches (plan_pages.py --reverse: dy < 0 as-shot) keep their film
 coordinates in the scans' on-disk orientation too, so the outlined
 regions are directly the contributed rows of the stored scans.
+When plan_pages recorded a scan's blank rows (blank_rows: the dark bars
+and white head-to-tail junctions; low_content_rows: every no-print band),
+the thumbnail tints those rows too -- violet for bars, blue for other
+low-content stretches -- so a page cut onto blank film is obvious.
 """
 
 from __future__ import annotations
@@ -686,6 +690,11 @@ class _LoadTask(QRunnable):
 SIDEBAR_W = 208        # px width of each sidebar
 SIDEBAR_THUMB_W = 184  # px width of a scan thumbnail
 
+# Translucent tints painted over the plan's blank rows, one per band kind.
+# Distinct from the amber crop outline and the maroon non-contributed shade.
+BLANK_TINT = (64, 138, 255, 105)   # low_content_rows: film, margins, blanks
+BAR_TINT = (206, 70, 255, 125)     # blank_rows: bars / white junctions
+
 
 def guess_plans_dir(page_dir: Path, base: Path | None) -> Path | None:
     """Best-effort plans/ directory for a page directory, or None.
@@ -769,9 +778,16 @@ class PlanLibrary:
     ``info_for`` returns a dict:
 
         {"toml": Path|None, "kind": "page"|"gap_join"|"missing",
-         "scans": [{"name", "path"|None, "crop"|None, "display_size"}],
+         "axis": "y"|"x"|None,
+         "scans": [{"name", "path"|None, "crop"|None, "display_size",
+                     "blank_rows", "low_content_rows"}],
          "missing": [scan names that could not be located],
          "error": str|None}
+
+    ``axis`` is the plan's film axis ("y": the scans' rows, "x": their
+    columns; None in the stubs). ``blank_rows`` / ``low_content_rows``
+    are the plan's blank bands, in the scan's film-axis coordinates --
+    empty lists when the plan (older plan_pages runs) doesn't record them.
 
     The scans are the page's contributors (manual overrides applied, so a
     `skip = true` contributor is absent); ``crop`` is the region each scan
@@ -809,12 +825,12 @@ class PlanLibrary:
             return None
         toml_path = plans_dir / (page.stem + ".toml")
         if not toml_path.is_file():
-            return {"toml": None, "kind": None, "scans": [],
+            return {"toml": None, "kind": None, "axis": None, "scans": [],
                     "missing": [], "error": None}
         try:
             data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
         except (OSError, tomllib.TOMLDecodeError) as e:
-            return {"toml": toml_path, "kind": None, "scans": [],
+            return {"toml": toml_path, "kind": None, "axis": None, "scans": [],
                     "missing": [], "error": f"could not read plan: {e}"}
         # Reuse the compositor's override logic + scan-name resolution; the
         # heavy cv2/numpy imports happen only when a plan is first parsed.
@@ -822,7 +838,7 @@ class PlanLibrary:
             from compose_pages import ScanResolver, apply_manual
             eff = apply_manual(data)
         except (SystemExit, Exception) as e:   # noqa: BLE001 -- show, don't die
-            return {"toml": toml_path, "kind": None, "scans": [],
+            return {"toml": toml_path, "kind": None, "axis": None, "scans": [],
                     "missing": [], "error": f"bad plan: {e}"}
         kind = eff["kind"]
         axis = eff.get("axis", "y")
@@ -958,9 +974,24 @@ class PlanLibrary:
                     crop = QRect(c_left, r_top,
                                  c_right - c_left + 1, r_bot - r_top + 1)
                 scans.append({"name": name, "path": path, "crop": crop,
-                              "display_size": dsize})
-        return {"toml": toml_path, "kind": kind, "scans": scans,
+                              "display_size": dsize,
+                              "blank_rows": _band_list(c, "blank_rows"),
+                              "low_content_rows": _band_list(
+                                  c, "low_content_rows")})
+        return {"toml": toml_path, "kind": kind, "axis": axis, "scans": scans,
                 "missing": missing, "error": scan_note}
+
+
+def _band_list(contrib, key):
+    """A contrib's blank bands under `key` ("blank_rows" /
+    "low_content_rows"), as normalized [(lo, hi), ...]; bands plan_pages
+    didn't write (older TOMLs) yield []."""
+    out = []
+    for b in (contrib.get(key) or []):
+        if (isinstance(b, (list, tuple)) and len(b) == 2
+                and all(isinstance(v, (int, float)) for v in b)):
+            out.append((int(min(b)), int(max(b))))
+    return out
 
 
 class ThumbLoader(QObject):
@@ -1032,8 +1063,10 @@ class _ThumbTask(QRunnable):
 
 
 class ThumbCell(QLabel):
-    """One scan thumbnail: the downscaled scan, its crop region outlined.
-    Clicking opens the full scan in the system image viewer.
+    """One scan thumbnail: the downscaled scan, its crop region outlined,
+    and the plan's blank rows tinted (violet: blank_rows -- the page-boundary
+    bars and white junctions; blue: low_content_rows -- every other
+    no-print stretch). Clicking opens the full scan in the system viewer.
     """
 
     def __init__(
@@ -1044,12 +1077,21 @@ class ThumbCell(QLabel):
         crop: QRect | None,
         display_size: QSize | None,
         parent: QWidget | None = None,
+        *,
+        axis: str = "y",
+        blank_rows: list[tuple[int, int]] | None = None,
+        low_content_rows: list[tuple[int, int]] | None = None,
     ) -> None:
         super().__init__(parent)
         self._path = path
         self._name = name
         self._crop = crop
         self._display_size = display_size
+        self._axis = axis if axis in ("x", "y") else "y"
+        # (lo, hi) inclusive film-axis rows, plus the tint to paint each band.
+        self._bands = ([(lo, hi, BAR_TINT) for lo, hi in blank_rows or []]
+                       + [(lo, hi, BLANK_TINT)
+                          for lo, hi in low_content_rows or []])
         self._key = None
         self.setAlignment(Qt.AlignCenter)
         self.setMinimumSize(SIDEBAR_THUMB_W, 100)
@@ -1061,6 +1103,9 @@ class ThumbCell(QLabel):
         tip = name
         if path is not None:
             tip += f"\n{path}\n(click to open in the image viewer)"
+        if self._bands:
+            tip += "\nblank rows tinted (violet: boundary bars / junctions;"
+            tip += "\nblue: other no-print stretches)"
         self.setToolTip(tip)
         if path is not None:
             self._key = loader.request(path, SIDEBAR_THUMB_W)
@@ -1087,10 +1132,29 @@ class ThumbCell(QLabel):
         # per-cell crop/shade annotations must never leak into the cache or
         # into a sibling cell's pixmap.
         pm = QPixmap.fromImage(img.copy())
+        scale = (pm.width() / self._display_size.width()
+                 if self._display_size and self._display_size.width()
+                 else 1.0)
+        if self._bands:
+            # Blank-row tints, drawn UNDER the crop annotations: one
+            # translucent band per plan-recorded (lo, hi). Their coordinates
+            # live in the scan's film axis, the frame the crop is drawn in
+            # (for axis="x" plans the plan's transposed frame), so bands and
+            # crop box stay comparable. plan_pages only wrote blank rows on
+            # newer plans, so no bands means no tints.
+            painter = QPainter(pm)
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            for lo, hi, tint in self._bands:
+                y0 = int(lo * scale)
+                y1 = max(y0 + 1, int((hi + 1) * scale))
+                if self._axis == "x":
+                    painter.fillRect(QRect(y0, 0, y1 - y0, pm.height()),
+                                     QColor(*tint))
+                else:
+                    painter.fillRect(QRect(0, y0, pm.width(), y1 - y0),
+                                     QColor(*tint))
+            painter.end()
         if self._crop is not None:
-            scale = (pm.width() / self._display_size.width()
-                     if self._display_size and self._display_size.width()
-                     else 1.0)
             if self._display_size is None:
                 # Without the full size, assume the crop fills the image.
                 rect = QRect(0, 0, pm.width(), pm.height())
@@ -1179,9 +1243,12 @@ class ScanSidebar(QWidget):
         holder.setStyleSheet("background: #141414;")
         return holder
 
-    def set_page(self, title: str, message: str | None, scans: list[dict]) -> None:
+    def set_page(self, title: str, message: str | None, scans: list[dict],
+                 axis: str | None = None) -> None:
         """Rebuild the list: `title` in the header, then one ThumbCell per
-        scan entry ({name, path, crop, display_size}), or `message` if empty."""
+        scan entry ({name, path, crop, display_size, blank_rows,
+        low_content_rows}), or `message` if empty. `axis` is the plan's
+        film axis ("y" default; "x" draws blank bands vertically)."""
         self.header.setText(title)
         body = QWidget()
         lay = QVBoxLayout(body)
@@ -1203,6 +1270,9 @@ class ScanSidebar(QWidget):
             cell = ThumbCell(
                 self._loader, scan["path"], scan["name"], scan["crop"],
                 scan["display_size"], body,
+                axis=axis or "y",
+                blank_rows=scan.get("blank_rows"),
+                low_content_rows=scan.get("low_content_rows"),
             )
             lay.addWidget(cell)
             lay.addWidget(label)
@@ -2424,7 +2494,7 @@ class MainWindow(QMainWindow):
                     msg = "plan declares this page missing — no contributing scans"
                 else:
                     msg = "no contributing scans listed in the plan"
-            sidebar.set_page(title, msg, scans)
+            sidebar.set_page(title, msg, scans, axis=info.get("axis"))
 
     def _toggle_rtl(self) -> None:
         self.spread.set_rtl(self.act_rtl.isChecked())

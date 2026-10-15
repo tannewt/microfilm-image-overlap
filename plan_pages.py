@@ -28,8 +28,9 @@ page images re-rendered without redoing the SIFT work.
 
 Anomalous pairs are handled gracefully: a pair the detector reports as
 **no-overlap** starts a new independent run of scans (pages never cross a
-gap); a pair whose vertical advance is tiny (a near-duplicate / stalled
-advance) is treated as a redundant re-scan and skipped.
+gap). Every scan is used: even a near-duplicate re-exposure keeps its
+measured offset (the film can move a little between captures) and
+contributes to the pages it covers.
 
 **Horizontal batches.** Some scans advance the film HORIZONTALLY: the film
 strip runs left-right through each frame, pages are separated by
@@ -57,7 +58,8 @@ Usage:
     python plan_pages.py scans/20260929/ --pattern '^006876200_' \
         --horizontal --cache-dir sift_cache2 --output-dir plans/0929
 
-    # Only a subset of the batch (1-based indices or names in sorted order):
+    # Only a subset of the batch (scan numbers -- the trailing digits of
+    # the filenames -- or names; ranges tolerate numbering gaps):
     python plan_pages.py scans2/P81-4720/ --pattern '^07227-' --only 5-8
     python plan_pages.py scans2/P81-4720/ --pattern '^07227-' \
         --only 07227-6300_0.28_0007.tif,9-11
@@ -571,7 +573,7 @@ def detect_film_direction(scans_paths, max_pairs=10, max_dim=1600,
     overlap on a strip along one frame edge, and the SAME PHYSICAL FILM
     appears in both. Match full frames of the first few consecutive pairs
     (SIFT at reduced resolution, one dominant cluster each -- the pipeline's
-    stage-4 logic) and read the direction off the winning cluster's
+    stage-3 logic) and read the direction off the winning cluster's
     `dx = B - A` sign:
 
       dx > 0  -- later frames show the same content shifted RIGHT, new
@@ -975,9 +977,8 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         real, n, mdx, mdy, iqr, mask = assess_overlap(
             kp_a, kp_b, good, min_matches=min_matches, max_iqr=max_iqr)
         # cluster-member keypoint coordinates (full-res here, scaled in
-        # stage 1): (x_a, y_a, y_b) -- the thin-overlap rescue centers its
-        # pixel verification template on (x, y_a), and the near-duplicate
-        # guard checks the cluster's frame coverage from (y_a, y_b).
+        # stage 0): (x_a, y_a, y_b) -- the thin-overlap rescue centers its
+        # pixel verification template on (x, y_a).
         pts = None
         if mask is not None:
             pts = [(kp_a[m.queryIdx].pt[0], kp_a[m.queryIdx].pt[1],
@@ -985,51 +986,9 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                    for m, keep in zip(good, mask) if keep]
         return real, n, mdx, mdy, iqr, pts
 
-    # 0. Near-duplicate guard. A pair only counts as a re-exposed frame
-    #    when the shots are ALMOST IDENTICAL: a confident whole-frame
-    #    cluster whose |dy| sits under the stall threshold (5% of the
-    #    frame by default) -- an accidental double-fire of the shutter.
-    #    The strip-restricted stages below CANNOT see that alignment: it
-    #    runs A's bottom rows <-> B's top rows (dy < 0), the strip bounds
-    #    amputate precisely those rows, and the stages would then settle
-    #    on a page-furniture repeat -- so the layout double-counts the
-    #    page. Match the whole downscaled frames first (both dy signs)
-    #    and hand such a pair to the layout's stall handling to dedup.
-    #    A re-shot frame that SLIPS (hundreds of px, e.g. P71-1922's
-    #    0037 -> 0038 at ~+809) is NOT a near-duplicate: it holds a full
-    #    page of its own content and must keep contributing pages -- so
-    #    only a cluster within the stall threshold qualifies, and even
-    #    then only when it covers the whole frame. That coverage gate
-    #    matters because a film that doubled back over a strip
-    #    re-photographs it a few hundred px into the next frame: 0005 ->
-    #    0006 aligns a ~2500 px band at dy ~ +818 with 3900 agreeable
-    #    matches, while the frames' true relation is a full page advance
-    #    (dy ~ -5445, NCC-verified against the neighbors' strip
-    #    baseline) -- the band spans just 40% of the frame, the true
-    #    whole-frame slip covers 82-83%. A band repeat falls through to
-    #    the strip stages, which resolve the true page advance.
-    stall_frac = params.get("stall_frac")
-    if stall_frac is not None:
-        near_thr = stall_frac * orig_h_a
-        nd_real, nd_n, nd_dx, nd_dy, nd_iqr, nd_pts = _sift_verdict(
-            kp_a, des_a, kp_b, des_b)
-        near_dup = (nd_real and nd_n and abs(nd_dy * sy) < near_thr)
-        if near_dup and nd_pts:
-            # both frames must be covered: the cluster's row span on each
-            # side must reach well past 2/3 of the frame (a repeat band,
-            # or any strip-limited alignment, falls short)
-            ya = [p[1] for p in nd_pts]
-            yb = [p[2] for p in nd_pts]
-            near_dup = ((max(ya) - min(ya)) >= 0.7 * ha_s and
-                        (max(yb) - min(yb)) >= 0.7 * sb[0])
-        if near_dup:
-            return dict(ok=True, full_dx=nd_dx * sx, full_dy=nd_dy * sy,
-                        matches=nd_n, via_ncc=False, via_band=False,
-                        status="ok", near_dup=True)
-
-    # 1. Strip-restricted match: A at/above its last bar, B at/below its
-    #    first bar -- the boundary-spanning page strip, which always contains
-    #    the overlap (stage 0 above has already removed near-duplicates).
+    # 0. Strip-restricted match: A at/above its last bar, B at/below its
+    #    first bar -- the boundary-spanning page strip, which always
+    #    contains the overlap.
     lo_a, hi_b = (max_y_a / sy if max_y_a is not None else None,
                   min_y_b / sy_b if min_y_b is not None else None)
     if reverse:                      # A's bottom rows <-> B's top rows
@@ -1045,7 +1004,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
     via_band = False
     fullres = False   # med_dx/med_dy measured at full res (original px)?
     if not is_real:
-        # 2. Full-resolution strip-restricted retry (same bounds, but full-res
+        # 1b. Full-resolution strip-restricted retry (same bounds, but full-res
         #    keypoints are already in original pixels so no scale conversion).
         fk_a, fdes_a, fa_shape = get_full_kd(path_a)
         fk_b, fdes_b, fb_shape = get_full_kd(path_b)
@@ -1076,7 +1035,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                 fullres = True
 
     if not is_real:
-        # 3. Bar-constrained pixel-NCC fallback on the SAME downscaled
+        # 2. Bar-constrained pixel-NCC fallback on the SAME downscaled
         #    grayscale SIFT used, so the returned dy is in the same scaled
         #    pixels. When both scans' bars are known the candidate shifts come
         #    from the bars and every shift is scored on text rows only (bar
@@ -1114,8 +1073,8 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                             print("GAP!")
 
     if not is_real:
-        # 4. Full-frame SIFT retry with a bar-side consistency check. Runs
-        #    only when the strip-restricted matches (steps 1-2) AND the
+        # 3. Full-frame SIFT retry with a bar-side consistency check. Runs
+        #    only when the strip-restricted matches (steps 0-1) AND the
         #    bar-NCC fallback (step 3) both failed. Frames holding a single
         #    MID-FRAME bar break the strip assumption: that bar IS the
         #    shared page-boundary bar, so bounding A by its last bar and B
@@ -1136,7 +1095,8 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         #       -- e.g. the dy ~ +400 page-furniture cluster that survives
         #       gate (a) on the 06818 minimal pairs -- cannot win.
 
-        def _full_frame_verdict(kpa, desa, kpb, desb, s_a, s_b, dy_scale):
+        def _full_frame_verdict(kpa, desa, kpb, desb, s_a, s_b, dy_scale,
+                                h_frame_a, h_frame_b):
             good = filter_matches(kpa, kpb,
                                   match_keypoints(desa, desb, ratio),
                                   max_dx=max_dx)
@@ -1151,7 +1111,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                         continue        # across the bar: different pages
                     kept.append(m)
                 good = kept
-            real, n, mdx, mdy, iqr, _ = assess_overlap(
+            real, n, mdx, mdy, iqr, mask = assess_overlap(
                 kpa, kpb, good, min_matches=min_matches, max_iqr=max_iqr)
             if real and bars_a and bars_b:
                 dy0 = mdy * dy_scale    # original-pixel dy
@@ -1161,6 +1121,33 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                     for ra0, ra1 in bars_a for rb0, rb1 in bars_b)
                 if not mapped:
                     return False, 0, 0.0, 0.0, 0.0
+            if real and mask is not None:
+                # Page-furniture-repeat gate: a sparse cluster of random
+                # text-similarity matches scattered across the whole frame
+                # can be internally consistent in dy AND pass the bar
+                # mapping when the two frames' boundary bars are page-
+                # furniture copies of each other (a same-bar repeat across
+                # a full page advance). A wide cluster is only trustworthy
+                # when it is DENSE: a real near-identical re-exposure
+                # matches nearly every keypoint on the frame (many matches
+                # per row), and 04860's mid-frame-bar band carries ~1.2
+                # matches per row while real thin-strip chains carry ~0.1;
+                # a phantom's random text scatter yields one match per
+                # ~100 rows (P77-626's 117 -> 118: dy
+                # -230 with 57 matches over a 99%-frame spread). Reject
+                # wide clusters without that support: fewer than one
+                # match per 20 rows spanned is no film evidence.
+                ya = [kpa[m.queryIdx].pt[1]
+                      for m, keep in zip(good, mask) if keep]
+                yb = [kpb[m.trainIdx].pt[1]
+                      for m, keep in zip(good, mask) if keep]
+                if ya and yb:
+                    span_a = max(ya) - min(ya)
+                    span_b = max(yb) - min(yb)
+                    if ((span_a > 0.65 * h_frame_a or
+                         span_b > 0.65 * h_frame_b) and
+                            n < max(min_matches, 0.05 * min(span_a, span_b))):
+                        return False, 0, 0.0, 0.0, 0.0
             return real, n, mdx, mdy, iqr
 
         # Downscaled first (those keypoints are already loaded); s_a/s_b are
@@ -1170,18 +1157,22 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         s_bars_b = ([(r0 / sy_b, r1 / sy_b) for r0, r1 in bars_b]
                     if bars_b and sy_b else None)
         is_real, n_good, med_dx, med_dy, iqr_dy = _full_frame_verdict(
-            kp_a, des_a, kp_b, des_b, s_bars_a, s_bars_b, sy)
+            kp_a, des_a, kp_b, des_b, s_bars_a, s_bars_b, sy,
+            orig_h_a / sy if sy else orig_h_a,
+            params["shapes"].get(path_b, (0,))[0] / sy_b
+            if sy_b else params["shapes"].get(path_b, (0,))[0])
         if not is_real:
             fk_a, fdes_a, fa_shape = get_full_kd(path_a)
             fk_b, fdes_b, fb_shape = get_full_kd(path_b)
             if fa_shape[0] and fb_shape[0]:
                 is_real, n_good, med_dx, med_dy, iqr_dy = _full_frame_verdict(
-                    fk_a, fdes_a, fk_b, fdes_b, bars_a, bars_b, 1.0)
+                    fk_a, fdes_a, fk_b, fdes_b, bars_a, bars_b, 1.0,
+                    orig_h_a, orig_h_b)
                 if is_real:
                     fullres = True
 
     if not is_real:
-        # 5. Featureless-band assumption: link the pair when the only
+        # 4. Featureless-band assumption: link the pair when the only
         #    possible overlap strip is SIFT-blind in both frames (the shared
         #    page-boundary bar) and the bar rows themselves align (dust NCC).
         fk_a, fdes_a, fa_shape = get_full_kd(path_a)
@@ -1201,7 +1192,7 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
                     via_ncc=False, via_band=False, status="no_overlap")
 
     # Sign gate: the film advances ONE direction per batch (dy > 0 normal,
-    # dy < 0 under --reverse; stages 0-4 strip bounds and bar-mapping gates
+    # dy < 0 under --reverse; stages 0-3 strip bounds and bar-mapping gates
     # already bias toward it), so a confirmed link whose dy runs the OTHER
     # way is a mirrored-phantom alignment -- a thin overlap's bar pair
     # locked onto its own mirror image (0316's fold: dy +5981 vs the
@@ -1292,7 +1283,7 @@ def bar_constrained_ncc(ga, gb, bars_a, bars_b, sy_a, sy_b,
        floor against degenerate bar-to-page alignments).
 
     A pair whose bars are missing, or whose overlap extent falls outside
-    [l_min, l_max] (stalled near-duplicates, single mid-frame bars like
+    [l_min, l_max] (single mid-frame bars like
     07227's 0025->0026), still fails and stays a gap.
     """
     ha, hbb = ga.shape[0], gb.shape[0]
@@ -1822,17 +1813,14 @@ def find_pages(merged_bars, fmin, fmax, min_page_height):
 # Page plans (TOML: what contributes to each page and at what offset)
 # --------------------------------------------------------------------------- #
 
-def extend_contribs(contrib_idx, film, valid, S_seed, pair_results,
-                    redundant=()):
+def extend_contribs(contrib_idx, film, valid, S_seed, pair_results):
     """Walk the film chain past the contributing scans while their frames
     still cover the page's film range.
 
-    Consecutive pairs whose |dy| fell under the stall threshold mark the
-    later scan redundant (excluded from page CONTRIBUTIONS, but still
-    anchored in the film chain), so a page's film range can spill past its
-    last contributing scan's frame end into the neighbor's bottom strip.
-    The strips in between are film the page genuinely holds; without this
-    walk they compose as a black hole (117-117's missing 230 rows).
+    A page's film range can spill past its last contributing scan's frame
+    end into the neighbor's bottom strip. The strips in between are film
+    the page genuinely holds; without this walk they compose as a black
+    hole (117-117's missing 230 rows).
     """
     lo, hi = film
     contrib = list(contrib_idx)
@@ -2074,7 +2062,50 @@ def write_plan_toml(path, label, kind, source_dir, auto, axis=None,
 # Driver
 # --------------------------------------------------------------------------- #
 
-def build_layout(valid, pair_results, valid_idx, gap_after, nv, stall_frac,
+REPEAT_FRAC = 0.15   # a pair |dy| under this share of the local page advance
+                     # reads as a page-furniture repeat, not film motion
+
+
+def _furniture_reanchor(valid, run_start, k, S_seed, cadence, bar_gap_tol):
+    """RE-ANCHOR the later scan of a page-furniture-repeat pair.
+
+    Pair (k, k+1) measured ok, but its |dy| sits far under the run's page
+    advance: the two frames share their boundary-bar strip (the black bar,
+    white film leader and dark side margins are pixel-identical across a
+    reel), a SIFT cluster locks them onto the SAME physical bar at a
+    same-bar offset, and the stage gates bless it (the bar maps onto the
+    bar; the matched rows cluster in the compact bar-adjacent band).
+    Trusting such a dy places scan k+1 where the film never went and
+    double-books film rows (P77-626's scans116-118: scan 117's page tail
+    replaced by scan 118's re-covered page head).
+
+    The bar grid the layout has anchored SO FAR carries the film's own page
+    cadence instead: the merged boundary bars advance ~one page per capture,
+    so scan k+1 is anchored one merged-bar step beyond scan k along that
+    grid (film(B's row 0) = film(A's last bar start) + cycle). The pair
+    stays linked and the scan stays used; only its offset is replaced.
+    Only film-ascending chains (dy < 0, the --reverse reels) reanchor.
+
+    Returns the replacement dy, or None to keep the measured one.
+    """
+    a, b = valid[k], valid[k + 1]
+    if not a.bars or not b.bars:
+        return None                     # no bar pair to anchor a step from
+    steps = [S_seed[j + 1] - S_seed[j] for j in range(run_start, k)]
+    if not steps or {np.sign(s) for s in steps} != {1.0}:
+        return None
+    bar_its, _, _ = collect_bar_intervals(list(range(run_start, k + 1)),
+                                          valid, S_seed)
+    merged = merge_intervals(bar_its, bar_gap_tol)
+    spacings = [q[0] - p[0] for p, q in zip(merged, merged[1:]) if q[0] > p[0]]
+    cycle = (float(np.median(spacings)) if spacings else
+             (cadence if cadence > 0 else None))
+    if not cycle:
+        return None
+    return b.bars[0][0] - a.bars[-1][0] - cycle
+
+
+def build_layout(valid, pair_results, valid_idx, gap_after, nv,
                  bar_gap_tol, min_page_height):
     """Film-coordinate layout from per-pair overlaps: split the sequence into
     independent runs (broken at no-overlap / load gaps), give each scan a
@@ -2084,27 +2115,32 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv, stall_frac,
     Pure data -- no image loading, no printing -- so it is reused by `run()`
     and by the visual tests.
 
-    A near-duplicate / stalled re-scan (|dy| under the stall threshold) is
-    marked redundant (excluded from page contributions) but STILL anchored
-    at its measured offset: the slip is real film motion, and dropping it
-    maps the redundant frame's boundary bar to a phantom position -- the
-    neighbors' bar copies then fail to merge and the region's pages shred
-    into below-min-height slivers with mis-joined seams.
+    For a pair whose |dy| is far under the run's page advance (the median
+    anchored advance; see REPEAT_FRAC), the dy is a page-furniture repeat
+    and the later scan is re-anchored on the bar grid's cycle instead (see
+    `_furniture_reanchor`); the pair stays linked either way.
     """
-    redundant, S_seed = set(), [0.0] * nv
+    S_seed = [0.0] * nv
     runs = []
     run_start = 0
+    advances = []
     for k in range(nv - 1):
         res = pair_results[k]
         break_here = (valid_idx[k] in gap_after) or (not res["ok"])
         if break_here:
             runs.append((run_start, k))
             run_start = k + 1
-            S_seed[k + 1] = 0.0
+            advances = []
             continue
-        if abs(res["full_dy"]) < stall_frac * valid[k].h:
-            redundant.add(k + 1)            # stalled / near-duplicate re-scan
-        S_seed[k + 1] = S_seed[k] - res["full_dy"]
+        dy = res["full_dy"]
+        cadence = float(np.median(advances)) if advances else None
+        if cadence and 0 < abs(dy) < REPEAT_FRAC * cadence:
+            anchored = _furniture_reanchor(valid, run_start, k, S_seed,
+                                           cadence, bar_gap_tol)
+            if anchored is not None and np.sign(anchored) == np.sign(dy):
+                dy = anchored
+        S_seed[k + 1] = S_seed[k] - dy
+        advances.append(abs(dy))
     runs.append((run_start, nv - 1))
 
     # Cumulative horizontal offset per scan, relative to its run start.
@@ -2134,8 +2170,6 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv, stall_frac,
             # seam (and a dependence on the pair dy) for no new content.
             owner = None
             for k in run_range:
-                if k in redundant:
-                    continue
                 s = S_seed[k]
                 bars = valid[k].bars
                 for b1, b2 in zip(bars, bars[1:]):
@@ -2151,25 +2185,20 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv, stall_frac,
                 continue
             contrib = []
             for k in run_range:
-                if k in redundant:
-                    continue
                 sm = valid[k]
                 top, bottom, _, _ = sm.bbox
                 s = S_seed[k]
                 if max(lo, s + top) < min(hi, s + bottom):
                     contrib.append(k)
             all_pages.append((lo, hi, contrib, ri))
-    return runs, S_seed, redundant, all_pages
+    return runs, S_seed, all_pages
 
 
-def _piece_contribs(lo, hi, run_range, valid, S_seed, redundant):
+def _piece_contribs(lo, hi, run_range, valid, S_seed):
     """Indices of the scans that contribute film rows to [lo, hi] -- the
-    same rule `build_layout` uses for its pages (redundant re-scans
-    excluded)."""
+    same rule `build_layout` uses for its pages."""
     contrib = []
     for k in run_range:
-        if k in redundant:
-            continue
         sm = valid[k]
         top, bottom, _, _ = sm.bbox
         s = S_seed[k]
@@ -2178,7 +2207,7 @@ def _piece_contribs(lo, hi, run_range, valid, S_seed, redundant):
     return contrib
 
 
-def absorb_blank_margins(all_pages, runs, valid, S_seed, redundant,
+def absorb_blank_margins(all_pages, runs, valid, S_seed,
                          bar_gap_tol, verbose=False):
     """Grow cadence-short pages into the blank bands around them.
 
@@ -2271,7 +2300,7 @@ def absorb_blank_margins(all_pages, runs, valid, S_seed, redundant,
                         continue
                     merged = (P[0], Q[1],
                               _piece_contribs(P[0], Q[1], run_range, valid,
-                                               S_seed, redundant), ri)
+                                               S_seed), ri)
                     pages[i:i + 2] = [merged]
                     flags[i:i + 2] = [False]   # merged page fits one cycle
                     changed = True
@@ -2290,7 +2319,7 @@ def absorb_blank_margins(all_pages, runs, valid, S_seed, redundant,
                     if hi > P[1] and hi - P[0] <= 1.15 * cyc:
                         newP = (P[0], hi,
                                 _piece_contribs(P[0], hi, run_range, valid,
-                                                S_seed, redundant), ri)
+                                                S_seed), ri)
                 if flags[i + 1]:
                     # Whites on Q's side of the bars (above the core).
                     lo = min((max(w[0], core_hi) for w in w_in
@@ -2298,7 +2327,7 @@ def absorb_blank_margins(all_pages, runs, valid, S_seed, redundant,
                     if lo < Q[0] and Q[1] - lo <= 1.15 * cyc:
                         newQ = (lo, Q[1],
                                 _piece_contribs(lo, Q[1], run_range, valid,
-                                                S_seed, redundant), ri)
+                                                S_seed), ri)
                 if newP is not P or newQ is not Q:
                     pages[i:i + 2] = [newP, newQ]
                     changed = True
@@ -2372,7 +2401,7 @@ def _anticipate_refine_cut(cut, run_range, valid, S_seed, bar_gap_tol,
     return float(best[0]), float(best[1])
 
 
-def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
+def anticipate_page_breaks(all_pages, runs, valid, S_seed,
                            bar_gap_tol, min_page_height, orient=None,
                            window=450.0, verbose=False):
     """Split too-tall pages at ANTICIPATED page boundaries.
@@ -2405,9 +2434,8 @@ def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
     a run's boundaries -- the observed bar spacings there are 2x, 3x
     the cycle and their median comes out inflated, leaving genuinely
     tall pages unsplit: the P77-626 runs at scans 242-246 and 539-551
-    measured a ~12000 px "cycle" from ~5800 px advances). Stalled
-    re-scans (redundant pairs) don't sample the cadence and are left
-    out. Runs with under three advances fall back to the bar-spacing
+    measured a ~12000 px "cycle" from ~5800 px advances). Runs with under
+    three advances fall back to the bar-spacing
     median, then to the median cycle over all runs. Split pieces keep
     the run index and get
     their contributor lists recomputed (see `_piece_contribs`); pieces
@@ -2423,8 +2451,7 @@ def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
         run_range = list(range(r0, r1 + 1))
         advances = [S_seed[k + 1] - S_seed[k]
                     for k in range(r0, r1)
-                    if (k + 1) not in redundant
-                    and S_seed[k + 1] - S_seed[k] > 0]
+                    if S_seed[k + 1] - S_seed[k] > 0]
         intervals, _, _ = collect_bar_intervals(run_range, valid, S_seed)
         starts = [lo for lo, _ in merge_intervals(intervals, bar_gap_tol)]
         spacings = [b - a for a, b in zip(starts, starts[1:]) if b > a]
@@ -2492,7 +2519,7 @@ def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
                         continue
                     next_pieces.append(
                         (a, b, _piece_contribs(a, b, run_range, valid,
-                                               S_seed, redundant), ri))
+                                               S_seed), ri))
                     added = True
                 if not added:
                     # Never lose film: a degenerate snap (every piece
@@ -2591,17 +2618,29 @@ def select_subset(scans_paths, only):
     """Filter the sorted scan list down to a user-chosen subset.
 
     `only` is a comma-separated list of entries, each either:
-      - a 1-based index into the sorted batch list (e.g. `5`),
-      - an inclusive index range (e.g. `5-8`), or
-      - a filename (matched exactly against the basename, e.g.
-        `07227-6300_0.28_0007.tif`).
+      - a scan SEQUENCE number -- the trailing 4-digit image number of a
+        filename (`..._0117.tif` -> 117; e.g. entry `117`),
+      - an inclusive scan-number range (e.g. `115-120`) -- resilient to
+        numbering gaps: every scan whose number falls inside the range is
+        selected whether or not all intermediate numbers exist on disk
+        (a reel's missing captures); a warning names the holes, and a
+        range that matches nothing fails,
+      - or a filename (matched exactly against the basename, e.g.
+        `07227-6300_0.28_0007.tif`) -- for scans whose names carry no
+        sequence number.
 
-    The result keeps the batch's sorted order regardless of the order the
-    entries were given, and drops duplicates. Raises SystemExit for unknown
-    entries so typos fail fast instead of silently skipping a scan.
+    Single numbers and filenames must exist (typos fail fast); only
+    ranges tolerate missing numbers. The result keeps the batch's sorted
+    order regardless of the order the entries were given, and drops
+    duplicates. Raises SystemExit for unknown entries so typos fail fast
+    instead of silently skipping a scan.
     """
-    n = len(scans_paths)
     names = {os.path.basename(p): p for p in scans_paths}
+    seq_paths = {}
+    for p in scans_paths:
+        seq = _scan_seq(os.path.basename(p))
+        if seq is not None:
+            seq_paths.setdefault(seq, []).append(p)
     wanted = set()
     for entry in only.split(","):
         entry = entry.strip()
@@ -2610,48 +2649,51 @@ def select_subset(scans_paths, only):
         m = re.fullmatch(r"(\d+)-(\d+)", entry)
         if m:
             lo, hi = int(m.group(1)), int(m.group(2))
-            if lo > hi or lo < 1 or hi > n:
+            if lo > hi:
                 raise SystemExit(
                     f"ERROR: --only range '{entry}' is invalid (expected "
-                    f"lo<=hi within 1-{n}).")
-            wanted.update(range(lo - 1, hi))
-        elif entry.isdigit():
-            i = int(entry)
-            if i < 1 or i > n:
+                    f"lo<=hi).")
+            seqs = sorted(s for s in seq_paths if lo <= s <= hi)
+            if not seqs:
                 raise SystemExit(
-                    f"ERROR: --only index {entry} is outside the batch "
-                    f"(1-{n}).")
-            wanted.add(i - 1)
+                    f"ERROR: --only range '{entry}' matches no scan in the "
+                    f"batch (scan numbers run "
+                    f"{min(seq_paths)}-{max(seq_paths)})")
+            missing = [s for s in range(lo, hi + 1) if s not in seq_paths]
+            if missing:
+                shown = str(missing) if len(missing) <= 10 else \
+                    f"{missing[:10]}... ({len(missing)} total)"
+                print(f"WARNING: --only {entry}: no scan for number(s) "
+                      f"{shown} (numbering gap); using the {len(seqs)} "
+                      f"that exist")
+            for s in seqs:
+                wanted.update(scans_paths.index(p) for p in seq_paths[s])
         elif entry in names:
             wanted.add(scans_paths.index(names[entry]))
+        elif entry.isdigit():
+            seq = int(entry)
+            if seq not in seq_paths:
+                around = sorted(abs(seq - s) for s in seq_paths)
+                near = [s for s in sorted(seq_paths)
+                        if abs(seq - s) == around[0]][:10]
+                raise SystemExit(
+                    f"ERROR: --only scan number {entry} matches no scan in "
+                    f"the batch (a numbering gap?); nearest existing "
+                    f"number(s): {near} -- use a 'lo-hi' range to tolerate "
+                    f"gaps, or the filename.")
+            wanted.update(scans_paths.index(p) for p in seq_paths[seq])
         else:
             raise SystemExit(
                 f"ERROR: --only entry '{entry}' matches no scan in the "
-                "batch (use a 1-based index, a 'lo-hi' range, or a "
-                "filename).")
+                "batch (use a scan number, a 'lo-hi' range of scan "
+                "numbers, or a filename).")
     return [scans_paths[i] for i in sorted(wanted)]
-
-
-def resolve_stall_frac(stall_frac, horizontal):
-    """Fill in the stall threshold when the caller didn't set one.
-
-    The default is 0.05 of the frame height for every batch kind: a real
-    re-exposed / slipped frame repeats the previous capture within a
-    fraction of the film advance (P71-1922's 0037 -> 0038 reshot slips
-    ~809 px -- 13% of the 6300 px frame), while a genuine re-shot-of-the-
-    same-page frame holds a whole extra page of its own content and must
-    keep contributing (the 0005 -> 0006 / 0006 -> 0007 slides, 13-17%,
-    each yield their own pages). An explicit `stall_frac` always wins.
-    """
-    if stall_frac is not None:
-        return stall_frac
-    return 0.05
 
 
 def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                   contrast=0.08, min_size=3.0, max_dx=500.0, min_matches=20,
                   max_iqr=500.0, max_dim=3200, force_cache=False,
-                  stall_frac=None, bar_gap_tol=200.0, min_page_height=1000.0,
+                  bar_gap_tol=200.0, min_page_height=1000.0,
                   trim_border=True, verbose=True, only=None,
                   horizontal=False, reverse=False, n_features=0):
     """Phases 1-3 of `run()` without writing anything: load per-scan metadata
@@ -2659,7 +2701,7 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
     SIFT cache), and build the film-coordinate layout. `only` optionally
     restricts the batch to a subset (see `select_subset`). Returns a dict with
     `valid` (list[ScanMeta]), `pair_results`, `valid_idx`, `gap_after`, `nv`,
-    `runs`, `S_seed`, `redundant`, `all_pages`. Used by `run()` and the tests.
+    `runs`, `S_seed`, `all_pages`. Used by `run()` and the tests.
 
     `horizontal=True` marks a batch whose film strip runs HORIZONTALLY
     through each frame (pages separated by vertical black bars; see the
@@ -2682,7 +2724,6 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
     the reads go (later scan, higher rows) in the same row order -- see
     `compute_pair_overlap`.
     """
-    stall_frac = resolve_stall_frac(stall_frac, horizontal)
     scans_paths = list_scans(scan_dir, pattern=pattern)
     if only:
         total = len(scans_paths)
@@ -2777,7 +2818,7 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
     params = dict(ratio=ratio, contrast=contrast, min_size=min_size,
                   max_dx=max_dx, min_matches=min_matches, max_iqr=max_iqr,
                   max_dim=max_dim, force_cache=force_cache, shapes=shapes,
-                  n_features=n_features, stall_frac=stall_frac)
+                  n_features=n_features)
     pair_results = []
     missing_seqs = []    # sequence numbers absent from the directory
     for k in range(nv - 1):
@@ -2837,23 +2878,23 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
 
     if verbose:
         print("\n[3/3] Laying out scans in film coordinates and finding pages...")
-    runs, S_seed, redundant, all_pages = build_layout(
-        valid, pair_results, valid_idx, gap_after, nv, stall_frac,
+    runs, S_seed, all_pages = build_layout(
+        valid, pair_results, valid_idx, gap_after, nv,
         bar_gap_tol, min_page_height)
     # Cadence-short pages are shredded or cropped by blank bands that
     # look exactly like junctions: grow them back into their own blanks.
     all_pages = absorb_blank_margins(
-        all_pages, runs, valid, S_seed, redundant, bar_gap_tol,
+        all_pages, runs, valid, S_seed, bar_gap_tol,
         verbose=verbose)
     # Anticipated page breaks: too-tall pages hold boundaries the bar
     # detectors can't see (flush-butted pages, hairline gaps) -- split
     # them where the film's page cadence says a boundary must be.
     all_pages = anticipate_page_breaks(
-        all_pages, runs, valid, S_seed, redundant, bar_gap_tol,
+        all_pages, runs, valid, S_seed, bar_gap_tol,
         min_page_height, orient=orient, verbose=verbose)
     return dict(valid=valid, pair_results=pair_results, valid_idx=valid_idx,
                 gap_after=gap_after, nv=nv, runs=runs, S_seed=S_seed,
-                redundant=redundant, all_pages=all_pages,
+                all_pages=all_pages,
                 missing_seqs=missing_seqs, axis="x" if horizontal else "y",
                 orient=orient, reverse=reverse)
 
@@ -3050,7 +3091,7 @@ def scan_range(contrib, valid):
 
 def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         ratio=0.6, contrast=0.08, min_size=3.0, max_dx=500.0, min_matches=20,
-        max_iqr=500.0, max_dim=3200, force_cache=False, stall_frac=None,
+        max_iqr=500.0, max_dim=3200, force_cache=False,
         bar_gap_tol=200.0, min_page_height=1000.0, dry_run=False,
         trim_border=True, reverse=False, only=None, horizontal=False,
         verbose=True, n_features=0):
@@ -3076,13 +3117,12 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                         ratio=ratio, contrast=contrast, min_size=min_size,
                         max_dx=max_dx, min_matches=min_matches, max_iqr=max_iqr,
                         max_dim=max_dim, force_cache=force_cache,
-                        stall_frac=stall_frac, bar_gap_tol=bar_gap_tol,
+                        bar_gap_tol=bar_gap_tol,
                         min_page_height=min_page_height,
                         trim_border=trim_border, verbose=verbose, only=only,
                         horizontal=horizontal, reverse=reverse,
                         n_features=n_features)
     valid = res["valid"]; runs = res["runs"]; S_seed = res["S_seed"]
-    redundant = res["redundant"]
     all_pages = res["all_pages"]
     missing_seqs = res["missing_seqs"]
     axis = res["axis"]
@@ -3106,7 +3146,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     cycles = {}
     for ri, (r0, r1) in enumerate(runs):
         adv = [S_seed[k + 1] - S_seed[k] for k in range(r0, r1)
-               if (k + 1) not in redundant and S_seed[k + 1] - S_seed[k] > 0]
+               if S_seed[k + 1] - S_seed[k] > 0]
         if len(adv) >= 3:
             cycles[ri] = float(np.median(adv))
         else:
@@ -3179,13 +3219,13 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                 # edge sits at its own scans' blank boundary bands (the
                 # boundary lives INSIDE the edge frame), or when the film
                 # [lo, hi] is fully covered once the contributor walk
-                # extends into the anchored neighbors (e.g. a redundant
-                # scan holding the page's film tail in its frame bottom).
+                # extends into the anchored neighbors -- e.g. a scan whose
+                # frame holds the page's film tail in its frame bottom.
                 # Partial only when neither holds: the page continues into
                 # scans that never covered its film.
                 ext = list(contrib)
                 extend_contribs(ext, (lo, hi), valid, S_seed,
-                                res["pair_results"], redundant)
+                                res["pair_results"])
                 covered = film_covered(lo, hi, ext, valid, S_seed)
                 if ((lo_edge and not page_edge_at_blank(page, "lo", valid,
                                                         S_seed) and
@@ -3237,7 +3277,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
             flag = "  <-- SKIPPED (a contributing scan has no four-digit " \
                    "sequence number)"
         elif len(contrib) > 2:
-            flag = "  <-- spans >2 scans (check for a missed bar / stall)"
+            flag = "  <-- spans >2 scans (check for a missed bar)"
         elif id(all_pages[pi]) in merged_piece_ids:
             flag = "  <-- joined into a gap-fallback junction page"
         if verbose:
@@ -3263,7 +3303,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
         auto_film = convert_film((lo, hi), orient)
         contrib2 = list(contrib)
         extend_contribs(contrib2, (lo, hi), valid, S_seed,
-                        res["pair_results"], redundant)
+                        res["pair_results"])
         auto = dict(film=auto_film,
                     contribs=page_contribs((lo, hi), contrib2, valid,
                                            S_seed, axis=axis, orient=orient))
@@ -3416,10 +3456,6 @@ def main():
     ap.add_argument("--force-cache", action="store_true")
 
     # Page-planning params.
-    ap.add_argument("--stall-frac", type=float, default=None,
-                    help="Pairs whose vertical advance is below this fraction "
-                         "of the scan height are treated as stalled "
-                         "(near-duplicate) re-scans and skipped (default 0.05).")
     ap.add_argument("--bar-gap-tol", type=float, default=200.0,
                     help="Merge bar intervals within this many film-px "
                          "(same bar captured in two scans) (default 200).")
@@ -3444,13 +3480,13 @@ def main():
                          "uncat212 scans, advancing right-to-left). The "
                          "advance direction is detected from the data and "
                          "the scans are transposed internally; the plans "
-                         "record axis = \"x\". Note: such batches advance "
-                         "a fraction of a frame per capture, so the stall "
-                         "threshold defaults to --stall-frac 0.05 here.")
+                         "record axis = \"x\".")
     ap.add_argument("--only", default=None,
                     help="Redo only a subset of the batch: comma-separated "
-                         "1-based indices or ranges in sorted order (e.g. "
-                         "'5-8' or '3,7,10-12') and/or exact filenames (e.g. "
+                         "scan SEQUENCE numbers (the trailing digits of the "
+                         "filenames) or ranges of them (e.g. '115-120', "
+                         "'3,7,10-12'; ranges tolerate missing numbers in "
+                         "the middle) and/or exact filenames (e.g. "
                          "'07227-6300_0.28_0007.tif'). The subset's film "
                          "frame starts at the first blank bar: range-edge "
                          "pages that continue into scans outside --only are "
@@ -3462,7 +3498,7 @@ def main():
         cache_dir=args.cache_dir, ratio=args.ratio, contrast=args.contrast,
         min_size=args.min_size, max_dx=args.max_dx, min_matches=args.min_matches,
         max_iqr=args.max_iqr, max_dim=args.max_dim, force_cache=args.force_cache,
-        stall_frac=args.stall_frac, bar_gap_tol=args.bar_gap_tol,
+        bar_gap_tol=args.bar_gap_tol,
         min_page_height=args.min_page_height, dry_run=args.dry_run,
         trim_border=args.trim_border, reverse=args.reverse, only=args.only,
         horizontal=args.horizontal, n_features=args.n_features)
