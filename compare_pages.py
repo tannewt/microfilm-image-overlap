@@ -523,8 +523,9 @@ def make_assembler(plans_dir=None, pages_dir=None):
     When a `pages/` output folder is available (auto-detected next to the
     plans dir as `pages/<plans-dir-name>`, or given via --pages-dir), the
     already-composited page images are loaded from there -- keyed by the
-    plan's contributing-scan range (`pageNNN-scansLLL-HHH.png`), which is
-    what compose_pages.py wrote. Only plans with no matching file fall back
+    plan's contributing-scan range (`scansLLL-HHH.png`, ordinal-suffixed
+    `-2`/`-3`/... for pages sharing a range), which is what compose_pages.py
+    wrote. Only plans with no matching file fall back
     to composing on the fly (compose_pages.assemble_page, sharing an LRU of
     loaded scans).
     """

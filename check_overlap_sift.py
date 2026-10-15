@@ -209,6 +209,7 @@ def _open_cache(db_path):
                 contrast   REAL,
                 min_size   REAL,
                 max_dim    INTEGER DEFAULT 0,
+                n_features INTEGER DEFAULT 0,
                 n_kp       INTEGER,
                 kp         BLOB,        -- float32, n_kp x 3 (x, y, size)
                 des        BLOB         -- uint8,   n_kp x 128
@@ -217,22 +218,25 @@ def _open_cache(db_path):
             """
         )
         con.commit()
-    else:
-        # Migration for caches created before max_dim existed.
-        cols = {r[1] for r in con.execute("PRAGMA table_info(images)")}
-        if "max_dim" not in cols:
+    # The full-res table (no-op if already present) must exist before
+    # the column migrations below can consider it.
+    con.executescript(_FULLRES_SCHEMA)
+    # Column migrations, idempotent and run for fresh caches too (an
+    # older fresh-DB branch here created the pre-max_dim schema, leaving
+    # a cache the SELECTs below could not query): caches created before
+    # max_dim / n_features existed. Rows pre-date them with 0
+    # (unlimited) so they validate against unlimited requests and stay
+    # stale for capped ones.
+    cols = {r[1] for r in con.execute("PRAGMA table_info(images)")}
+    if "max_dim" not in cols:
+        con.execute("ALTER TABLE images ADD COLUMN max_dim INTEGER DEFAULT 0")
+        con.commit()
+    for t in ("images", "images_fullres"):
+        cols = {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
+        if "n_features" not in cols:
             con.execute(
-                "ALTER TABLE images ADD COLUMN max_dim INTEGER DEFAULT 0")
+                f"ALTER TABLE {t} ADD COLUMN n_features INTEGER DEFAULT 0")
             con.commit()
-        # Migration for caches created before n_features existed. Rows
-        # pre-date it with 0 (unlimited) so they validate against
-        # unlimited requests and stay stale for capped ones.
-        for t in ("images", "images_fullres"):
-            cols = {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
-            if "n_features" not in cols:
-                con.execute(
-                    f"ALTER TABLE {t} ADD COLUMN n_features INTEGER DEFAULT 0")
-                con.commit()
     # Migration for caches created before the full-res table existed (no-op if
     # already present).
     con.executescript(_FULLRES_SCHEMA)

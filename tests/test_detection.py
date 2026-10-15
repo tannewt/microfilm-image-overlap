@@ -163,3 +163,30 @@ def test_readability_blank_frame_is_flagged():
     arr[590:, :] = 200  # a sliver so it's not literally all-zero
     R, lap, ink = br.readability_from_array(arr, dim=600)
     assert br.classify_unreadable(R, lap, ink) == 'blank'
+
+
+def test_fresh_cache_creates_current_schema(tmp_path):
+    # A cache auto-created on demand (no build_sift_cache.py pass) must
+    # carry the columns the reads expect: the fresh-DB branch used to
+    # create the pre-n_features schema, so the very first lookup crashed
+    # with 'no such column: n_features' -- found when re-creating a
+    # deleted cache for a single-batch probe.
+    import cv2
+    import numpy as np
+    from check_overlap_sift import get_or_compute_keypoints
+
+    rng = np.random.default_rng(7)
+    img = np.full((400, 600), 200.0, np.uint8)
+    img[50:350, 60:540] = rng.integers(40, 210, (300, 480)).astype(np.uint8)
+    p = tmp_path / "scan.tif"
+    cv2.imwrite(str(p), img)
+
+    cache = tmp_path / "cache"
+    kp1, des1, shape1 = get_or_compute_keypoints(
+        str(p), str(cache), contrast=0.08, min_size=0.0, max_dim=320)
+    assert len(kp1) > 0
+    # A second read must come from the cache (identical counts, no crash).
+    kp2, des2, shape2 = get_or_compute_keypoints(
+        str(p), str(cache), contrast=0.08, min_size=0.0, max_dim=320)
+    assert len(kp2) == len(kp1) and shape2 == shape1
+    assert np.array_equal(des1, des2)

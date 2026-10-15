@@ -11,12 +11,12 @@ the pages to skip (duplicates), and the confirmed page pairs:
         "version": 1,
         "directories": ["pages/P81-4720", "pages/P81-4721"],
         "plans_dirs": ["plans/P81-4720", ""],
-        "skip": ["page005-scans011-011.png"],
+        "skip": ["scans011-011.png"],
         "confirmed_pairs": [["a.png", "b.png"], ...],
-        "flagged_spreads": [["a.png", "b.png"], ...],
-        "page_roles": {"page009-....png": "front",   # front | left | right | back
+        "page_comments": {"scans003-007.png": "torn top edge — rescan",  ...},
+        "page_roles": {"scans009-010.png": "front",   # front | left | right | back
                        ...},
-        "page_rotations": {"page012-....png": 90},   # degrees, clockwise
+        "page_rotations": {"scans012-013.png": 90},   # degrees, clockwise
         "reverse": false                            # reverse (from the back) mode
     }
 
@@ -44,8 +44,10 @@ Controls:
     U                 unconfirm the showing pair (toggle off only)
     Z / X             skip the left / right shown page (toggle)
     N                 jump to the next unconfirmed pair
-    F                 flag the spread for review (toggle)
-    G                 jump to the next flagged spread
+    F                 comment on the shown pages (per-page notes;
+                      empty text clears the comment)
+    G                 jump to the next commented spread
+    Ctrl+Shift+C      copy all comments to the clipboard
     Q / E             mark the left / right shown page as front (blank
                       before), back (blank after), left or right — or clear
                       the mark (menu)
@@ -62,8 +64,24 @@ Controls:
     W / Shift+W       fit page / fit width
     R                 toggle reverse (read from the back, last page first)
     [ / ]             toggle the left / right scan-contributor sidebar
+    Ctrl+T            toggle the table of contents panel
+    Ctrl+Shift+T      open a table of contents file
     Ctrl+wheel        zoom
     drag              pan when zoomed in
+
+The table of contents panel (Ctrl+T): a dockable tree of a book's
+sections, built from a JSON table-of-contents file in the same format as
+the Internet Archive BookReader's (plugin.chapters.js TocEntry: a list of
+{level, label, title, pagenum / leaf / page_index} entries -- `level`
+nests the tree; the page comes from `page_index` (0-based) first, then
+`leaf` (1-based leaf, as leafNumToIndex), then `pagenum` (the 1-based
+page number shown in Go to page). Nested entries with "children" are
+also accepted. File > Open table of contents… (Ctrl+Shift+T) pick one
+explicitly; a sibling toc.json or <book>.toc.json is adopted
+automatically when a book is opened and the chosen file is stored in the
+project ("toc"). Double-click an entry to jump to its page. Entries
+whose page range holds commented pages show a ⚑ n badge, and a ⚑ Flagged
+section at the bottom lists every commented page for one-click jumping.
 
 The scan sidebars (for QA of composed output): when a shown page was
 composited by compose_pages.py, its side of the book lists thumbnail
@@ -84,6 +102,7 @@ import json
 import re
 import sys
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 
 import tomllib
@@ -112,7 +131,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QMainWindow,
+    QDockWidget,
     QMenu,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSlider,
@@ -120,6 +141,8 @@ from PySide6.QtWidgets import (
     QStyle,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -221,7 +244,7 @@ class Project:
             "directories": ["pages/P81-4720", "pages/P81-4721"],
             "plans_dirs": ["plans/P81-4720", ""],   # parallel to directories;
                                                     # empty = unassigned
-            "skip": ["page005-scans011-011.png"],
+            "skip": ["scans011-011.png"],
             "confirmed_pairs": [["a.png", "b.png"], ...]
         }
     """
@@ -237,7 +260,9 @@ class Project:
         self.plans_dirs_saved: bool = True   # False for pre-plans_dirs projects
         self.skip: set[str] = set()
         self.confirmed: set[frozenset[str]] = set()
-        self.flagged: set[frozenset[str]] = set()   # spreads marked for review
+        # Per-page comments: key -> note text (a fixing-plan / issue hint,
+        # e.g. "torn top edge — rescan"). Replaces the old spread flags.
+        self.comments: dict[str, str] = {}
         # Page marks: key -> "front" | "left" | "right" | "back". front gets
         # a blank before (solo right half), back a blank after (solo left
         # half); left pairs with right.
@@ -249,6 +274,9 @@ class Project:
         # roles on the next rebuild of the page list.
         self.legacy_blanks: set[str] = set()
         self.reverse: bool = False                   # reverse (read from the back) mode
+        # Table-of-contents JSON file (IA BookReader TocEntry format) for
+        # the reader's TOC panel; None when the book has none.
+        self.toc_path: Path | None = None
 
     # ----- page identity ---------------------------------------------
 
@@ -288,12 +316,13 @@ class Project:
                            for d in self.plans_dirs],
             "skip": sorted(self.skip),
             "confirmed_pairs": sorted([sorted(pair) for pair in self.confirmed]),
-            "flagged_spreads": sorted([sorted(f) for f in self.flagged]),
+            "page_comments": {k: self.comments[k] for k in sorted(self.comments)},
             "page_roles": {k: self.roles[k] for k in sorted(self.roles)},
             "page_rotations": {
                 k: self.rotations[k] for k in sorted(self.rotations)
             },
             "reverse": self.reverse,
+            "toc": str(self.toc_path.resolve()) if self.toc_path else "",
         }
 
     def update_from_dict(self, data: dict, project_dir: Path) -> None:
@@ -322,10 +351,18 @@ class Project:
             frozenset(norm(k) for k in pair)
             for pair in data.get("confirmed_pairs", [])
         }
-        self.flagged = {
-            frozenset(norm(k) for k in pair)
-            for pair in data.get("flagged_spreads", [])
+        self.comments = {
+            norm(k): str(v)
+            for k, v in (data.get("page_comments") or {}).items()
+            if str(v).strip()
         }
+        # Migration: projects saved before comments replaced flags keep their
+        # marks as a short comment on each formerly-flagged page.
+        if "page_comments" not in data and data.get("flagged_spreads"):
+            for pair in data["flagged_spreads"]:
+                for k in pair:
+                    self.comments.setdefault(
+                        norm(k), "flagged for review (from ⚑)")
         self.roles = {
             norm(k): r for k, r in (data.get("page_roles") or {}).items()
             if r in (ROLE_FRONT, ROLE_LEFT, ROLE_RIGHT, ROLE_BACK)
@@ -347,6 +384,12 @@ class Project:
             if "page_roles" not in data
         }
         self.reverse = bool(data.get("reverse", False))
+        toc = data.get("toc") or ""
+        if toc:
+            p = Path(toc)
+            self.toc_path = p if p.is_absolute() else project_dir / p
+        else:
+            self.toc_path = None
 
     def load(self, path: Path) -> None:
         path = Path(path)
@@ -520,6 +563,47 @@ class ProjectDialog(QDialog):
                 for r in range(self.dir_table.rowCount())]
 
 
+class CommentDialog(QDialog):
+    """Editor for the shown spread's per-page comments.
+
+    One text box per shown page, labeled with its side and name, pre-filled
+    with the page's existing comment (an empty box clears it on OK).
+    """
+
+    def __init__(self, entries: list[tuple[str, str]],
+                 parent: QWidget | None = None) -> None:
+        # entries: (label, existing comment) per shown page, screen order.
+        super().__init__(parent)
+        self.setWindowTitle("Page comments")
+        self.resize(560, 260)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("One note per shown page; empty clears the comment:"))
+        self._edits: list[QPlainTextEdit] = []
+        for label, text in entries:
+            head = QLabel(label, self)
+            head.setStyleSheet("color: #888888;")
+            layout.addWidget(head)
+            edit = QPlainTextEdit(text, self)
+            edit.setPlaceholderText("e.g. torn top edge — rescan / gap at row 400")
+            layout.addWidget(edit, 1)
+            self._edits.append(edit)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        ok = QPushButton("OK", self)
+        ok.setDefault(True)
+        ok.clicked.connect(self.accept)
+        cancel = QPushButton("Cancel", self)
+        cancel.clicked.connect(self.reject)
+        buttons.addWidget(ok)
+        buttons.addWidget(cancel)
+        layout.addLayout(buttons)
+        self._edits[0].setFocus()
+
+    def comments(self) -> list[str]:
+        """The edited comment texts, in the same order as the entries."""
+        return [e.toPlainText().strip() for e in self._edits]
+
+
 class PageCache(QObject):
     """LRU cache of full-resolution QImages with background prefetching.
 
@@ -607,7 +691,7 @@ def guess_plans_dir(page_dir: Path, base: Path | None) -> Path | None:
     """Best-effort plans/ directory for a page directory, or None.
 
     Only ever matches a SINGLE plans directory -- page labels repeat across
-    batches (page001-scans000-000 exists in six plan dirs), so guessing must
+    batches (scans000-000 exists in six plan dirs), so guessing must
     never fall back to a broad search that could pick a different batch's
     plan. If the mapping is ambiguous, None is returned and the user sets it
     in the project dialog (Ctrl+E, stored in the project's plans_dirs).
@@ -1128,6 +1212,108 @@ class ScanSidebar(QWidget):
             old.deleteLater()
 
 
+# ---------- table of contents --------------------------------------------
+
+@dataclass
+class TocEntry:
+    """One table-of-contents entry, in the Internet Archive BookReader's
+    TocEntry format (plugin.chapters.js): {level, label, title, pagenum,
+    leaf, page_index}. ``index`` is the resolved 0-based page in the open
+    book, None when the entry has no usable page reference."""
+
+    level: int = 1
+    label: str = ""
+    title: str = ""
+    pagenum: str = ""
+    leaf: int | None = None
+    page_index: int | None = None
+    index: int | None = None
+
+
+def parse_toc(data) -> list[TocEntry]:
+    """Parse a table-of-contents JSON value into a flat list of entries.
+
+    Accepts both shapes BookReader sees: the flat Open Library / IA form
+    (a list of entries; ``level`` gives the nesting) and the nested
+    "jtree" form (entries carrying a "children" list). Entries missing a
+    title keep their label and vice versa.
+    """
+    if isinstance(data, dict):
+        data = data.get("toc") or data.get("table_of_contents") or []
+    if not isinstance(data, list):
+        raise ValueError("table of contents must be a list of entries")
+
+    entries: list[TocEntry] = []
+
+    def visit(node, level: int) -> None:
+        if isinstance(node, str):   # bare string = chapter title
+            node = {"title": node}
+        if not isinstance(node, dict):
+            return
+        e = TocEntry(
+            level=max(1, int(node.get("level") or level)),
+            label=str(node.get("label") or ""),
+            title=str(node.get("title") or node.get("name") or ""),
+            pagenum=str(node.get("pagenum") or node.get("pageNum") or ""),
+            leaf=node.get("leaf") if node.get("leaf") is not None
+            else node.get("leafNum"),
+            page_index=node.get("page_index") if node.get("page_index") is not None
+            else node.get("pageIndex"),
+        )
+        entries.append(e)
+        for child in node.get("children") or []:
+            visit(child, max(1, int(node.get("level") or level)) + 1)
+
+    for node in data:
+        visit(node, 1)
+    # Some data starts above level 1; normalize so the shallowest entries
+    # top the tree.
+    offset = min(e.level for e in entries) - 1 if entries else 0
+    for e in entries:
+        e.level -= offset
+    return entries
+
+
+def resolve_toc(entries: list[TocEntry], n_pages: int) -> None:
+    """Resolve every entry to a 0-based page index in the open book.
+
+    Same precedence as BookReader: page_index (0-based) first, then leaf
+    (1-based, like leafNumToIndex), then pagenum (the book's 1-based page
+    number -- what Go to page takes). Unresolvable entries stay None;
+    resolvable ones are clamped into the book.
+    """
+    for e in entries:
+        idx = None
+        if isinstance(e.page_index, (int, float)) and not isinstance(e.page_index, bool):
+            idx = int(e.page_index)
+        elif e.leaf is not None:
+            try:
+                idx = int(e.leaf) - 1
+            except (TypeError, ValueError):
+                idx = None
+        elif e.pagenum:
+            m = re.search(r"\d+", str(e.pagenum))   # "ix" stays unresolvable
+            if m:
+                idx = int(m.group()) - 1
+        if idx is not None and n_pages:
+            e.index = max(0, min(idx, n_pages - 1))
+        else:
+            e.index = None
+
+
+def toc_label(entry: TocEntry) -> str:
+    """Display text for an entry: “label — title”, whichever parts exist."""
+    parts = [part for part in (entry.label, entry.title) if part]
+    return " — ".join(parts)
+
+
+def parse_toc_file(path: Path) -> list[TocEntry]:
+    entries = parse_toc(json.loads(Path(path).read_text(encoding="utf-8")))
+    if not entries:
+        raise ValueError("table of contents file holds no entries")
+    return entries
+
+
 class SpreadWidget(QWidget):
     """Draws the current spread (one or two pages) scaled to fit the viewport."""
 
@@ -1144,7 +1330,7 @@ class SpreadWidget(QWidget):
         self._roles: dict[str, str] = {}
         self._rotations: dict[str, int] = {}
         self._confirmed: set[frozenset[str]] = set()
-        self._flagged: set[frozenset[str]] = set()
+        self._comments: dict[str, str] = {}
         self._index = 0
         self._rtl = False
         self._fit_mode = "page"     # "page" or "width"
@@ -1182,8 +1368,8 @@ class SpreadWidget(QWidget):
         self._confirmed = set(confirmed)
         self.relayout()
 
-    def set_flagged(self, flagged: set[frozenset[str]]) -> None:
-        self._flagged = set(flagged)
+    def set_comments(self, comments: dict[str, str]) -> None:
+        self._comments = dict(comments)
         self.relayout()
 
     def spread_count(self) -> int:
@@ -1234,9 +1420,8 @@ class SpreadWidget(QWidget):
         keys = self.current_page_keys()
         return len(keys) == 2 and frozenset(keys) in self._confirmed
 
-    def is_current_spread_flagged(self) -> bool:
-        keys = self.current_page_keys()
-        return bool(keys) and frozenset(keys) in self._flagged
+    def comment_for(self, key: str) -> str:
+        return self._comments.get(key, "")
 
     def set_spread_index(self, index: int) -> None:
         if not self._spreads:
@@ -1349,9 +1534,7 @@ class SpreadWidget(QWidget):
             and all(e is not None for e in entries)
             and frozenset(self._keys[i] for i in entries) in self._confirmed
         )
-        flagged = frozenset(self._keys[i] for i in entries if i is not None) \
-            in self._flagged
-        suffix = ("  ✓" if pair_confirmed else "") + ("  ⚑" if flagged else "")
+        suffix = "  ✓" if pair_confirmed else ""
         for i, entry in enumerate(entries):
             rect = QRectF(xs[i], MARGIN, widths[i] * scale, page_h)
             blank = entry is None
@@ -1377,7 +1560,8 @@ class SpreadWidget(QWidget):
                 f"{entry + 1} / {n_pages}" \
                 + (f"  ·{role}" if role else "") \
                 + (f"  ⟳{rot}" if rot else "") \
-                + suffix
+                + suffix \
+                + ("  ✎" if not blank and self._comments.get(self._keys[entry]) else "")
             self._items.append((rect, pixmap, caption, blank))
 
         self.update()
@@ -1516,6 +1700,8 @@ class MainWindow(QMainWindow):
         self.left_sidebar.hide()
         self.right_sidebar.hide()
 
+        self._make_toc_panel()
+
         self._make_actions()
         self._make_menus()
         self._make_toolbar()
@@ -1557,8 +1743,11 @@ class MainWindow(QMainWindow):
         self.act_skip_left = act("Skip &left page", "Z", lambda: self.toggle_skip(0))
         self.act_skip_right = act("Skip ri&ght page", "X", lambda: self.toggle_skip(1))
         self.act_next_unconfirmed = act("Next unconfirmed pair", "N", self.next_unconfirmed)
-        self.act_flag = act("&Flag for review", "F", self.toggle_flag)
-        self.act_next_flagged = act("Next flagged spread", "G", self.next_flagged)
+        self.act_comment = act("&Comment on shown pages…", "F", self.edit_comment)
+        self.act_next_commented = act("Next commented spread", "G", self.next_commented)
+        self.act_copy_comments = act(
+            "Co&py all comments", "Ctrl+Shift+C", self.copy_comments
+        )
         self.act_mark_front = act(
             "Mark &front (blank before)", "Q", lambda: self.mark_page(0)
         )
@@ -1590,6 +1779,9 @@ class MainWindow(QMainWindow):
         self.act_zoom_reset.setShortcut(QKeySequence("Ctrl+0"))
         self.act_goto = act("&Go to page…", "Ctrl+G", self.go_to_page)
         self.act_goto.setShortcut(QKeySequence("Ctrl+G"))
+        self.act_open_toc = act("Open table of &contents…", "Ctrl+Shift+T", self.open_toc)
+        self.act_toc = act("&Table of contents", "Ctrl+T", self._toggle_toc, True, False)
+        self.toc_dock.visibilityChanged.connect(self.act_toc.setChecked)
 
         self.act_fit_page = act("Fit &page", "W", lambda: self._set_fit("page"), True, True)
         self.act_fit_page.setShortcut(QKeySequence("W"))
@@ -1617,6 +1809,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.act_new_project)
         file_menu.addAction(self.act_open_project)
         file_menu.addAction(self.act_open)
+        file_menu.addAction(self.act_open_toc)
         file_menu.addSeparator()
         file_menu.addAction(self.act_save_project)
         file_menu.addAction(self.act_save_project_as)
@@ -1631,6 +1824,7 @@ class MainWindow(QMainWindow):
         go_menu.addAction(self.act_last)
         go_menu.addSeparator()
         go_menu.addAction(self.act_goto)
+        go_menu.addAction(self.act_toc)
 
         view_menu = mb.addMenu("&View")
         view_menu.addAction(self.act_zoom_in)
@@ -1658,8 +1852,9 @@ class MainWindow(QMainWindow):
         review_menu.addAction(self.act_rot_left)
         review_menu.addAction(self.act_rot_right)
         review_menu.addSeparator()
-        review_menu.addAction(self.act_flag)
-        review_menu.addAction(self.act_next_flagged)
+        review_menu.addAction(self.act_comment)
+        review_menu.addAction(self.act_next_commented)
+        review_menu.addAction(self.act_copy_comments)
         self.act_rtl.setShortcut(QKeySequence("R"))
 
     def _make_toolbar(self) -> None:
@@ -1756,11 +1951,12 @@ class MainWindow(QMainWindow):
         self.spread.set_book(pages, keys, self._build_spreads(keys),
                              self.project.roles, self.project.rotations)
         self.spread.set_confirmed(self.project.confirmed)
-        self.spread.set_flagged(self.project.flagged)
+        self.spread.set_comments(self.project.comments)
         self.slider.blockSignals(True)
         self.slider.setRange(0, max(0, self.spread.spread_count() - 1))
         self.slider.blockSignals(False)
         self._update_title()
+        self.rebuild_toc()
         if anchor_key is not None and keys:
             for i in range(self.spread.spread_count()):
                 spread = self.spread._spread_at(i)
@@ -1808,6 +2004,7 @@ class MainWindow(QMainWindow):
             self.status.showMessage(
                 f"Project file {self.project.path} — state autosaves", 5000)
         self.reload_book()
+        self._adopt_toc()
 
     def new_project(self) -> None:
         self.project = Project()
@@ -1840,6 +2037,7 @@ class MainWindow(QMainWindow):
             ]
         self.act_rtl.setChecked(self.project.reverse)   # restore saved direction
         self.reload_book()
+        self._adopt_toc()
 
     def save_project(self) -> None:
         if self.project.path is None:
@@ -2073,20 +2271,38 @@ class MainWindow(QMainWindow):
                 return
         self.status.showMessage("All pairs confirmed ✓", 5000)
 
-    def toggle_flag(self) -> None:
-        keys = self.spread.current_page_keys()
+    def edit_comment(self) -> None:
+        """Edit the shown pages' comments (left page first, right second;
+        single-page spreads get one box). Empty text removes a comment."""
+        keys = self.spread.visible_page_keys()
         if not keys:
             return
-        flag = frozenset(keys)
-        if flag in self.project.flagged:
-            self.project.flagged.discard(flag)
-        else:
-            self.project.flagged.add(flag)
-        self.spread.set_flagged(self.project.flagged)
-        self._autosave()
+        sides = ("Left page", "Right page") if len(keys) == 2 else ("Page",)
+        entries = [
+            (f"{side} — {Path(key).stem}", self.project.comments.get(key, ""))
+            for side, key in zip(sides, keys)
+        ]
+        dialog = CommentDialog(entries, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        changed = False
+        for key, text in zip(keys, dialog.comments()):
+            if text:
+                if self.project.comments.get(key) != text:
+                    self.project.comments[key] = text
+                    changed = True
+            elif key in self.project.comments:
+                del self.project.comments[key]
+                changed = True
+        if changed:
+            self.spread.set_comments(self.project.comments)
+            self._autosave()
+            self.status.showMessage(
+                f"Comments saved ({len(self.project.comments)} page(s) noted)", 5000)
+        self.rebuild_toc()
         self._update_status()
 
-    def next_flagged(self) -> None:
+    def next_commented(self) -> None:
         count = self.spread.spread_count()
         if count == 0:
             return
@@ -2095,10 +2311,31 @@ class MainWindow(QMainWindow):
             spread = self.spread._spread_at(i)
             if not spread:
                 continue
-            if frozenset(self.spread._keys[j] for j in spread) in self.project.flagged:
+            if any(self.spread._keys[j] in self.project.comments
+                   for j in spread if j is not None):
                 self._goto(i)
                 return
-        self.status.showMessage("No flagged spreads", 5000)
+        self.status.showMessage("No commented spreads", 5000)
+
+    def copy_comments(self) -> None:
+        """Put every comment in the clipboard as "p. N — <file>\n    note",
+        in book order, ready to paste into a fixing plan or issue."""
+        lines: list[str] = []
+        for i, key in enumerate(self.spread._keys):
+            text = self.project.comments.get(key)
+            if not text:
+                continue
+            lines.append(f"p. {i + 1} — {Path(key).stem}")
+            lines.extend(f"    {line}" for line in text.splitlines())
+            lines.append("")
+        if not lines:
+            self.status.showMessage("No comments to copy", 5000)
+            return
+        QApplication.clipboard().setText("\n".join(lines).rstrip())
+        self.status.showMessage(
+            f"{len(self.project.comments)} comment(s) copied to the clipboard",
+            5000,
+        )
 
     def _turn(self, direction: int) -> None:
         if self.spread.spread_count() == 0:
@@ -2213,6 +2450,161 @@ class MainWindow(QMainWindow):
                 self._goto(i)
                 return
 
+    # ---------- table of contents ----------------------------------------
+
+    def _make_toc_panel(self) -> None:
+        """Dockable tree of the book's table of contents plus a ⚑ Flagged
+        section listing every commented page."""
+        self._toc_entries: list[TocEntry] = []
+        self._toc_file: Path | None = None
+        self.toc_dock = QDockWidget("Table of contents", self)
+        self.toc_dock.setObjectName("toc_dock")
+        self.toc_tree = QTreeWidget()
+        self.toc_tree.setColumnCount(3)
+        self.toc_tree.setHeaderLabels(["Contents", "Page", "⚑"])
+        self.toc_tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.toc_tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.toc_tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.toc_tree.itemActivated.connect(self._toc_jump)
+        self.toc_dock.setWidget(self.toc_tree)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.toc_dock)
+        self.toc_dock.hide()
+
+    def _toggle_toc(self) -> None:
+        self.toc_dock.setVisible(self.act_toc.isChecked())
+
+    def open_toc(self) -> None:
+        start = str(self.project.toc_path
+                    or self.project._base() or Path.cwd())
+        f, _ = QFileDialog.getOpenFileName(
+            self, "Open table of contents", start,
+            "Table of contents (*.json);;All files (*)",
+        )
+        if f:
+            self.load_toc(Path(f))
+
+    def load_toc(self, path: Path | None) -> None:
+        """Load a table-of-contents JSON file (IA BookReader format) for
+        the current book; None clears the panel."""
+        if path is None:
+            self._toc_entries = []
+            self._toc_file = None
+            self.project.toc_path = None
+            self._autosave()
+            self.rebuild_toc()
+            return
+        try:
+            self._toc_entries = parse_toc_file(path)
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            self.status.showMessage(
+                f"Could not read table of contents {path}: {e}", 8000)
+            return
+        self._toc_file = path
+        self.project.toc_path = path
+        self._autosave()
+        self.rebuild_toc()
+        self.act_toc.setChecked(True)
+        self.toc_dock.show()
+        self.status.showMessage(
+            f"Table of contents: {len(self._toc_entries)} entries — {path}",
+            5000)
+
+    def _adopt_toc(self) -> None:
+        """Use the project's recorded TOC file, or adopt a sibling
+        toc.json / <book>.toc.json when a book is opened."""
+        if self.project.toc_path is not None:
+            if self._toc_file != self.project.toc_path:
+                self.load_toc(self.project.toc_path)
+            return
+        base = self.project._base()
+        if base is None:
+            return
+        candidates = [base / "toc.json"]
+        if self.project.path is not None:
+            candidates.append(base / f"{self.project.path.stem}.toc.json")
+        for cand in candidates:
+            if cand.is_file():
+                self.load_toc(cand)
+                return
+
+    def _toc_range_end(self, pos: int, n_pages: int) -> int:
+        """Pages covered by entries[pos]: up to the next entry at the same
+        or shallower level (deeper subsections stay inside the parent),
+        else the end of the book."""
+        level = self._toc_entries[pos].level
+        for later in self._toc_entries[pos + 1:]:
+            if later.level <= level and later.index is not None:
+                return later.index
+        return n_pages
+
+    def rebuild_toc(self) -> None:
+        """Refill the TOC tree: ⚑ Flagged pages first, then the entries
+        nested by level; entries with commented pages in their range get a
+        ⚑ count."""
+        entries = self._toc_entries if self.project.toc_path is not None \
+            else []     # stale entries from a previously opened book
+        tree = self.toc_tree
+        tree.blockSignals(True)
+        tree.clear()
+        resolve_toc(entries, len(self.spread._pages))
+        n_pages = len(self.spread._pages)
+        keys = self.spread._keys
+        flagged = [(i, self.project.comments[k]) for i, k in enumerate(keys)
+                   if self.project.comments.get(k)]
+
+        # ⚑ Flagged section: every commented page, one click to jump.
+        if flagged:
+            top = QTreeWidgetItem(
+                [f"⚑ Flagged pages ({len(flagged)})", "", ""])
+            top.setFirstColumnSpanned(True)
+            tree.addTopLevelItem(top)
+            for i, text in flagged:
+                child = QTreeWidgetItem(
+                    [f"p. {i + 1} — {Path(keys[i]).stem}", "", ""])
+                child.setToolTip(0, text)
+                child.setData(0, Qt.ItemDataRole.UserRole, i)
+                top.addChild(child)
+
+        # Flag counts per entry: a page belongs to the most recent (deepest)
+        # entry whose range covers it.
+        counts = [0] * len(entries)
+        for page_i, _ in flagged:
+            for pos in range(len(entries) - 1, -1, -1):
+                e = entries[pos]
+                if e.index is not None and e.index <= page_i \
+                        and page_i < self._toc_range_end(pos, n_pages):
+                    counts[pos] += 1
+                    break
+
+        stack: list[QTreeWidgetItem] = []
+        root = tree.invisibleRootItem()
+        for pos, e in enumerate(entries):
+            label = toc_label(e) or "(untitled)"
+            page = f"p. {e.index + 1}" if e.index is not None else ""
+            item = QTreeWidgetItem([label, page, str(counts[pos]) if counts[pos] else ""])
+            item.setToolTip(0, label)
+            if counts[pos]:
+                item.setForeground(2, QColor("#c00"))
+            item.setData(0, Qt.ItemDataRole.UserRole, e.index)
+            depth = max(1, e.level)
+            while len(stack) >= depth:
+                stack.pop()
+            (stack[-1] if stack else root).addChild(item)
+            stack.append(item)
+        tree.expandAll()
+        tree.blockSignals(False)
+
+    def _toc_jump(self, item: QTreeWidgetItem, _col: int = 0) -> None:
+        """Jump to the page an entry points at (double-click / Enter)."""
+        idx = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(idx, int) or not self.spread._spreads:
+            return
+        for i in range(self.spread.spread_count()):
+            spread = self.spread._spread_at(i)
+            if spread is not None and idx in spread:
+                self._goto(i)
+                return
+
     def _update_status(self) -> None:
         self._update_sidebars()
         n = self.spread.spread_count()
@@ -2229,8 +2621,6 @@ class MainWindow(QMainWindow):
         self.act_skip_left.setEnabled(True)
         self.act_skip_right.setEnabled(True)
         mark = "   ·   ✓ confirmed" if confirmed else ""
-        if self.spread.is_current_spread_flagged():
-            mark += "   ·   ⚑ flagged"
         rots = [str(self.project.rotations[k])
                 for k in self.spread.current_page_keys()
                 if self.project.rotations.get(k)]
@@ -2243,11 +2633,17 @@ class MainWindow(QMainWindow):
         }
         if role_names:
             mark += "   ·   " + "+".join(sorted(role_names))
+        notes = [k for k in self.spread.current_page_keys()
+                 if k in self.project.comments]
+        if notes:
+            first = self.project.comments[notes[0]].splitlines()[0][:60]
+            more = f" (+{len(notes) - 1})" if len(notes) > 1 else ""
+            mark += f"   ·   ✎ {first}{more}"
         self.status.showMessage(
             f"Spread {self.spread.spread_index() + 1} / {n}   ·   page "
             f"{'–'.join(str(p) for p in pages)}   ·   {mode}   ·   "
             f"{len(self.project.confirmed)} pairs confirmed{mark}   ·   "
-            f"{len(self.project.flagged)} flagged"
+            f"{len(self.project.comments)} commented"
         )
 
     # ---------- drag & drop ----------------------------------------------

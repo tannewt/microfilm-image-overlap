@@ -332,6 +332,67 @@ def detect_white_gaps(gray, bbox=None, win=201, ink_frac=0.12,
     return out
 
 
+def row_transitions(img, bbox=None, dark=100, bright=160, blur=11):
+    """Per-row count of blackish <-> whiteish polarity changes.
+
+    A row's pixels are hysteresis-binarized along the film axis: dark under
+    `dark`, bright over `bright`, mid-gray keeps the previous state -- the
+    last-decided state is carried across mid pixels, so one 'transition' is
+    a completed dark->bright (or reverse) run. A ~`blur`-column box blur
+    first kills dust noise. Counted within the content bbox on every 4th
+    column (plenty of resolution for a polarity change). Returns one count
+    per row of the ORIGINAL image (rows outside the bbox report 0)."""
+    h, w = img.shape
+    counts = np.zeros(h, dtype=np.int32)
+    top, bottom, left, right = (bbox or (0, h - 1, 0, w - 1))
+    area = img[top:bottom + 1, left:right + 1]
+    sub = area[:, ::4]      # every 4th column
+    if blur > 1:
+        pad = blur // 2
+        padded = np.pad(sub, ((0, 0), (pad, pad)), mode="edge").astype(np.int64)
+        cs = np.cumsum(padded, axis=1)
+        sub = ((cs[:, blur:] - cs[:, :-blur]) / blur).astype(np.int16)
+    darkish = sub < dark
+    brightish = sub >= bright
+    # carry the last decided state across mid pixels: track the most recent
+    # dark column vs the most recent bright column along each row
+    dark_last = np.maximum.accumulate(np.where(darkish, np.arange(sub.shape[1]), -1), axis=1)
+    bright_last = np.maximum.accumulate(np.where(brightish, np.arange(sub.shape[1]), -1), axis=1)
+    carried = np.where(dark_last > bright_last, -1.0,
+                       np.where(bright_last >= 0, 1.0, 0.0))
+    carried[dark_last < 0] = 0.0     # before the first decided column: no state
+    tr = np.abs(np.diff(carried, axis=1)) > 0
+    counts[top:bottom + 1] = tr.sum(axis=1)
+    return counts
+
+
+def low_content_bands(img, bbox=None, dark=100, bright=160, max_trans=3,
+                      min_band=15):
+    """Maximal row bands with almost no blackish<->whiteish transitions:
+    film stock, blank pages, and the dark page-boundary bars -- everything
+    WITHOUT much printed content. Returns [(r0, r1), ...] in ABSOLUTE row
+    coordinates, restricted to the content bbox, bands at least `min_band`
+    rows tall."""
+    counts = row_transitions(img, bbox, dark=dark, bright=bright)
+    blank = counts <= max_trans
+    top, bottom, _, _ = (bbox or (0, img.shape[0] - 1, 0, img.shape[1] - 1))
+    blank[:top] = False
+    blank[bottom + 1:] = False
+    bands = []
+    i = 0
+    while i < len(blank):
+        if blank[i]:
+            j = i
+            while j + 1 < len(blank) and blank[j + 1]:
+                j += 1
+            if j - i + 1 >= min_band:
+                bands.append((i, j))
+            i = j + 1
+        else:
+            i += 1
+    return bands
+
+
 def detect_faint_bars(gray, bbox=None, row_lo=None, row_hi=None,
                       thr_frac=0.5, thr_min=50, thr_max=100, col_win=31,
                       col_frac=0.90, white_thresh=200, content_max=0.12,
@@ -1139,6 +1200,19 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
         return dict(ok=False, full_dx=0.0, full_dy=0.0, matches=n_good,
                     via_ncc=False, via_band=False, status="no_overlap")
 
+    # Sign gate: the film advances ONE direction per batch (dy > 0 normal,
+    # dy < 0 under --reverse; stages 0-4 strip bounds and bar-mapping gates
+    # already bias toward it), so a confirmed link whose dy runs the OTHER
+    # way is a mirrored-phantom alignment -- a thin overlap's bar pair
+    # locked onto its own mirror image (0316's fold: dy +5981 vs the
+    # measured -5927). Reject it and fail the pair; the junction's pages
+    # are then gap-joined rather than folded back over each other.
+    fy0 = med_dy if fullres else med_dy * sy
+    if (fy0 > 0) if reverse else (fy0 < 0):
+        return dict(ok=False, full_dx=0.0, full_dy=0.0, matches=n_good,
+                    via_ncc=False, via_band=False, status="wrong_sign",
+                    wrong_dy=fy0)
+
     # Scale the scaled-pixel translation up to original pixels (uniform area
     # downscale, A's own factors); a full-res retry's translation is already
     # original pixels.
@@ -1603,9 +1677,10 @@ def featureless_band_overlap(path_a, path_b, kp_a, kp_b,
 class ScanMeta:
     """Per-scan metadata kept in memory (pixels are freed between phases)."""
     __slots__ = ("path", "name", "h", "w", "bars", "bbox", "dx_cum",
-                 "black", "white")
+                 "black", "white", "low_content")
 
-    def __init__(self, path, name, h, w, bars, bbox, black=None, white=None):
+    def __init__(self, path, name, h, w, bars, bbox, black=None, white=None,
+                 low_content=None):
         self.path = path
         self.name = name
         self.h = h          # original height
@@ -1622,6 +1697,10 @@ class ScanMeta:
         # sub-bands are backed by real black film bars.
         self.black = list(bars) if black is None else black
         self.white = [] if white is None else white
+        # Transition-count detector: rows with few blackish<->whiteish
+        # polarity changes (film stock, bars, blank page/paper stretches).
+        # Debug companion to the bar detectors; see low_content_bands().
+        self.low_content = [] if low_content is None else low_content
 
     def __repr__(self):
         return f"ScanMeta({self.path}, {self.name}, {self.h}, {self.w}, {self.bars}, {self.bbox})"
@@ -1672,6 +1751,56 @@ def merge_intervals(intervals, gap_tol):
     return merged
 
 
+def boundary_bands_film(sm, s):
+    """A scan's blank page-boundary bands in FILM coordinates (the scan's
+    detected black bars, white junctions, and the transition-counted
+    low-content no-content bands, all boundary evidence at once)."""
+    return sorted([(s + b0, s + b1)
+                   for b0, b1 in sm.black + sm.white + list(sm.low_content)])
+
+
+def film_covered(lo, hi, contrib, valid, S_seed, tol=5.0):
+    """True when the film [lo, hi] is contiguous coverage by the contributing
+    scans' frames (their film-anchored [top, bottom] extents)."""
+    spans = []
+    for k in contrib:
+        s = S_seed[k]
+        a, b = s + valid[k].bbox[0], s + valid[k].bbox[1]
+        if max(lo, a) < min(hi, b):
+            spans.append((max(lo, a), min(hi, b)))
+    if not spans:
+        return False
+    spans.sort()
+    cur = spans[0][0]
+    if cur > lo + tol:
+        return False
+    for a, b in spans:
+        if a > cur + tol:
+            return False
+        cur = max(cur, b)
+    return cur >= hi - tol
+
+
+def page_edge_at_blank(piece, side, valid, S_seed, margin=250.0):
+    """True when a page piece's junction-side film edge sits at blank film.
+
+    `side` is 'hi' or 'lo'. The piece's edge is covered when it falls at or
+    marginally past one of its contributing scans' boundary bands -- black
+    bars, white junctions, or the detected low-content bands (a whole band
+    the bar detectors missed, plus the film's boundary-zone tail that ends
+    at the frame's content edge). Such a piece was cut at blank film: it is
+    a whole page, and the film only continues through the boundary's blank
+    zone -- not mid-content.
+    """
+    lo, hi, contrib, ri = piece
+    edge = hi if side == "hi" else lo
+    for k in contrib:
+        for fb0, fb1 in boundary_bands_film(valid[k], S_seed[k]):
+            if edge >= fb0 - 10 and edge <= fb1 + margin:
+                return True
+    return False
+
+
 def find_pages(merged_bars, fmin, fmax, min_page_height):
     """Content regions between consecutive bars (and the run content extent).
 
@@ -1692,6 +1821,43 @@ def find_pages(merged_bars, fmin, fmax, min_page_height):
 # --------------------------------------------------------------------------- #
 # Page plans (TOML: what contributes to each page and at what offset)
 # --------------------------------------------------------------------------- #
+
+def extend_contribs(contrib_idx, film, valid, S_seed, pair_results,
+                    redundant=()):
+    """Walk the film chain past the contributing scans while their frames
+    still cover the page's film range.
+
+    Consecutive pairs whose |dy| fell under the stall threshold mark the
+    later scan redundant (excluded from page CONTRIBUTIONS, but still
+    anchored in the film chain), so a page's film range can spill past its
+    last contributing scan's frame end into the neighbor's bottom strip.
+    The strips in between are film the page genuinely holds; without this
+    walk they compose as a black hole (117-117's missing 230 rows).
+    """
+    lo, hi = film
+    contrib = list(contrib_idx)
+    if not contrib or pair_results is None:
+        return
+    # forward: scans after the last contributor, while the link in is ok
+    k = max(contrib)
+    while k + 1 < len(valid) and pair_results[k]["ok"]:
+        k += 1
+        sm = valid[k]
+        s = S_seed[k]
+        if max(lo, s + sm.bbox[0]) < min(hi, s + sm.bbox[1]):
+            contrib.append(k)
+    # backward: scans before the first contributor (their runs' film ranges
+    # are independent coordinate systems, so only walk while the chain in
+    # is linked -- the pairs' ok flags stop at every run break)
+    k = min(contrib)
+    while k > 0 and pair_results[k - 1]["ok"]:
+        k -= 1
+        sm = valid[k]
+        s = S_seed[k]
+        if max(lo, s + sm.bbox[0]) < min(hi, s + sm.bbox[1]):
+            contrib.insert(0, k)
+    contrib_idx[:] = contrib
+
 
 def page_contribs(film, contrib_idx, valid, S_seed, axis=None, orient=None):
     """Contributor records for one page, in run (scan) order.
@@ -1744,7 +1910,10 @@ def page_contribs(film, contrib_idx, valid, S_seed, axis=None, orient=None):
                 off = -off - (size[1] - 1.0)
         recs.append(dict(index=int(k), scan=sm.name,
                          film_offset=float(off), dx=float(sm.dx_cum),
-                         bbox=bbox, size=size))
+                         bbox=bbox, size=size,
+                         blank_rows=[[int(r0), int(r1)] for r0, r1 in sm.bars],
+                         low_content_rows=[[int(r0), int(r1)]
+                                           for r0, r1 in sm.low_content]))
     return recs
 
 
@@ -1784,7 +1953,8 @@ def _toml_val(v):
 def _contrib_inline(c):
     inner = ", ".join(f"{k} = {_toml_val(c[k])}"
                       for k in ("index", "scan", "film_offset", "dx",
-                                "bbox", "size") if k in c)
+                                "bbox", "size", "blank_rows",
+                                "low_content_rows") if k in c)
     return "{ " + inner + " }"
 
 
@@ -2229,26 +2399,43 @@ def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
     flush butt with no visible seam) are cut at the anticipated position
     itself.
 
-    The cycle is the median spacing of the run's observed boundary-band
-    starts (merged bars, `bar_gap_tol`), robust to the odd merged black
-    stretch; runs with too few observed boundaries fall back to the
-    median cycle over all runs. Split pieces keep the run index and get
+    The cycle is estimated per run from the per-pair film ADVANCE
+    (each capture moves the film ~one page, so the advance is a cycle
+    sample that stays honest even when the bar detectors missed most of
+    a run's boundaries -- the observed bar spacings there are 2x, 3x
+    the cycle and their median comes out inflated, leaving genuinely
+    tall pages unsplit: the P77-626 runs at scans 242-246 and 539-551
+    measured a ~12000 px "cycle" from ~5800 px advances). Stalled
+    re-scans (redundant pairs) don't sample the cadence and are left
+    out. Runs with under three advances fall back to the bar-spacing
+    median, then to the median cycle over all runs. Split pieces keep
+    the run index and get
     their contributor lists recomputed (see `_piece_contribs`); pieces
     are re-checked so a mis-cut remainder gets split again.
 
     Returns the new page list (the input list is left untouched).
     """
-    # Per-run cycle: median spacing between consecutive boundary bands.
+    # Per-run cycle: the median film advance of the run's pairs (one
+    # page per capture), with the bar-spacing median as a fallback.
     cycles = {}
     fallback = []
     for ri, (r0, r1) in enumerate(runs):
         run_range = list(range(r0, r1 + 1))
+        advances = [S_seed[k + 1] - S_seed[k]
+                    for k in range(r0, r1)
+                    if (k + 1) not in redundant
+                    and S_seed[k + 1] - S_seed[k] > 0]
         intervals, _, _ = collect_bar_intervals(run_range, valid, S_seed)
         starts = [lo for lo, _ in merge_intervals(intervals, bar_gap_tol)]
         spacings = [b - a for a, b in zip(starts, starts[1:]) if b > a]
-        if len(spacings) >= 3:
-            cycles[ri] = float(np.median(spacings))
-            fallback.append(cycles[ri])
+        cyc = None
+        if len(advances) >= 3:
+            cyc = float(np.median(advances))
+        elif len(spacings) >= 3:
+            cyc = float(np.median(spacings))
+        if cyc:
+            cycles[ri] = cyc
+            fallback.append(cyc)
     overall = float(np.median(fallback)) if fallback else None
 
     out = []
@@ -2263,19 +2450,30 @@ def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
         # snapped band can leave a piece still >= 1.5 cycles).
         span = hi - lo
         pieces = [page]
+        unsplittable = set()   # (lo, hi) of pages whose split made no
+                               # usable piece -- retrying is pointless and
+                               # would loop forever
         stable = False
         while not stable:
             stable = True
             next_pieces = []
             for lo, hi, contrib, ri in pieces:
                 n = int(round((hi - lo) / cyc - 0.1)) - 1
-                if n < 1 or hi - lo < 1.5 * cyc:
+                # Even-division pieces must stay plausible pages: a run
+                # whose boundary bands are denser than min_page_height
+                # (noisy film) would otherwise ask for sliver pieces.
+                n = min(n, int((hi - lo) / min_page_height) - 1)
+                if (n < 1 or hi - lo < 1.5 * cyc
+                        or (lo, hi) in unsplittable):
                     next_pieces.append((lo, hi, contrib, ri))
                     continue
                 stable = False
                 win = min(window, 0.3 * cyc)
                 cuts = [lo + t * (hi - lo) / (n + 1)
                         for t in range(1, n + 1)]
+                if verbose:
+                    print(f"  anticipating: [{lo:.0f}, {hi:.0f}] "
+                          f"{hi - lo:.0f} px (cycle {cyc:.0f}, {n} cut(s))")
                 bounds = [_anticipate_refine_cut(
                     c, run_range, valid, S_seed, bar_gap_tol, win,
                     orient) for c in cuts]
@@ -2298,8 +2496,11 @@ def anticipate_page_breaks(all_pages, runs, valid, S_seed, redundant,
                     added = True
                 if not added:
                     # Never lose film: a degenerate snap (every piece
-                    # below min_page_height) keeps the page unsplit.
+                    # below min_page_height) keeps the page unsplit --
+                    # and marked, so the loop cannot retry the same
+                    # pointless split forever.
                     next_pieces.append((lo, hi, contrib, ri))
+                    unsplittable.add((lo, hi))
             pieces = next_pieces
         if len(pieces) > 1 and verbose:
             spans = ", ".join(f"[{p[0]:.0f}, {p[1]:.0f}]"
@@ -2552,8 +2753,10 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         black = detect_bars(img)
         white = (detect_white_gaps(img, bbox) if trim_border else [])
         bars = sorted(black + white)
+        low = low_content_bands(img, bbox)
         scans.append(ScanMeta(p, os.path.basename(p), h, w, bars,
-                              bbox, black=black, white=white))
+                              bbox, black=black, white=white,
+                              low_content=low))
         # print(scans[-1])
         if verbose and len(scans) % 10 == 0:
             print(f"  ...{len(scans)}/{n}")
@@ -2618,8 +2821,12 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                                    orient=orient, reverse=reverse)
         res["__h_a"] = a.h
         if res['status'] != "ok" or res.get("via_ncc") or res.get("via_band"):
-            tag = (f"  full dy={res['full_dy']:+.0f} dx={res['full_dx']:+.0f}"
-                   if res["ok"] else f"  -> {res['status']}")
+            if res["ok"]:
+                tag = f"  full dy={res['full_dy']:+.0f} dx={res['full_dx']:+.0f}"
+            elif "wrong_dy" in res:
+                tag = f"  -> {res['status']} (phantom dy={res['wrong_dy']:+.0f})"
+            else:
+                tag = f"  -> {res['status']}"
             if res["ok"] and res["via_ncc"]:
                 tag += " [via pixel-NCC]"
             elif res["ok"] and res.get("via_band"):
@@ -2652,7 +2859,7 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
 
 
 def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
-                    pair_results, reverse=False):
+                    pair_results, reverse=False, verbose=False):
     """Plan the gap-junction fallback pages (one per run boundary).
 
     A no-overlap / missing-frame pair splits the batch into runs, and the page
@@ -2698,6 +2905,24 @@ def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
         # a missing_frame break are not one split page -- leave them alone.
         if pair_results[runs[j][1]].get("status") == "missing_frame":
             continue
+        # A SLIPPED junction: the pair measured a big |dy| against the reel's
+        # advance direction -- real film motion (a backward slip that
+        # RE-CAPTURES the same pages), not a mirrored-phantom failure of a
+        # thin strip (those have only a few hundred rows of overlap). The
+        # pieces' film ranges then OVERLAP and cannot be joined into one
+        # page; the junction's product is the two boundary pieces as two
+        # separate pages, each padded with a red band for its shortfall vs.
+        # the neighboring page heights.
+        slip = False
+        pr = pair_results[runs[j][1]]
+        if pr.get("status") == "wrong_sign":
+            wrong = abs(pr.get("wrong_dy", 0.0))
+            h_edge = valid[runs[j][1]].h
+            slip = (h_edge - wrong) >= 1200
+            if slip and verbose:
+                print(f"  slipped junction {valid[runs[j][1]].name} | "
+                      f"{valid[runs[j + 1][0]].name}: overlap "
+                      f"{h_edge - wrong:.0f} px -- two separate pages + red")
         a_run, b_run = by_run.get(j, []), by_run.get(j + 1, [])
         if not a_run or not b_run:
             continue
@@ -2759,6 +2984,21 @@ def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
             if hi - lo < 2:
                 continue
             b_piece = (lo, hi, [b_idx], j + 1)
+        # Whole-page junction test: pieces whose junction-side edges sit at
+        # their own scans' blank boundary bands are whole pages, cut at
+        # blank film -- the pair's break merely follows a page boundary the
+        # detectors saw. Joining them would fuse two separate pages; only a
+        # piece cut MID-CONTENT (the film continuing onto frames the
+        # detectors cannot link) is one page's lost half and needs the join.
+        a_side = "hi" if reverse else "lo"
+        b_side = "lo" if reverse else "hi"
+        if (page_edge_at_blank(a_piece, a_side, valid, S_seed) and
+                page_edge_at_blank(b_piece, b_side, valid, S_seed)):
+            if verbose:
+                print(f"  junction {valid[a_idx].name} | {valid[b_idx].name}: "
+                      f"both sides cut at their own blank bands -- separate "
+                      f"pages, not a gap join")
+            continue
         merged = (b_piece[1] - b_piece[0]) + (a_piece[1] - a_piece[0])
         # Neighbor pages: the next page past A's piece (earlier run, in
         # reading order) and the previous page past B's piece (later run).
@@ -2770,6 +3010,21 @@ def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
         red = 0
         if spans and merged < max(spans):
             red = int(round(max(spans) - merged))
+        if slip:
+            # Two boundary pages instead of one join: each piece keeps its
+            # own shortfall band, placed at its junction-side edge (the red
+            # band fills the film that the slip's re-capture does not cover
+            # inside the piece's own frame).
+            for piece, junction_hi in ((a_piece, reverse),
+                                       (b_piece, not reverse)):
+                span = piece[1] - piece[0]
+                r = int(round(max(spans) - span)) if spans and span < max(spans) \
+                    else 0
+                merges.append(dict(kind="separate", piece=piece,
+                                   a_piece=piece, b_piece=piece, red=r,
+                                   junction_hi=junction_hi,
+                                   a_idx=a_idx, b_idx=b_idx))
+            continue
         merges.append(dict(a_piece=a_piece, b_piece=b_piece, red=red,
                            a_idx=a_idx, b_idx=b_idx))
     return merges
@@ -2827,6 +3082,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                         horizontal=horizontal, reverse=reverse,
                         n_features=n_features)
     valid = res["valid"]; runs = res["runs"]; S_seed = res["S_seed"]
+    redundant = res["redundant"]
     all_pages = res["all_pages"]
     missing_seqs = res["missing_seqs"]
     axis = res["axis"]
@@ -2837,6 +3093,52 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     # (top-of-film first). Page NUMBERS below come from scan-sequence order.
     all_pages.sort(key=lambda p: (p[3], p[0], p[1]))
 
+    # Frame-shred collapse: a scan frame contains at most one full page, so
+    # when the layout hands back SEVERAL adjacent pages with the exact same
+    # contributing scans, they are one page shredded between mis-detected
+    # boundary bands (blank page margins / fog misread as bars or junctions;
+    # the roll-intro leader counts as part of the frame's page too). Merge
+    # each such group into a single page spanning the fragments' union --
+    # gated on the run's page cadence: a union of ~one cycle is a shredded
+    # page and collapses, while a union of ~TWO cycles (consecutive full
+    # pages whose frame advance was genuinely under one page) stays two
+    # separate pages (`scansLLL-HHH` + `scansLLL-HHH-2`).
+    cycles = {}
+    for ri, (r0, r1) in enumerate(runs):
+        adv = [S_seed[k + 1] - S_seed[k] for k in range(r0, r1)
+               if (k + 1) not in redundant and S_seed[k + 1] - S_seed[k] > 0]
+        if len(adv) >= 3:
+            cycles[ri] = float(np.median(adv))
+        else:
+            cands = [c for c in cycles.values() if c]
+            cycles[ri] = float(np.median(cands)) if cands else None
+    collapsed = []
+    i = 0
+    while i < len(all_pages):
+        group = [all_pages[i]]
+        j = i + 1
+        while (j < len(all_pages) and all_pages[j][3] == group[0][3]
+               and list(all_pages[j][2]) == list(group[0][2])):
+            group.append(all_pages[j])
+            j += 1
+        cyc = cycles.get(group[0][3])
+        lo, hi = (min(p[0] for p in group), max(p[1] for p in group))
+        if len(group) > 1 and cyc and hi - lo <= 1.2 * cyc:
+            if verbose:
+                print(f"  frame shreds: merged {len(group)} page(s) sharing "
+                      f"scans [{', '.join(str(k) for k in group[0][2])}] "
+                      f"-> [{lo:.0f}, {hi:.0f}]")
+            collapsed.append((lo, hi, list(group[0][2]), group[0][3]))
+            i = j
+        else:
+            if len(group) > 1 and verbose and not (cyc and hi - lo <= 1.2 * cyc):
+                print(f"  same-scan pages kept separate (union "
+                      f"{hi - lo:.0f} px ~ {hi - lo / cyc:.1f} cycles): "
+                      f"[{', '.join(str(k) for k in group[0][2])}]")
+            collapsed.extend(group)
+            i = j
+    all_pages = collapsed
+
     if verbose:
         print(f"\n  {len(runs)} run(s); {len(all_pages)} page(s) detected.")
 
@@ -2845,49 +3147,86 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     # above the earlier scan's top strip, no overlap); a red band fills any
     # shortfall vs. the neighboring pages. Missing files get a full red page.
     merges = plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
-                             res["pair_results"], reverse=reverse)
+                             res["pair_results"], reverse=reverse,
+                             verbose=verbose)
     merged_piece_ids = {id(m["a_piece"]) for m in merges} | \
                         {id(m["b_piece"]) for m in merges}
     if merges and verbose:
         print(f"  gap fallback: {len(merges)} gap junction(s) to re-join")
 
-    # Page labels: `pageNNN-scansLLL-HHH` -- a 1-based page number in scan
-    # order, then the range of sequence numbers of the scans that contributed
-    # to it, e.g. `page001-scans0006-0007`. Every page (normal pages,
-    # gap-join junction pages, and missing-file placeholders alike) takes its
-    # number at its place in the scan sequence (sorted by the contributing
-    # scans' sequence range), so page images sort in page order.
-    page_no = {}
-    finals = []                   # (scan lo, hi, kind, key) per written page
-    for pi, (lo, hi, contrib, ri) in enumerate(all_pages):
-        if id(all_pages[pi]) in merged_piece_ids:
-            continue              # joined into a gap-fallback page below
-        rng = scan_range(contrib, valid)
-        if rng is not None:
-            finals.append((rng[0], rng[1], "page", pi))
-    for mi, m in enumerate(merges):
-        rng = scan_range([m["a_idx"], m["b_idx"]], valid)
-        if rng is not None:
-            finals.append((rng[0], rng[1], "join", mi))
-    seen = set()
-    for sq in missing_seqs:
-        if sq in seen:
-            continue
-        seen.add(sq)
-        finals.append((sq, sq, "missing", sq))
-    finals.sort(key=lambda e: (e[0], e[1]))
-    for n, (_, _, kind, key) in enumerate(finals, 1):
-        page_no[(kind, key)] = n
+    # Redo mode (--only): a page whose outer edge is the subset's content
+    # extent rather than a blank boundary band (black bar / white gap)
+    # continues into scans the subset left out -- writing its plan would
+    # produce a partial page. Start with the first blank bar instead: skip
+    # writing these range-edge pages (and any junction join built from
+    # them), but keep registering their labels so the following pages
+    # still take their names (and -2/-3... ordinals) from the full-batch
+    # sequence, matching the already-composited page images.
+    partial_ids = set()
+    if only is not None:
+        for ri, (r0, r1) in enumerate(runs):
+            _, fmin, fmax = collect_bar_intervals(list(range(r0, r1 + 1)),
+                                                  valid, S_seed)
+            for page in all_pages:
+                lo, hi, contrib, pri = page
+                if pri != ri:
+                    continue
+                lo_edge = lo <= fmin + 1.0
+                hi_edge = hi >= fmax - 1.0
+                if not (lo_edge or hi_edge):
+                    continue
+                # Touching the subset's film edge -- but whole when the
+                # edge sits at its own scans' blank boundary bands (the
+                # boundary lives INSIDE the edge frame), or when the film
+                # [lo, hi] is fully covered once the contributor walk
+                # extends into the anchored neighbors (e.g. a redundant
+                # scan holding the page's film tail in its frame bottom).
+                # Partial only when neither holds: the page continues into
+                # scans that never covered its film.
+                ext = list(contrib)
+                extend_contribs(ext, (lo, hi), valid, S_seed,
+                                res["pair_results"], redundant)
+                covered = film_covered(lo, hi, ext, valid, S_seed)
+                if ((lo_edge and not page_edge_at_blank(page, "lo", valid,
+                                                        S_seed) and
+                     not covered) or
+                        (hi_edge and not page_edge_at_blank(page, "hi",
+                                                            valid, S_seed)
+                         and not covered)):
+                    partial_ids.add(id(page))
+        if partial_ids and verbose:
+            for page in all_pages:
+                if id(page) in partial_ids:
+                    print(f"  redo: [{page[0]:.0f}, {page[1]:.0f}] touches "
+                          f"the range edge without a blank boundary band "
+                          f"-- partial page, not rewritten")
+
+    # Page labels: `scansLLL-HHH` -- the range of sequence numbers of the
+    # scans that contributed to the page, e.g. `scans006-007`. Every page
+    # (normal pages, gap-join junction pages, and missing-file placeholders
+    # alike) takes its place in the scan sequence, so page images sort in
+    # page order. Pages whose contributing range is identical (one scan
+    # yielding several page crops) disambiguate with an ordinal suffix:
+    # `scans000-000`, `scans000-000-2`, `scans000-000-3`.
+    used_labels = set()
+
+    def unique_label(base: str) -> str:
+        label = base
+        n = 2
+        while label in used_labels:
+            label = f"{base}-{n}"
+            n += 1
+        used_labels.add(label)
+        return label
 
     labels = []
     for pi, (lo, hi, contrib, ri) in enumerate(all_pages):
         rng = scan_range(contrib, valid)
-        if ("page", pi) in page_no:
-            label = (f"page{page_no[('page', pi)]:03d}-"
-                     f"scans{rng[0]:03d}-{rng[1]:03d}")
-        elif id(all_pages[pi]) in merged_piece_ids:
-            label = (f"scans{rng[0]:03d}-{rng[1]:03d}" if rng
-                     else None)      # absorbed into a gap-join page below
+        if id(all_pages[pi]) in merged_piece_ids:
+            # absorbed into a gap-join page below: display-only label
+            label = (f"scans{rng[0]:03d}-{rng[1]:03d}" if rng else None)
+        elif rng is not None:
+            label = unique_label(f"scans{rng[0]:03d}-{rng[1]:03d}")
         else:
             label = None
         labels.append(label)
@@ -2918,10 +3257,15 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
     for pi, (lo, hi, contrib, ri) in enumerate(all_pages):
         if id(all_pages[pi]) in merged_piece_ids:
             continue                   # joined into a gap-fallback page below
-        if not contrib or labels[pi] is None:
-            continue                   # nothing contributes / unnamed page
-        auto = dict(film=convert_film((lo, hi), orient),
-                    contribs=page_contribs((lo, hi), list(contrib), valid,
+        if (only is not None and id(all_pages[pi]) in partial_ids) or \
+                not contrib or labels[pi] is None:
+            continue                   # range-edge partial / unnamed page
+        auto_film = convert_film((lo, hi), orient)
+        contrib2 = list(contrib)
+        extend_contribs(contrib2, (lo, hi), valid, S_seed,
+                        res["pair_results"], redundant)
+        auto = dict(film=auto_film,
+                    contribs=page_contribs((lo, hi), contrib2, valid,
                                            S_seed, axis=axis, orient=orient))
         path = os.path.join(output_dir, f"{labels[pi]}.toml")
         write_plan_toml(path, labels[pi], "page", source_dir, auto,
@@ -2931,12 +3275,47 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
 
     # Gap-junction fallback plans: re-join the page split by each gap.
     for mi, m in enumerate(merges):
+        if m.get("kind") == "separate":
+            # A slipped junction's products: each boundary piece as its own
+            # plan, with the red band at the piece's junction-side edge.
+            piece = m["piece"]
+            rng = scan_range(piece[2], valid)
+            if rng is None:
+                continue
+            label = unique_label(f"scans{rng[0]:03d}-{rng[1]:03d}-gap")
+            section = dict(film=convert_film(piece[0:2], orient),
+                           contribs=page_contribs(piece[0:2], list(piece[2]),
+                                                  valid, S_seed,
+                                                  axis=axis,
+                                                  orient=orient))
+            red = int(m.get("red") or 0)
+            # the red band fills the film missing at the piece's junction
+            # edge: after the content when the junction is at the piece's
+            # film-high end, before it otherwise
+            sections = ([section, dict(red=red)] if red and m["junction_hi"]
+                        else [dict(red=red), section] if red
+                        else [section])
+            path = os.path.join(output_dir, f"{label}.toml")
+            write_plan_toml(path, label, "gap_join", source_dir,
+                            dict(sections=sections),
+                            axis="x" if horizontal else None,
+                            reverse=reverse)
+            written += 1
+            if verbose:
+                note = f", red band {red} px" if red else ""
+                print(f"  slipped junction: separate page {label}{note}")
+            continue
         a_piece, b_piece = m["a_piece"], m["b_piece"]
         rng = scan_range([m["a_idx"], m["b_idx"]], valid)
         if rng is None:
             continue
-        label = (f"page{page_no[('join', mi)]:03d}-"
-                 f"scans{rng[0]:03d}-{rng[1]:03d}-gap")
+        label = unique_label(f"scans{rng[0]:03d}-{rng[1]:03d}-gap")
+        if only is not None and (id(a_piece) in partial_ids or
+                                 id(b_piece) in partial_ids):
+            # A junction join at the redo range's edge inherits a partial
+            # piece: skip it (its label stays registered for the sequence).
+            continue
+
         # Stack the sections in the plan's film-axis order (compose_pages
         # vstacks them as written; the film axis ascends along the reading
         # direction in every orientation): on a vertical batch the
@@ -2987,8 +3366,7 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
                 "in the scans' reading orientation -- across-film rows first,\n"
                 "the page's film-column length second.\n")
         for seq in missing_seqs:
-            label = (f"page{page_no[('missing', seq)]:03d}-"
-                     f"scans{seq:03d}-{seq:03d}")
+            label = unique_label(f"scans{seq:03d}-{seq:03d}")
             path = os.path.join(output_dir, f"{label}.toml")
             write_plan_toml(path, label, "missing", source_dir,
                             dict(size=[int(ph), int(pw)]),
@@ -3070,10 +3448,14 @@ def main():
                          "a fraction of a frame per capture, so the stall "
                          "threshold defaults to --stall-frac 0.05 here.")
     ap.add_argument("--only", default=None,
-                    help="Process only a subset of the batch: comma-separated "
+                    help="Redo only a subset of the batch: comma-separated "
                          "1-based indices or ranges in sorted order (e.g. "
                          "'5-8' or '3,7,10-12') and/or exact filenames (e.g. "
-                         "'07227-6300_0.28_0007.tif').")
+                         "'07227-6300_0.28_0007.tif'). The subset's film "
+                         "frame starts at the first blank bar: range-edge "
+                         "pages that continue into scans outside --only are "
+                         "partial and are not rewritten; later pages still "
+                         "take their full-batch names (and -2/-3 ordinals).")
     args = ap.parse_args()
 
     run(args.scan_dir, pattern=args.pattern, output_dir=args.output_dir,

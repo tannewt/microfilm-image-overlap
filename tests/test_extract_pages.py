@@ -2134,3 +2134,26 @@ def test_absorb_never_crosses_a_black_bar():
     # the one beyond the bar (the normal page's margin) was not
     assert spans == [(100, 6200), (6900, 12700), (13100, 18900),
                      (19600, 25400)]
+
+
+def test_anticipate_terminates_on_band_denser_than_min_page_height():
+    # A pathological run: spurious boundary bands denser than
+    # min_page_height make the cycle estimate tiny, so a modest page
+    # "qualifies" for a split whose every piece would be a sub-page
+    # sliver. The pass must clamp the cut count and terminate -- an
+    # earlier version looped forever retrying the identical pointless
+    # split (the P77-626 stall).
+    bars = [(i * 600, i * 600 + 80) for i in range(1, 30)]
+    sm = pp.ScanMeta("/r/scan0000.tif", "scan0000.tif", 20000, 800,
+                     sorted(bars), (0, 20000, 0, 800), black=bars, white=[])
+    pages = [(80.0, 6080.0, [0], 0), (6160.0, 12560.0, [0], 0)]
+    out = pp.anticipate_page_breaks(pages, [(0, 0)], [sm], [0.0], set(),
+                                    bar_gap_tol=200.0,
+                                    min_page_height=1000.0, verbose=False)
+    # The pass TERMINATED (an earlier version looped forever here) and
+    # every emitted piece is a plausible page (>= min_page_height); the
+    # clamped even division keeps all the film (12 pieces of ~1000 px).
+    spans = sorted((round(p[0]), round(p[1])) for p in out)
+    assert all(hi - lo >= 1000 for lo, hi in spans)
+    assert len(spans) == 12
+    assert sum(hi - lo for lo, hi in spans) == 6080 - 80 + 12560 - 6160

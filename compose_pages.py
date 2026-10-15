@@ -47,7 +47,7 @@ Usage:
         --output-dir pages/07227-flat
 
     # One page (or a label regex) only:
-    python compose_pages.py plans/07227 --pattern '^page010'
+    python compose_pages.py plans/07227 --pattern '^scans010'
 """
 
 import argparse
@@ -777,7 +777,7 @@ def main():
                     help="Output image format (default: png)")
     ap.add_argument("--pattern", default=None,
                     help="Regex (re.search) on the page label selecting which "
-                         "plans to composite, e.g. '^page010'.")
+                         "plans to composite, e.g. '^scans010'.")
     ap.add_argument("--lru", type=int, default=4,
                     help="How many full-resolution scans to keep in memory "
                          "while assembling (default: 4).")
