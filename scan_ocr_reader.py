@@ -18,6 +18,10 @@ on both sides -- the OCR word gets an amber highlight and is scrolled into
 view, and its bounding box is outlined on the scan (with a small label showing
 the text).  Arrow keys move to the previous / next scan in the same folder.
 
+The left side stacks two results for each scan: the PP-OCRv6 word JSON
+(hoverable and synced to the scan) and the GLM-OCR markdown + region JSON
+(rendered as markdown; its region boxes can be overlaid on the scan).
+
 OCR data is read from a JSON sidecar for each scan.  Two shapes are handled:
 
     [{"text": "the quick brown", "bbox": [[x0,y0],[x1,y1]], "confidence": .98}]
@@ -29,6 +33,8 @@ The bbox may have two or more corner points; its axis-aligned extent is used.
 
 Usage:
     python scan_ocr_reader.py [SCAN-IMAGE-OR-DIRECTORY] [--ocr-dir DIR ...]
+    python scan_ocr_reader.py SCAN --glm-dir /path/to/glm-batch
+    python scan_ocr_reader.py SCAN --glm-dir /path/to/glm-batch --compare
     python scan_ocr_reader.py 20261007-newspaper-scans/P71-1921-CENLIB9102
 
 Opening a directory loads every image in it (natural sort).  The OCR sidecar
@@ -40,12 +46,14 @@ OCR runs use).  ``--ocr-dir`` forces a specific location and may be repeated.
 Controls:
     Ctrl+O            open a directory of scans
     Ctrl+Shift+O      choose the OCR results directory
+    Ctrl+Shift+G      choose the GLM results directory
     Left / Right      previous / next scan in the folder
     PageUp / PgDown   previous / next scan
     Home / End        first / last scan
     Ctrl+= / Ctrl+-   zoom the scan in / out
     Ctrl+0            fit the scan to the window
     B                 toggle showing every OCR box on the scan
+    G                 toggle the GLM region boxes on the scan
     drag              pan the scan
     wheel             zoom the scan about the cursor
 """
@@ -80,6 +88,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
+    QTextBrowser,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -102,6 +111,8 @@ SCAN_BG = QColor("#0d0d0d")
 BOX_PEN = QColor(255, 90, 70)
 BOX_FILL = QColor(255, 90, 70, 55)
 ALL_BOX_PEN = QColor(120, 170, 255, 90)
+GLM_BOX_PEN = QColor(90, 220, 130, 185)
+GLM_BOX_FILL = QColor(90, 220, 130, 22)
 LABEL_BG = QColor(20, 20, 20, 235)
 LABEL_FG = QColor("#ffd54f")
 
@@ -134,6 +145,7 @@ class OcrWord:
     conf: float
     line: int
     column: int = 0
+    has_bbox: bool = True
 
     @property
     def rect(self) -> QRectF:
@@ -191,7 +203,7 @@ def _iter_entries(data):
 
 
 def _split_words(text: str, x0, y0, x1, y1, conf, line: int,
-                 column: int = 0) -> list[OcrWord]:
+                 column: int = 0, has_bbox: bool = True) -> list[OcrWord]:
     """Split an OCR line into tokens, spreading them across its bbox."""
     matches = list(re.finditer(r"\S+", text))
     if not matches:
@@ -202,7 +214,8 @@ def _split_words(text: str, x0, y0, x1, y1, conf, line: int,
     for m in matches:
         wx0 = x0 + width * (m.start() / span)
         wx1 = x0 + width * (m.end() / span)
-        out.append(OcrWord(m.group(), wx0, y0, wx1, y1, conf, line, column))
+        out.append(OcrWord(m.group(), wx0, y0, wx1, y1, conf, line, column,
+                           has_bbox))
     return out
 
 
@@ -332,6 +345,14 @@ def _build_document(entries, path: Path | None) -> OcrDocument:
     return OcrDocument(words, line_no + 1, path, n_columns)
 
 
+def _build_text_only_document(entries, path: Path | None) -> OcrDocument:
+    """Fallback for OCR JSON with text but no bboxes (the GPU puller)."""
+    words: list[OcrWord] = []
+    for i, (text, _rect, conf) in enumerate(entries):
+        words.extend(_split_words(text, 0, 0, 0, 0, conf, i, 0, has_bbox=False))
+    return OcrDocument(words, len(entries), path, 1)
+
+
 def load_ocr_document(path: Path | None) -> OcrDocument | None:
     if path is None:
         return None
@@ -340,14 +361,216 @@ def load_ocr_document(path: Path | None) -> OcrDocument | None:
     except (OSError, ValueError):
         return None
     entries = []
+    any_bbox = False
     for text, bbox, conf in _iter_entries(data):
-        rect = _bbox_rect(bbox)
-        if rect is None or not text.strip():
+        if not text.strip():
             continue
-        entries.append((text, rect, conf))
+        rect = _bbox_rect(bbox)
+        if rect is None:
+            entries.append((text, None, conf))
+        else:
+            entries.append((text, rect, conf))
+            any_bbox = True
     if not entries:
         return OcrDocument([], 0, path)
+    if not any_bbox:
+        return _build_text_only_document(entries, Path(path))
+    # Mixed results are rare; keep the bbox entries (they can be synced to
+    # the scan) and drop the bbox-less ones.
+    entries = [e for e in entries if e[1] is not None]
     return _build_document(entries, Path(path))
+
+
+@dataclass
+class GlmDocument:
+    """GLM-OCR markdown plus its page regions (for scan overlays)."""
+
+    markdown: str
+    regions: list[OcrWord]
+    md_path: Path | None = None
+    json_path: Path | None = None
+
+    @property
+    def display_markdown(self) -> str:
+        # The batch runner deliberately does not save the per-region crop
+        # images, so the markdown's ![...](imgs/...) links would be broken.
+        return _strip_md_images(self.markdown)
+
+    @property
+    def chars(self) -> int:
+        return len(self.display_markdown)
+
+    @property
+    def n_regions(self) -> int:
+        return len(self.regions)
+
+    def scaled_regions(self, img_w: int, img_h: int) -> list[OcrWord]:
+        """GLM bboxes are normalized to 0-1000 per axis; map to pixels."""
+        if not self.regions:
+            return []
+        max_x = max(w.x1 for w in self.regions)
+        max_y = max(w.y1 for w in self.regions)
+        if (max_x <= 1000.5 and max_y <= 1000.5
+                and (img_w > 1000 or img_h > 1000)):
+            sx = img_w / 1000.0
+            sy = img_h / 1000.0
+            return [OcrWord(w.text, w.x0 * sx, w.y0 * sy,
+                            w.x1 * sx, w.y1 * sy, w.conf, w.line,
+                            w.column, w.has_bbox) for w in self.regions]
+        return self.regions
+
+
+def _strip_md_images(text: str) -> str:
+    return re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
+
+
+def _glm_region_text(region: dict) -> str:
+    text = region.get("content", region.get("text", region.get("value", "")))
+    return str(text).strip()
+
+
+def _glm_region_bbox(region: dict):
+    return (region.get("bbox_2d") or region.get("bbox")
+            or region.get("polygon"))
+
+
+def load_glm_json_regions(path: Path | None) -> list[OcrWord]:
+    """Read GLM's region JSON (list of pages, each a list of regions)."""
+    if path is None:
+        return []
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return []
+    pages = data if isinstance(data, list) else [data]
+    regions: list[OcrWord] = []
+    for page in pages:
+        if isinstance(page, dict):
+            for key in ("layout_details", "json_result", "pages", "results", "data"):
+                if isinstance(page.get(key), list):
+                    page = page[key]
+                    break
+            else:
+                page = [page]
+        if not isinstance(page, list):
+            continue
+        for region in page:
+            if not isinstance(region, dict):
+                continue
+            text = _glm_region_text(region)
+            rect = _bbox_rect(_glm_region_bbox(region))
+            if not text or rect is None:
+                continue
+            regions.append(OcrWord(text, rect[0], rect[1], rect[2], rect[3],
+                                    1.0, len(regions)))
+    return regions
+
+
+def load_glm_document(md_path: Path | None,
+                      json_path: Path | None) -> GlmDocument | None:
+    markdown = ""
+    if md_path is not None:
+        try:
+            markdown = Path(md_path).read_text(errors="ignore")
+        except OSError:
+            markdown = ""
+    regions = load_glm_json_regions(json_path)
+    if not markdown.strip() and regions:
+        markdown = "\n\n".join(r.text for r in regions)
+    if not markdown.strip() and not regions:
+        return None
+    return GlmDocument(markdown, regions, md_path, json_path)
+
+
+def document_text(doc: OcrDocument | None, max_chars: int | None = None) -> str:
+    """Reconstruct readable PP text from the reader's column/line words."""
+    if doc is None or not doc.words:
+        return ""
+    lines: list[str] = []
+    line: list[str] = []
+    key = None
+    col = None
+    for w in doc.words:
+        if w.column != col:
+            if line:
+                lines.append(" ".join(line))
+                line = []
+            lines.append(f"--- Column {w.column + 1} ---")
+            col = w.column
+            key = None
+        if (w.column, w.line) != key:
+            if line:
+                lines.append(" ".join(line))
+                line = []
+            key = (w.column, w.line)
+        line.append(w.text)
+    if line:
+        lines.append(" ".join(line))
+    text = "\n".join(lines)
+    return text[:max_chars] if max_chars else text
+
+
+def _candidate_glm_roots(scan_dir: Path, extra: list[Path]) -> list[Path]:
+    """Directories that may hold GLM ``<stem>.md`` / ``<stem>.json``."""
+    roots: list[Path] = []
+    scan_dir = scan_dir.resolve()
+
+    def add(p: Path) -> None:
+        try:
+            if p.is_dir():
+                roots.append(p)
+        except OSError:
+            pass
+
+    for e in extra:
+        add(Path(e).resolve())
+    if not extra:
+        add(scan_dir)
+        add(scan_dir / "glm_results")
+        add(scan_dir.parent / "glm-batch")
+        add(scan_dir.parent / "glm_results")
+        add(scan_dir.parent / "glm_ocr")
+        for base in [scan_dir.parent, *scan_dir.parents]:
+            sib = base / "ocr-studio"
+            if not sib.is_dir():
+                continue
+            for name in ("glm_results", "glm-batch", "glm_ocr"):
+                add(sib / name)
+            ocr = sib / "ocr_results"
+            if ocr.is_dir():
+                for name in ("glm", "glm-batch", "glm_results"):
+                    add(ocr / name)
+    seen: set[str] = set()
+    out: list[Path] = []
+    for r in roots:
+        key = str(r.resolve())
+        if key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
+
+
+def build_glm_index(scan_dir: Path, images: list[Path],
+                    extra: list[Path]) -> dict[str, dict[str, Path]]:
+    """Map scan stem -> {"md": path, "json": path} for GLM outputs."""
+    best: dict[str, dict[str, Path]] = {}
+    best_score = -1
+    for root in _candidate_glm_roots(scan_dir, extra):
+        index: dict[str, dict[str, Path]] = {}
+        for source in (root, root / scan_dir.name):
+            if not source.is_dir():
+                continue
+            for md in source.glob("*.md"):
+                index.setdefault(md.stem, {})["md"] = md
+            for js in source.glob("*.json"):
+                if js.stem.endswith("_model"):
+                    continue
+                index.setdefault(js.stem, {})["json"] = js
+        score = sum(1 for im in images if im.stem in index)
+        if score > best_score:
+            best_score = score
+            best = index
+    return best
 
 
 def _candidate_ocr_roots(scan_dir: Path, extra: list[Path]) -> list[Path]:
@@ -672,12 +895,14 @@ class ScanView(QWidget):
         self._origin = QPointF(0.0, 0.0)   # image coord at the widget's top-left
         self._auto_fit = True
         self._words: list[OcrWord] = []
+        self._glm_words: list[OcrWord] = []
         self._grid: dict[tuple[int, int], list[int]] = {}
         self._cell_w = 1.0
         self._cell_h = 1.0
         self._highlight = -1
         self._hover = -1
         self._show_boxes = False
+        self._show_glm_boxes = True
         self._dragging = False
         self._drag_start = QPointF()
         self._drag_origin = QPointF()
@@ -687,6 +912,7 @@ class ScanView(QWidget):
 
     def set_scan(self, loaded, words: list[OcrWord], message: str = "") -> None:
         self._words = list(words)
+        self._glm_words = []
         self._highlight = -1
         self._hover = -1
         if loaded is None:
@@ -709,6 +935,8 @@ class ScanView(QWidget):
             self._cell_w = max(1.0, self._img_w / cells)
             self._cell_h = max(1.0, self._img_h / cells)
             for i, w in enumerate(self._words):
+                if not w.has_bbox:
+                    continue
                 cx0 = max(0, int(w.x0 // self._cell_w))
                 cx1 = max(0, int(w.x1 // self._cell_w))
                 cy0 = max(0, int(w.y0 // self._cell_h))
@@ -823,6 +1051,8 @@ class ScanView(QWidget):
         best_area = None
         for i in self._grid.get(cell, ()):
             w = self._words[i]
+            if not w.has_bbox:
+                continue
             if w.x0 <= img.x() <= w.x1 and w.y0 <= img.y() <= w.y1:
                 area = (w.x1 - w.x0) * (w.y1 - w.y0)
                 if best_area is None or area < best_area:
@@ -844,6 +1074,8 @@ class ScanView(QWidget):
         if not (0 <= index < len(self._words)) or not self._pyramid:
             return
         w = self._words[index]
+        if not w.has_bbox:
+            return
         tl = self.img_to_widget(w.x0, w.y0)
         br = self.img_to_widget(w.x1, w.y1)
         r = QRectF(tl, br).normalized()
@@ -883,6 +1115,15 @@ class ScanView(QWidget):
         self._show_boxes = not self._show_boxes
         self.update()
 
+    def set_glm_words(self, words: list[OcrWord]) -> None:
+        """Set the (blue/green) GLM region boxes drawn over the scan."""
+        self._glm_words = list(words)
+        self.update()
+
+    def toggle_glm_boxes(self) -> None:
+        self._show_glm_boxes = not self._show_glm_boxes
+        self.update()
+
     # -- painting -------------------------------------------------------- #
 
     def paintEvent(self, event) -> None:  # noqa: N802
@@ -907,8 +1148,22 @@ class ScanView(QWidget):
             pen.setWidthF(1.0)
             painter.setPen(pen)
             for w in self._words:
+                if not w.has_bbox:
+                    continue
                 r = QRectF(self.img_to_widget(w.x0, w.y0), self.img_to_widget(w.x1, w.y1))
                 if r.intersects(QRectF(self.rect())):
+                    painter.drawRect(r)
+
+        if self._show_glm_boxes and self._glm_words:
+            pen = painter.pen()
+            pen.setColor(GLM_BOX_PEN)
+            pen.setWidthF(1.2)
+            painter.setPen(pen)
+            for w in self._glm_words:
+                r = QRectF(self.img_to_widget(w.x0, w.y0),
+                           self.img_to_widget(w.x1, w.y1)).normalized()
+                if r.intersects(QRectF(self.rect())):
+                    painter.fillRect(r, GLM_BOX_FILL)
                     painter.drawRect(r)
 
         active = self._highlight if self._highlight >= 0 else self._hover
@@ -917,6 +1172,8 @@ class ScanView(QWidget):
 
     def _draw_highlight(self, painter: QPainter, index: int) -> None:
         w = self._words[index]
+        if not w.has_bbox:
+            return
         r = QRectF(self.img_to_widget(w.x0, w.y0), self.img_to_widget(w.x1, w.y1))
         r = r.normalized()
         painter.fillRect(r, BOX_FILL)
@@ -946,9 +1203,10 @@ class ScanView(QWidget):
 
 class MainWindow(QMainWindow):
     def __init__(self, initial: Path | None = None,
-                 ocr_dirs: list[Path] | None = None) -> None:
+                 ocr_dirs: list[Path] | None = None,
+                 glm_dirs: list[Path] | None = None) -> None:
         super().__init__()
-        self.setWindowTitle("Scan + OCR Reader")
+        self.setWindowTitle("Scan + OCR Reader — PP vs GLM")
         self.resize(1500, 950)
 
         self.images: list[Path] = []
@@ -956,10 +1214,18 @@ class MainWindow(QMainWindow):
         self.scan_dir: Path | None = None
         self.ocr_index: dict[str, Path] = {}
         self.ocr_dirs: list[Path] = [Path(p) for p in (ocr_dirs or [])]
+        self.glm_index: dict[str, dict[str, Path]] = {}
+        self.glm_dirs: list[Path] = [Path(p) for p in (glm_dirs or [])]
         self._cache: OrderedDict[str, tuple] = OrderedDict()
         self._docs: OrderedDict[str, OcrDocument | None] = OrderedDict()
+        self._glm_docs: OrderedDict[str, GlmDocument | None] = OrderedDict()
 
         self.text_view = OcrTextView()
+        self.glm_view = QTextBrowser()
+        self.glm_view.setOpenExternalLinks(False)
+        self.glm_view.setStyleSheet(
+            "QTextBrowser { background: #161616; color: #e8e8e8;"
+            " border: none; padding: 8px; }")
         self.scan_view = ScanView()
 
         self.text_scroll = QScrollArea()
@@ -969,22 +1235,39 @@ class MainWindow(QMainWindow):
         self.text_scroll.setStyleSheet("QScrollArea { border: none; }")
         self.text_view.set_scroll_area(self.text_scroll)
 
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(0)
-        self.ocr_header = QLabel("No scan open")
-        self.ocr_header.setStyleSheet(
-            "QLabel { background: #141414; color: #b8b8b8; padding: 6px 10px; }")
-        left_layout.addWidget(self.ocr_header)
-        left_layout.addWidget(self.text_scroll, 1)
+        header_style = (
+            "QLabel { background: #141414; color: #b8b8b8; padding: 4px 10px;"
+            " border-top: 1px solid #2a2a2a; }")
+        self.ocr_header = QLabel("PP-OCRv6 — no scan open")
+        self.ocr_header.setStyleSheet(header_style)
+        self.glm_header = QLabel("GLM-OCR — no scan open")
+        self.glm_header.setStyleSheet(header_style)
+
+        pp_panel = QWidget()
+        pp_layout = QVBoxLayout(pp_panel)
+        pp_layout.setContentsMargins(0, 0, 0, 0)
+        pp_layout.setSpacing(0)
+        pp_layout.addWidget(self.ocr_header)
+        pp_layout.addWidget(self.text_scroll, 1)
+
+        glm_panel = QWidget()
+        glm_layout = QVBoxLayout(glm_panel)
+        glm_layout.setContentsMargins(0, 0, 0, 0)
+        glm_layout.setSpacing(0)
+        glm_layout.addWidget(self.glm_header)
+        glm_layout.addWidget(self.glm_view, 1)
+
+        left_split = QSplitter(Qt.Orientation.Vertical)
+        left_split.addWidget(pp_panel)
+        left_split.addWidget(glm_panel)
+        left_split.setSizes([470, 470])
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left)
+        splitter.addWidget(left_split)
         splitter.addWidget(self.scan_view)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 6)
-        splitter.setSizes([560, 940])
+        splitter.setSizes([640, 860])
         self.setCentralWidget(splitter)
 
         self.text_view.wordHovered.connect(self._on_text_hover)
@@ -1010,6 +1293,10 @@ class MainWindow(QMainWindow):
         self.act_ocr = QAction("Choose OCR folder…", self)
         self.act_ocr.setShortcut(QKeySequence("Ctrl+Shift+O"))
         self.act_ocr.triggered.connect(self.choose_ocr_dir)
+
+        self.act_glm = QAction("Choose GLM folder…", self)
+        self.act_glm.setShortcut(QKeySequence("Ctrl+Shift+G"))
+        self.act_glm.triggered.connect(self.choose_glm_dir)
 
         self.act_prev = QAction("Previous scan", self)
         self.act_prev.setShortcuts([QKeySequence(Qt.Key.Key_Left),
@@ -1050,14 +1337,21 @@ class MainWindow(QMainWindow):
         self.act_boxes.setShortcut(QKeySequence("B"))
         self.act_boxes.toggled.connect(lambda _: self.scan_view.toggle_boxes())
 
+        self.act_glm_boxes = QAction("Show GLM boxes", self)
+        self.act_glm_boxes.setCheckable(True)
+        self.act_glm_boxes.setChecked(True)
+        self.act_glm_boxes.setShortcut(QKeySequence("G"))
+        self.act_glm_boxes.toggled.connect(lambda _: self.scan_view.toggle_glm_boxes())
+
         for act in (self.act_prev, self.act_next, self.act_first, self.act_last,
                     self.act_zoom_in, self.act_zoom_out, self.act_zoom_fit,
-                    self.act_boxes):
+                    self.act_boxes, self.act_glm_boxes):
             self.addAction(act)
 
         menu = self.menuBar().addMenu("&File")
         menu.addAction(self.act_open)
         menu.addAction(self.act_ocr)
+        menu.addAction(self.act_glm)
         view = self.menuBar().addMenu("&View")
         view.addAction(self.act_prev)
         view.addAction(self.act_next)
@@ -1069,6 +1363,7 @@ class MainWindow(QMainWindow):
         view.addAction(self.act_zoom_fit)
         view.addSeparator()
         view.addAction(self.act_boxes)
+        view.addAction(self.act_glm_boxes)
 
     def _make_toolbar(self) -> None:
         bar = QToolBar("Main")
@@ -1076,6 +1371,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(bar)
         bar.addAction(self.act_open)
         bar.addAction(self.act_ocr)
+        bar.addAction(self.act_glm)
         bar.addSeparator()
         bar.addAction(self.act_prev)
         bar.addAction(self.act_next)
@@ -1086,6 +1382,7 @@ class MainWindow(QMainWindow):
         bar.addAction(self.act_zoom_out)
         bar.addAction(self.act_zoom_fit)
         bar.addAction(self.act_boxes)
+        bar.addAction(self.act_glm_boxes)
 
     # -- loading --------------------------------------------------------- #
 
@@ -1105,6 +1402,16 @@ class MainWindow(QMainWindow):
             self.ocr_index = build_ocr_index(self.scan_dir, self.images, self.ocr_dirs)
             self.goto(self.index)
 
+    def choose_glm_dir(self) -> None:
+        start = str(self.glm_dirs[0] if self.glm_dirs else (self.scan_dir or Path.cwd()))
+        chosen = QFileDialog.getExistingDirectory(self, "Choose GLM results folder", start)
+        if not chosen:
+            return
+        self.glm_dirs = [Path(chosen)]
+        if self.scan_dir is not None:
+            self.glm_index = build_glm_index(self.scan_dir, self.images, self.glm_dirs)
+            self.goto(self.index)
+
     def load_path(self, path: Path) -> None:
         if path.is_dir():
             self.load_directory(path)
@@ -1119,6 +1426,7 @@ class MainWindow(QMainWindow):
         self.scan_dir = directory
         self.images = images
         self.ocr_index = build_ocr_index(directory, images, self.ocr_dirs)
+        self.glm_index = build_glm_index(directory, images, self.glm_dirs)
         index = 0
         if select is not None:
             try:
@@ -1154,6 +1462,27 @@ class MainWindow(QMainWindow):
             self.text_view.set_document(doc)
         words = doc.words if doc is not None else []
 
+        glm_paths = self.glm_index.get(path.stem)
+        glm_doc = None
+        if glm_paths:
+            glm_key = f"{glm_paths.get('md')}|{glm_paths.get('json')}"
+            if glm_key in self._glm_docs:
+                glm_doc = self._glm_docs[glm_key]
+                self._glm_docs.move_to_end(glm_key)
+            else:
+                glm_doc = load_glm_document(glm_paths.get("md"),
+                                            glm_paths.get("json"))
+                self._glm_docs[glm_key] = glm_doc
+                while len(self._glm_docs) > DOC_CACHE_LIMIT:
+                    self._glm_docs.popitem(last=False)
+        if glm_doc is None:
+            glm_message = (f"No GLM result for {path.name}\n"
+                           f"(looked in {len(self.glm_index)} known GLM sidecars; "
+                           f"use Ctrl+Shift+G to choose a folder)")
+            self.glm_view.setPlainText(glm_message)
+        else:
+            self.glm_view.setMarkdown(glm_doc.display_markdown)
+
         loaded = self._cache.get(str(path))
         if loaded is None:
             loaded = load_pyramid(path)
@@ -1163,22 +1492,35 @@ class MainWindow(QMainWindow):
                 while len(self._cache) > CACHE_LIMIT:
                     self._cache.popitem(last=False)
         self.scan_view.set_scan(loaded, words)
+        glm_regions = []
+        if glm_doc is not None and loaded is not None:
+            glm_regions = glm_doc.scaled_regions(loaded[1], loaded[2])
+        self.scan_view.set_glm_words(glm_regions)
 
-        self._update_titles(path, doc)
+        self._update_titles(path, doc, glm_doc)
 
-    def _update_titles(self, path: Path, doc: OcrDocument | None) -> None:
+    def _update_titles(self, path: Path, doc: OcrDocument | None,
+                       glm_doc: GlmDocument | None) -> None:
         n = len(self.images)
         folder = self.scan_dir.name if self.scan_dir else ""
-        self.setWindowTitle(f"{folder} — {path.name} — Scan + OCR Reader")
+        self.setWindowTitle(f"{folder} — {path.name} — PP vs GLM")
         if doc is None:
-            ocr_note = "no OCR"
+            pp_note = "no PP result"
         else:
-            ocr_note = (f"{len(doc.words)} words / {doc.n_lines} lines / "
-                        f"{doc.n_columns} columns")
-        self.ocr_header.setText(f"{path.name}   ·   {ocr_note}")
+            pp_note = (f"{len(doc.words)} words / {doc.n_lines} lines / "
+                       f"{doc.n_columns} columns")
+            if doc.words and not any(w.has_bbox for w in doc.words):
+                pp_note += " (text-only)"
+        if glm_doc is None:
+            glm_note = "no GLM result"
+        else:
+            glm_note = f"{glm_doc.n_regions} regions / {glm_doc.chars} chars"
+        self.ocr_header.setText(f"PP-OCRv6 · {path.name} · {pp_note}")
+        self.glm_header.setText(f"GLM-OCR · {path.name} · {glm_note}")
         self.statusBar().showMessage(
-            f"{self.index + 1} / {n}   ·   {path.name}   ·   {ocr_note}   ·   "
-            f"OCR folder: {self._ocr_root_label()}")
+            f"{self.index + 1} / {n}   ·   {path.name}   ·   "
+            f"PP: {pp_note}   ·   GLM: {glm_note}   ·   "
+            f"PP dir: {self._ocr_root_label()}   ·   GLM dir: {self._glm_root_label()}")
 
     def _ocr_root_label(self) -> str:
         if not self.ocr_index:
@@ -1187,6 +1529,13 @@ class MainWindow(QMainWindow):
             return str(next(iter(self.ocr_index.values())).parent)
         except StopIteration:
             return "not found"
+
+    def _glm_root_label(self) -> str:
+        for entry in self.glm_index.values():
+            p = entry.get("md") or entry.get("json")
+            if p is not None:
+                return str(Path(p).parent)
+        return "not found"
 
     def next_scan(self, delta: int) -> None:
         if self.images:
@@ -1240,6 +1589,49 @@ class MainWindow(QMainWindow):
                 return
 
 
+def compare_mode(args) -> int:
+    """Print PP and GLM results side by side in the terminal (no GUI)."""
+    path = Path(args.path)
+    if path.is_file():
+        scan_dir = path.parent
+        images = [path]
+    else:
+        scan_dir = path
+        images = collect_images(path)
+    if not images:
+        print(f"No scan images in {scan_dir}")
+        return 1
+    ocr_dirs = [Path(d) for d in args.ocr_dir]
+    glm_dirs = [Path(d) for d in args.glm_dir]
+    pp_index = build_ocr_index(scan_dir, images, ocr_dirs)
+    glm_index = build_glm_index(scan_dir, images, glm_dirs)
+    for img in images[:max(1, args.limit)]:
+        pp_path = pp_index.get(img.stem)
+        glm_paths = glm_index.get(img.stem) or {}
+        pp_doc = load_ocr_document(pp_path) if pp_path else None
+        glm_doc = (load_glm_document(glm_paths.get("md"), glm_paths.get("json"))
+                   if glm_paths else None)
+        print("=" * 100)
+        print(img.name)
+        print("-" * 100)
+        if pp_doc is None:
+            print("PP-OCRv6: (no PP result)")
+        else:
+            print(f"PP-OCRv6: {len(pp_doc.words)} words / {pp_doc.n_lines} lines / "
+                  f"{pp_doc.n_columns} columns")
+            print("-" * 100)
+            print(document_text(pp_doc, args.chars))
+        print("-" * 100)
+        if glm_doc is None:
+            print("GLM-OCR: (no GLM result)")
+        else:
+            print(f"GLM-OCR: {glm_doc.n_regions} regions / {glm_doc.chars} chars")
+            print("-" * 100)
+            print(glm_doc.display_markdown[:args.chars])
+        print()
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1247,7 +1639,20 @@ def main() -> int:
                         help="scan image or directory of scans to open")
     parser.add_argument("--ocr-dir", action="append", default=[], metavar="DIR",
                         help="folder holding the OCR JSON sidecars (repeatable)")
+    parser.add_argument("--glm-dir", action="append", default=[], metavar="DIR",
+                        help="folder holding GLM markdown/JSON outputs (repeatable)")
+    parser.add_argument("--compare", action="store_true",
+                        help="print PP and GLM text for the scan(s) and exit (no GUI)")
+    parser.add_argument("--limit", type=int, default=3,
+                        help="scans to print with --compare (default 3)")
+    parser.add_argument("--chars", type=int, default=2000,
+                        help="characters per result with --compare (default 2000)")
     args = parser.parse_args()
+
+    if args.compare:
+        if not args.path:
+            parser.error("--compare needs a scan image or a directory of scans")
+        return compare_mode(args)
 
     app = QApplication(sys.argv)
     app.setApplicationName("Scan + OCR Reader")
@@ -1259,7 +1664,8 @@ def main() -> int:
         QSplitter::handle { background: #000000; }
     """)
     window = MainWindow(Path(args.path) if args.path else None,
-                         [Path(d) for d in args.ocr_dir])
+                         [Path(d) for d in args.ocr_dir],
+                         [Path(d) for d in args.glm_dir])
     window.show()
     return app.exec()
 

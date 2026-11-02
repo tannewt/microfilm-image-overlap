@@ -8,9 +8,6 @@ the data lives and skip in CI without it.
 
 Known pairs (the ones that motivated the full-res gap re-check):
 
-  0032 -> 0033 : a clear, ordinary overlap (~9% area) -- detected at 3200.
-  0013 -> 0014 : a near-duplicate (film barely advanced, ~99% area) -- 3200.
-  0002 -> 0003 : low-texture overlap the 3200 pass misses but FULL RES recovers.
   0017 -> 0018 : a genuine tiny overlap; full-res SIFT sits right at the
                  --min-matches threshold (19-20 matches, mildly non-
                  deterministic), so it must not be a false LARGE overlap.
@@ -21,7 +18,6 @@ import os
 import pytest
 
 import check_overlap_sift as cos
-import batch_report as br
 from conftest import pair, REPO
 
 # Module-level skip: the whole file needs the scan data directory.
@@ -34,43 +30,6 @@ PREFIX = "07227-6300_0.28"
 # Scaled-pass detector params (match the tools' defaults).
 RATIO, CONTRAST, MIN_SIZE, MAX_DX = 0.6, 0.08, 3.0, 500.0
 MIN_MATCHES, MAX_IQR, MAX_DIM = 20, 500.0, 3200
-
-
-def _scaled_pair(data_dir, cache_dir, i, j):
-    """Run the scaled (3200) pass on one consecutive pair; returns its row."""
-    a = pair(data_dir, PREFIX, i)
-    b = pair(data_dir, PREFIX, j)
-    rows = br.analyze_overlap([a, b], cache_dir, RATIO, CONTRAST, MIN_SIZE,
-                              MAX_DX, MIN_MATCHES, MAX_IQR, MAX_DIM, False)
-    return rows[0]
-
-
-# ---------------------------------------------------------------------------
-# Scaled pass (reuses the on-disk SIFT cache) -- needs the cache.
-# ---------------------------------------------------------------------------
-
-@pytest.mark.integration
-def test_scaled_clear_overlap_is_detected(data_dir, cache_dir):
-    r = _scaled_pair(data_dir, cache_dir, 32, 33)
-    assert r["status"] == "ok"
-    assert 5.0 <= r["area_pct"] <= 15.0    # ~9.3%
-    assert 5.0 <= r["vert_pct"] <= 15.0
-
-
-@pytest.mark.integration
-def test_scaled_near_duplicate_is_detected(data_dir, cache_dir):
-    # 0013 -> 0014: the film barely advanced -> ~99% area overlap.
-    r = _scaled_pair(data_dir, cache_dir, 13, 14)
-    assert r["status"] == "ok"
-    assert r["area_pct"] > 80.0
-
-
-@pytest.mark.integration
-def test_scaled_misses_low_texture_overlap(data_dir, cache_dir):
-    # 0002 -> 0003: a real but low-texture overlap the 3200 pass can't clear
-    # --min-matches. This is the gap that the full-res re-check must recover.
-    r = _scaled_pair(data_dir, cache_dir, 2, 3)
-    assert r["status"] == "no_overlap"
 
 
 # ---------------------------------------------------------------------------

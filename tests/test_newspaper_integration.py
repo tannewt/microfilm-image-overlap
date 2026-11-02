@@ -18,7 +18,6 @@ import cv2
 import numpy as np
 import pytest
 
-import batch_report as br
 import check_overlap_sift as cos
 from conftest import REPO
 
@@ -118,6 +117,37 @@ NEWS_PREFIX_07278 = "07278-6300_0.2720"
 DATA_07278 = os.path.join(REPO, "20260826-newspaper-scans", "P81-4722")
 
 
+def _scaled_pair(path_a, path_b, cache_dir):
+    """The scaled (max_dim 3200) pass over one consecutive pair: SIFT
+    cluster first, the pixel-NCC fallback for the misses -- the same
+    verdict the planning's scaled stage reports."""
+    kp_a, des_a, ha = cos.get_or_compute_keypoints(
+        path_a, cache_dir, 0.6, 3.0, max_dim=3200)
+    kp_b, des_b, hb = cos.get_or_compute_keypoints(
+        path_b, cache_dir, 0.6, 3.0, max_dim=3200)
+    good = cos.match_keypoints(des_a, des_b, 0.6)
+    good = cos.filter_matches(kp_a, kp_b, good, max_dx=500.0)
+    is_real, n_good, dx, dy, iqr, _ = cos.assess_overlap(
+        kp_a, kp_b, good, min_matches=20, max_iqr=500.0)
+    via_ncc = False
+    if not is_real:
+        gra = cos.downscale_gray(cos.cv2.imread(path_a,
+                                                cos.cv2.IMREAD_GRAYSCALE), 3200)
+        grb = cos.downscale_gray(cos.cv2.imread(path_b,
+                                                cos.cv2.IMREAD_GRAYSCALE), 3200)
+        ncc_real, ncc_dy, ncc_dx, ncc_val, ncc_L = cos.pixel_ncc_overlap(gra, grb)
+        if ncc_real:
+            is_real, dx, dy, n_good, via_ncc = True, ncc_dy, ncc_dx, ncc_L, True
+    if not is_real:
+        return dict(status="no_overlap", area_pct=0.0, via_ncc=False,
+                    matches=n_good)
+    import check_overlap_sift as _c  # noqa: F401 (already imported as cos)
+    T = np.array([[1.0, 0.0, dx], [0.0, 1.0, dy], [0.0, 0.0, 1.0]])
+    m = cos.compute_overlap(T, ha[0], ha[1], hb[0], hb[1])
+    return dict(status="ok", area_pct=m["overlap_area_pct"], via_ncc=via_ncc,
+                matches=n_good)
+
+
 @pytest.mark.integration
 def test_scaled_07278_0068_0069_is_small_overlap_not_near_dup(cache_dir):
     # 07278-6300_0.2720_0068 -> 0069 is a real ~12.7% overlap the pixel-NCC
@@ -131,8 +161,7 @@ def test_scaled_07278_0068_0069_is_small_overlap_not_near_dup(cache_dir):
         pytest.skip(f"07278 newspaper scan data not present: {DATA_07278}")
     a = os.path.join(DATA_07278, f"{NEWS_PREFIX_07278}_0068.tif")
     b = os.path.join(DATA_07278, f"{NEWS_PREFIX_07278}_0069.tif")
-    r = br.analyze_overlap([a, b], cache_dir, 0.6, 0.08, 3.0, 500.0,
-                           20, 500.0, 3200, False)[0]
+    r = _scaled_pair(a, b, cache_dir)
     assert r["status"] == "ok"
     assert r["via_ncc"] is True
     # Real but SMALL overlap (~12.7%), never a near-duplicate (>50% area).

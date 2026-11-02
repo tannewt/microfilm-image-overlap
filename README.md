@@ -317,6 +317,8 @@ detection failure.
 | `batch_report.py` | one-page per-batch summary: image count, no-overlap pairs, capture rate, 600-dpi overlap + unique-line coverage, unreadable-image flags |
 | `extract_anomalies.py` | summarize a run's no-overlap & near-duplicate pairs |
 | `plan_pages.py` | plan one page per microfilm page: per-page TOML ([auto] contributors + offsets) |
+| `plan_pages_ocr.py` | one-page planning whose pair overlaps come from OCR text instead of SIFT (writes the same TOML plan) |
+| `scan_ocr_reader.py` | scan + OCR side-by-side QA viewer (shows the OCR results `plan_pages_ocr.py` uses) |
 | `compose_pages.py` | composite the plans into page images (honors [manual] overrides; accepts flat scans) |
 | `compare_pages.py` | QC the plans: flag duplicate neighboring pages and pairs whose edges share SIFT points |
 | `visualize_overlap.py`, `check_overlap.py` | older overlap helpers |
@@ -673,6 +675,103 @@ The written plans record `axis = "x"` in `[page]`: their `film` ranges and
 `film_offset + c`), while `bbox`/`size` stay in the scans' on-disk
 orientation. `compose_pages.py` reads `axis` and composites identically,
 returning each page in the scans' reading orientation.
+
+### Page planning one page at a time (`page_from_scan`, `--start`)
+
+Page planning no longer needs a start-to-end layout pass. `plan_pages.py`
+plans each page with one walk: starting at a given scan, it takes that
+scan's black/blank boundary bars, and looks at subsequent scans -- laying
+each visited scan into film coordinates from the measured pair dy as it
+goes -- until another bar beyond the start bar is found. That two-bar span
+is the page. The walk stops at a broken pair or the batch edge, where the
+page ends at the visited scans' content extent (the run-edge partial page,
+the same one the batch-wide pass would emit). Every boundary bar is seeded
+(this time in both film directions) and the copies that several overlapping
+frames hold of the same bar are merged, with the page attributed to a single
+scan when one frame holds both of its boundary bars.
+
+That makes page planning parallel in two ways:
+
+* A whole-batch run (`plan_pages.py`) computes every pair overlap on a
+  thread pool, then plans every page on another one -- the walks are
+  read-only over the layout, so the result is identical to a serial run:
+
+      python plan_pages.py scans2/P81-4720/ --pattern '^07227-' \
+          --cache-dir sift_cache --output-dir plans/07227 --workers 8
+
+  (`--workers 1` = serial.)
+
+* Or plan (and write) exactly one page, seeded at ANY scan: the invocation
+  materializes only what it needs (the scans the walk visits, the pairs it
+  crosses), so seeding different scans runs as independent parallel jobs
+  with no shared layout pass:
+
+      python plan_pages.py scans2/P81-4720/ --pattern '^07227-' \
+          --start 45 --direction forward --output-dir plans/one
+
+  `--direction backward` walks the preceding scans instead. The written
+  plan is the same `[auto]` format the batch-wide run produces.
+
+The core entry point is `page_from_scan(ctx, k, direction=1,
+seed_bar=None, ...)` in `plan_pages.py`: seed a walk at scan `k` over a
+`BatchPageCtx` (an already-analyzed batch -- offsets and pairs exist, the
+walk loads nothing) or a `LazyPageCtx` (everything computed on demand),
+along `direction` (+1 subsequent scans, -1 preceding scans), and it returns
+the page's film range, contributing scans, and whether a single scan owns
+it. `plan_one_page(...)` wraps the lazy flow and writes the plan.
+
+### OCR-based planning (`plan_pages_ocr.py`)
+
+`plan_pages_ocr.py` is the same planner with the SIFT pair-overlap step
+replaced by **OCR registration**: each scan and its neighbours are aligned
+from the text they share. The same newspaper words/lines sit at a constant
+`(dy, dx)` across two overlapping frames, so histogramming the word-to-word
+offsets between the pair peaks at the real film shift. That needs no SIFT
+cache and no image matching; black bars / blank junctions are still
+detected in the scans (that half is cheap), so the layout, page walks,
+gap-joints and missing-page placeholders are the original planner's and the
+written TOML is the same `[page]` / `[auto]` / `[manual]` format.
+
+Plan a whole batch, in parallel over `--workers` threads:
+
+      python plan_pages_ocr.py \
+          20261007-newspaper-scans/P71-1922-CENLIB9113 \
+          --reverse --workers 8 --output-dir plans/ocr
+
+`workers` splits the consecutive-pair range into even sections and matches
+them on a thread pool (each worker walks its section in sequence), then
+plans the pages (one walk per boundary bar) over the same pool -- the result
+is identical to a serial run. `--only` restricts the batch to a scan subset
+(`plan_pages.py` syntax).
+
+Plan exactly one page seeded at any scan:
+
+      python plan_pages_ocr.py \
+          20261007-newspaper-scans/P71-1922-CENLIB9113 \
+          --scan 5 --reverse --output-dir plans/ocr
+
+`--scan` takes the same trailing sequence number (or exact filename) as
+`--start`; `--direction backward` walks the preceding scans. The OCR
+sidecars are found the way `scan_ocr_reader.py` finds them (next to the
+scans, a sibling `ocr_results`, or a sibling `ocr-studio` checkout's run
+directories); `--ocr-dir DIR` forces a root and may be repeated.
+
+The pair registration (`ocr_pair_match`) filters repeated words, applies
+the same film-advance sign gate as the SIFT detector, and -- knowing the
+scan height -- accepts only a cluster the size of a page advance, so a
+blank/ad-only overlap cannot fold the neighbours onto the wrong film rows
+and shred a page. When the text offers no such cluster but the two frames
+share a **black boundary bar** (the same bar captured twice, matched by
+thickness), `bar_pair_offset` derives the shift from the bar directly and
+uses it instead of the weak text alignment. A pair with neither reads as
+broken, so the layout breaks a run there, just as an unlinked SIFT pair
+would. `plan_batch_ocr` reuses `plan_pages.run` through a new optional
+`pair_fn` hook; `analyze_batch` gained a matching `orient` override so the
+OCR-detected horizontal direction is used instead of SIFT.
+
+The default batch pattern keeps files with a 4-digit trailing sequence
+index, so stray directory files (`start.tif`, `test.tif`, `test2.tif`) do
+not enter the layout as unnamed scans.
 
 ### Two-bar pairs and the bar-constrained NCC fallback
 

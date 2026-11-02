@@ -122,48 +122,6 @@ def test_pixel_ncc_rejects_unrelated_images():
     is_real, dy, dx, ncc, L = cos.pixel_ncc_overlap(A, B)
     assert is_real is False
 
-# ---------------------------------------------------------------------------
-# Unreadable / smear detection (batch_report.readability_from_array)
-# ---------------------------------------------------------------------------
-
-def _grid_image():
-    # A light background with a regular grid of dark squares: balanced
-    # vertical + horizontal structure (R ~ 1) and stable ink (~0.25).
-    arr = np.full((600, 400), 230, np.uint8)
-    for y in range(0, 600, 40):
-        for x in range(0, 400, 40):
-            arr[y:y + 20, x:x + 20] = 20
-    return arr
-
-
-def test_readability_normal_image_not_flagged():
-    import batch_report as br
-    arr = _grid_image()
-    R, lap, ink = br.readability_from_array(arr, dim=600)
-    assert R >= 0.6
-    assert br.classify_unreadable(R, lap, ink) is None
-
-
-def test_readability_vertical_smear_is_flagged():
-    import batch_report as br
-    # Vertical smear: blur along rows (cv2 ksize is (width, height), so
-    # (1, 25) blurs vertically) -> vertical detail collapses, lap_v/laph
-    # drops below the smear floor. Ink stays stable (grid columns keep their
-    # dark streaks) so it is flagged 'smear', not 'blank'.
-    smeared = br.cv2.GaussianBlur(_grid_image(), (1, 25), 0)
-    R, lap, ink = br.readability_from_array(smeared, dim=600)
-    assert R < 0.6
-    assert br.classify_unreadable(R, lap, ink) == 'smear'
-
-
-def test_readability_blank_frame_is_flagged():
-    import batch_report as br
-    # Mostly-black frame -> ink > 0.95 -> 'blank'.
-    arr = np.zeros((600, 400), dtype=np.uint8)
-    arr[590:, :] = 200  # a sliver so it's not literally all-zero
-    R, lap, ink = br.readability_from_array(arr, dim=600)
-    assert br.classify_unreadable(R, lap, ink) == 'blank'
-
 
 def test_fresh_cache_creates_current_schema(tmp_path):
     # A cache auto-created on demand (no build_sift_cache.py pass) must

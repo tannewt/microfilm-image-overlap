@@ -72,9 +72,16 @@ import argparse
 import json
 import os
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import cv2
 import numpy as np
+
+# Guards the bounded in-memory SIFT caches in compute_pair_overlap when the
+# pair loop runs on a thread pool (analyze_batch, --workers): the read side
+# is GIL-safe, the insert+evict block must not race with itself.
+_CACHE_LOCK = threading.Lock()
 
 from sequence_overlap import list_scans
 from check_overlap_sift import (
@@ -899,11 +906,12 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
             if orient is not None:
                 kp = _transpose_keypoints(kp, shape, orient)
                 shape = (shape[1], shape[0])
-            cache[path] = (kp, des, shape)
-            # Bounded (FIFO) eviction: an unbounded dict of full-batch
-            # keypoints OOMs an 800-scan batch (downscaled ~10 MB/image).
-            while len(cache) > 48:
-                cache.pop(next(iter(cache)))
+            with _CACHE_LOCK:
+                cache[path] = (kp, des, shape)
+                # Bounded (FIFO) eviction: an unbounded dict of full-batch
+                # keypoints OOMs an 800-scan batch (downscaled ~10 MB/image).
+                while len(cache) > 48:
+                    cache.pop(next(iter(cache)))
         return cache[path]
 
     def get_full_kd(path):
@@ -927,13 +935,14 @@ def compute_pair_overlap(path_a, max_y_a, path_b, min_y_b, cache, cache_dir,
             if orient is not None:
                 kp = _transpose_keypoints(kp, shape, orient)
                 shape = (shape[1], shape[0])
-            full_cache[path] = (kp, des, shape)
-            # Full-res SIFT is ~50-90 MB/image; keeping the whole batch in
-            # RAM is tens of GB (OOMs other jobs, fills swap). The rows
-            # already persist in the images_fullres SQLite table, so a
-            # bounded window is enough for the neighbor pairs to reuse.
-            while len(full_cache) > 32:
-                full_cache.pop(next(iter(full_cache)))
+            with _CACHE_LOCK:
+                full_cache[path] = (kp, des, shape)
+                # Full-res SIFT is ~50-90 MB/image; keeping the whole batch in
+                # RAM is tens of GB (OOMs other jobs, fills swap). The rows
+                # already persist in the images_fullres SQLite table, so a
+                # bounded window is enough for the neighbor pairs to reuse.
+                while len(full_cache) > 32:
+                    full_cache.pop(next(iter(full_cache)))
         return full_cache[path]
 
     kp_a, des_a, sa = get_kd(path_a)
@@ -2105,12 +2114,571 @@ def _furniture_reanchor(valid, run_start, k, S_seed, cadence, bar_gap_tol):
     return b.bars[0][0] - a.bars[-1][0] - cycle
 
 
+# --------------------------------------------------------------------------- #
+# Per-page walking: one page at a time, from any starting scan
+# --------------------------------------------------------------------------- #
+
+class BatchPageCtx:
+    """A page-walk context over an ALREADY-ANALYZED batch (the output of
+    `analyze_batch`): every scan's metadata, film offset and pair result
+    exists, and a walk reads them without touching the images again.
+
+    `page_from_scan` runs one walk per boundary bar, so page planning
+    parallelizes trivially: each walk is an independent read-only job over
+    this context (build_layout runs them on a thread pool)."""
+
+    lazy = False
+
+    def __init__(self, valid, S_seed, pair_results, valid_idx, gap_after,
+                 bar_gap_tol=200.0, min_page_height=1000.0):
+        self.valid = valid
+        self.S_seed = S_seed
+        self.pair_results = pair_results
+        self.valid_idx = valid_idx
+        self.gap_after = gap_after
+        self.bar_gap_tol = bar_gap_tol
+        self.min_page_height = min_page_height
+
+    @property
+    def n(self):
+        return len(self.valid)
+
+    def scan(self, i):
+        return self.valid[i]
+
+    def offset(self, i):
+        return self.S_seed[i]
+
+    def set_offset(self, i, v):
+        pass                        # read-only: offsets are precomputed
+
+    def pair_dy(self, i):
+        """(ok, dy) for the pair (scan i, scan i+1).
+
+        `dy` is B - A: film coordinates advance S[i+1] = S[i] - dy. A pair
+        that failed to link -- including one whose raw batch neighbors carry
+        a load gap (valid_idx[i] in gap_after) -- reads as broken: the walk
+        stops there.
+        """
+        res = self.pair_results[i]
+        ok = bool(res["ok"]) and (self.valid_idx[i] not in self.gap_after)
+        return ok, float(res["full_dy"])
+
+    def film_dir(self, k):
+        """The sign of the film advance across scan k: +1 when later scans
+        sit at HIGHER film coordinates (--reverse batches, dy < 0), -1 for
+        the normal dy > 0 batches, or None when the neighbors' offsets
+        agree (or the pair data is unusable)."""
+        for j, sign_from in ((k + 1, 1), (k - 1, -1)):
+            if 0 <= j < self.n and self.S_seed[j] != self.S_seed[k]:
+                # j = k+1 reads the advance k -> j directly; j = k-1 reads
+                # the same advance backwards (k-1 -> k), so the sign flips.
+                s = self.S_seed[j] - self.S_seed[k]
+                return (1.0 if s > 0 else -1.0) * (1.0 if sign_from > 0
+                                                   else -1.0)
+        return None
+
+
+class LazyPageCtx:
+    """A page-walk context that MATERIALIZES what it needs on demand: scan
+    metadata (bars) and pair overlaps (SIFT, through the shared cache) are
+    computed only for the scans the walk actually visits.
+
+    Planning one page costs ~2 pair overlaps instead of the batch's n - 1,
+    so pages can be planned independently (in parallel, each seeded at a
+    different scan / direction) without any start-to-end layout pass."""
+
+    lazy = True
+
+    def __init__(self, scans_paths, *, orient=None, reverse=False,
+                 bar_gap_tol=200.0, min_page_height=1000.0, cache_dir=None,
+                 params=None, trim_border=True):
+        self.paths = list(scans_paths)
+        self.orient = orient
+        self.reverse = reverse
+        self.bar_gap_tol = bar_gap_tol
+        self.min_page_height = min_page_height
+        self.cache_dir = cache_dir
+        self.trim_border = trim_border
+        self.shapes = {}          # path -> (h, w) in working orientation
+        self.params = dict(params) if params else dict(
+            ratio=0.6, contrast=0.08, min_size=3.0, max_dx=500.0,
+            min_matches=20, max_iqr=500.0, max_dim=3200, force_cache=False,
+            n_features=0)
+        self.params["shapes"] = self.shapes
+        self._scans = {}
+        self._pairs = {}
+        self.offsets = {}
+        self._kp = {}
+        self._kp_full = {}
+
+    @property
+    def n(self):
+        return len(self.paths)
+
+    def scan(self, i):
+        """Load scan i's metadata lazily (a failed load yields None)."""
+        if i in self._scans:
+            return self._scans[i]
+        img = cv2.imread(self.paths[i], cv2.IMREAD_GRAYSCALE)
+        meta = None
+        if img is not None:
+            if self.orient is not None:
+                img = _transpose_frame(img, self.orient)
+            h, w = img.shape
+            self.shapes[self.paths[i]] = (h, w)
+            bbox = (content_bbox(img) if self.trim_border
+                    else (0, h - 1, 0, w - 1))
+            black = detect_bars(img)
+            white = detect_white_gaps(img, bbox) if self.trim_border else []
+            low = low_content_bands(img, bbox)
+            meta = ScanMeta(self.paths[i], os.path.basename(self.paths[i]),
+                            h, w, sorted(black + white), bbox,
+                            black=black, white=white, low_content=low)
+            del img
+        self._scans[i] = meta
+        return meta
+
+    def offset(self, i):
+        return self.offsets.get(i)
+
+    def set_offset(self, i, v):
+        self.offsets[i] = float(v)
+
+    def ensure_offset(self, i):
+        """Film offset of scan i, derived along the pair chain from the
+        nearest anchored scan; None when a broken pair blocks the way."""
+        if i in self.offsets:
+            return self.offsets[i]
+        anchored = sorted(self.offsets)
+        if not anchored:
+            return None
+        seed = min(anchored, key=lambda a: abs(a - i))
+        for m in range(seed, i):            # forward: S[m+1] = S[m] - dy(m)
+            ok, dy = self.pair_dy(m)
+            if not ok:
+                return None
+            self.set_offset(m + 1, self.offset(m) - dy)
+            sm_a, sm_b = self.scan(m), self.scan(m + 1)
+            if sm_a is not None and sm_b is not None:
+                sm_b.dx_cum = sm_a.dx_cum - float(self.pair(m)["full_dx"])
+        for m in range(seed, i, -1):        # backward: S[m-1] = S[m] + dy(m-1)
+            ok, dy = self.pair_dy(m - 1)
+            if not ok:
+                return None
+            self.set_offset(m - 1, self.offset(m) + dy)
+            sm_a, sm_b = self.scan(m - 1), self.scan(m)
+            if sm_a is not None and sm_b is not None:
+                sm_a.dx_cum = sm_b.dx_cum + float(self.pair(m - 1)["full_dx"])
+        return self.offsets.get(i)
+
+    def pair(self, i):
+        """Pair result for (scan i, scan i+1), computed on demand."""
+        if i in self._pairs:
+            return self._pairs[i]
+        a, b = self.scan(i), self.scan(i + 1)
+        status = None
+        if a is None or b is None:
+            status = "load_failed"
+        else:
+            ma, mb = _scan_seq(a.name), _scan_seq(b.name)
+            if ma is not None and mb is not None and mb - ma > 1:
+                # A missing capture means pages may be gone with it: never
+                # stitch across a sequence gap (see analyze_batch).
+                status = "missing_frame"
+        if status is not None:
+            res = dict(ok=False, full_dx=0.0, full_dy=0.0, matches=0,
+                       via_ncc=False, via_band=False, status=status)
+            self._pairs[i] = res
+            return res
+        if self.reverse:
+            max_y_a = a.bars[-1][1] if a.bars else None
+            min_y_b = b.bars[0][0] if b.bars else None
+        else:
+            max_y_a = a.bars[-1][0] if a.bars else None
+            min_y_b = b.bars[0][1] if b.bars else None
+        res = compute_pair_overlap(a.path, max_y_a, b.path, min_y_b,
+                                   self._kp, self.cache_dir, self.params,
+                                   full_cache=self._kp_full,
+                                   bars_a=a.bars, bars_b=b.bars,
+                                   orient=self.orient, reverse=self.reverse)
+        res["__h_a"] = a.h
+        self._pairs[i] = res
+        return res
+
+    def pair_dy(self, i):
+        res = self.pair(i)
+        return bool(res["ok"]), float(res["full_dy"])
+
+    def film_dir(self, k):
+        """Sign of the film advance across scan k (+1: later scans sit at
+        higher film coordinates -- --reverse), derived from any adjacent
+        usable pair; S[k+1] - S[k] = -dy."""
+        for i in (k, k - 1):
+            if 0 <= i < self.n - 1:
+                res = self.pair(i)
+                if res["ok"] and res["full_dy"]:
+                    return 1.0 if res["full_dy"] < 0 else -1.0
+        return None
+
+
+class _CtxScansView:
+    """read `valid[i]` out of a page-walk context (for helpers that take a
+    valid[] list: scan_range, page_contribs, extend_contribs)."""
+
+    def __init__(self, ctx):
+        self.ctx = ctx
+
+    def __len__(self):
+        return self.ctx.n
+
+    def __getitem__(self, i):
+        sm = self.ctx.scan(i)
+        if sm is not None:
+            return sm
+        return ScanMeta("", f"unloaded-scan-{i:04d}", 0, 0, [],
+                        (0, -1, 0, -1))
+
+
+class _CtxOffsetsView:
+    """Read (deriving on demand) `S_seed[i]` out of a page-walk context."""
+
+    def __init__(self, ctx):
+        self.ctx = ctx
+
+    def __getitem__(self, i):
+        if not getattr(self.ctx, "lazy", False):
+            return self.ctx.offset(i)
+        v = self.ctx.ensure_offset(i)
+        if v is None:
+            raise KeyError(f"scan {i}: no film offset (a broken pair "
+                           f"blocks the chain from the walk's anchor)")
+        return v
+
+
+def _walk_reanchor(visited, ctx, cadence, bar_gap_tol):
+    """Re-anchor the walk's latest pair when its |dy| reads as a
+    page-furniture repeat (a lazily measured pair, where no run-wide pass
+    has reanchored it yet; see _furniture_reanchor): the bar grid anchored
+    SO FAR on the walk carries the cadence instead."""
+    if len(visited) < 2:
+        return None
+    steps = [ctx.offset(visited[i + 1]) - ctx.offset(visited[i])
+             for i in range(len(visited) - 1)]
+    if not steps or {np.sign(s) for s in steps} != {1.0}:
+        return None                     # only film-ascending chains reanchor
+    a, b = ctx.scan(visited[-2]), ctx.scan(visited[-1])
+    if a is None or b is None or not a.bars or not b.bars:
+        return None
+    its = []
+    for i in visited:
+        sm = ctx.scan(i)
+        si = ctx.offset(i)
+        if sm is None or si is None:
+            return None
+        for b0, b1 in sm.bars:
+            its.append((si + b0, si + b1))
+    merged = merge_intervals(its, bar_gap_tol)
+    spacings = [q[0] - p[0] for p, q in zip(merged, merged[1:]) if q[0] > p[0]]
+    cycle = (float(np.median(spacings)) if spacings else
+             (cadence if cadence > 0 else None))
+    if not cycle:
+        return None
+    return b.bars[0][0] - a.bars[-1][0] - cycle
+
+
+def _absorb_scans(ctx, j, direction, count, its, visited, bounds,
+                  need=None):
+    """Absorb up to `count` scans' bars BEYOND scan j in `direction` into
+    the walk's interval list `its` (extending `visited` and the content
+    extents): boundary bars show in every frame that covers them, so the
+    walk's boundary-merging must see the same film strips the batch-wide
+    bar merge would. Stops at a broken pair, the batch/bounds edge, an
+    unloadable scan (or, with `need`, a scan whose frame no longer
+    contains the film range `need`)."""
+    step = direction
+    last = j
+    for _ in range(max(0, count)):
+        jn = last + step
+        if not (0 <= jn < ctx.n):
+            break
+        if bounds is not None and not (bounds[0] <= jn <= bounds[1]):
+            break
+        ok, _dy = ctx.pair_dy(min(last, jn))
+        if not ok:
+            break
+        sm_b = ctx.scan(jn)
+        if sm_b is None:
+            break
+        sb = (ctx.ensure_offset(jn) if getattr(ctx, "lazy", False)
+              else ctx.offset(jn))
+        if sb is None:
+            break
+        its.extend((sb + b0, sb + b1) for b0, b1 in sm_b.bars)
+        visited.append(jn)
+        last = jn
+        if need is not None:
+            if max(need[0], sb + sm_b.bbox[0]) >= min(need[1],
+                                                      sb + sm_b.bbox[1]):
+                break                   # the frame can no longer contain it
+    return last
+
+
+def page_from_scan(ctx, k, direction=1, seed_bar=None, bounds=None,
+                   walk_set=None, max_scans=64, absorb=3):
+    """Plan ONE page: start at scan `k` (in ctx's batch index space), take a
+    boundary bar (black bar or blank junction) there, and walk SUBSEQUENT
+    scans (direction = +1) or PRECEDING scans (direction = -1), laying each
+    visited scan into film coordinates via the measured pair dy, until
+    ANOTHER bar beyond the start bar is found. The page is the content
+    strip between the two bars; the walk stops at the far bar (absorbing
+    its copies in adjacent frames), at a broken pair, or at the batch edge
+    -- where the page ends at the visited scans' content extent (a partial
+    page), exactly the run-edge page the batch-wide pass would emit.
+
+    `seed_bar` selects the start bar explicitly ((r0, r1) in the starting
+    scan's rows, black bar or blank junction alike). The default takes the
+    starting scan's OWN page: the bar at its film-extreme end in the
+    anti-walk direction (bars[-1] when the walk climbs in film
+    coordinates -- --reverse batches -- bars[0] when it descends), so the
+    page extends from that bar INTO the walk direction, reaching into the
+    visited scans until the next bar closes it.
+
+    Returns (lo, hi, contrib, owner): the page's film range, the indexes of
+    the scans contributing rows/cols to it (over `walk_set`, which defaults
+    to the visited scans -- pass a run's full range to match the batch-wide
+    pass's attribution), and whether the page was attributed to a single
+    scan holding both of its boundary bars. Returns None when the seed
+    yields no page (a barless single scan is its own whole-frame page and
+    never seeds one; a strip shorter than ctx.min_page_height is a bar
+    splitting misdetection, not a page).
+    """
+    direction = 1 if direction >= 0 else -1
+    sm0 = ctx.scan(k)
+    if sm0 is None:
+        return None
+    film_sign = ctx.film_dir(k)
+    if film_sign is None:
+        film_sign = 1.0          # an unmeasurable batch reads as --reverse
+    ascends = (film_sign * direction) > 0    # does the walk climb film coords
+
+    s0 = ctx.offset(k)
+    if s0 is None:
+        s0 = 0.0
+        ctx.set_offset(k, s0)
+        if ctx.lazy:
+            sm0.dx_cum = 0.0
+    if seed_bar is None:
+        if not sm0.bars:
+            edge = sm0.bbox[0] if ascends else sm0.bbox[1]
+            seed_bar = (float(edge), float(edge))
+        else:
+            seed_bar = sm0.bars[-1] if ascends else sm0.bars[0]
+    n_lo, n_hi = s0 + seed_bar[0], s0 + seed_bar[1]
+
+    # The seed scan's own bars come in at once (its other bars can close
+    # the page without any step), plus a zero-height pseudo-bar for a
+    # barless seed (the content edge bounds the page instead).
+    if sm0.bars:
+        its = [(s0 + b0, s0 + b1) for b0, b1 in sm0.bars]
+    else:
+        its = [(n_lo, n_hi)]
+    visited = [k]
+    extent_lo, extent_hi = s0 + sm0.bbox[0], s0 + sm0.bbox[1]
+
+    # The near boundary's film-extreme copy may sit in the frames BEHIND
+    # the walk (a descending walk's copies sit HIGHER in film coordinates):
+    # absorb them so the near boundary matches the batch-wide bar merge.
+    j0 = _absorb_scans(ctx, k, -direction, absorb, its, visited, bounds)
+    for vi in visited:
+        smv = ctx.scan(vi)
+        if smv is None:
+            continue
+        sv = ctx.offset(vi)
+        if sv is None:
+            continue
+        extent_lo = min(extent_lo, sv + smv.bbox[0])
+        extent_hi = max(extent_hi, sv + smv.bbox[1])
+
+    j = k
+    adv = []
+    far = None
+    for _ in range(max_scans):
+        merged = merge_intervals(its, ctx.bar_gap_tol)
+        near = next((m for m in merged if m[0] <= n_lo and m[1] >= n_hi),
+                    None)
+        if near is None:
+            return None
+        # The first bar beyond the near boundary -- in the direction the
+        # walk travels (along film coordinates). Whatever is between the
+        # two is this page's content.
+        if ascends:
+            beyond = [m for m in merged if m[0] > near[1]]
+            if beyond:
+                far = min(beyond, key=lambda m: m[0])
+                break
+        else:
+            beyond = [m for m in merged if m[1] < near[0]]
+            if beyond:
+                far = max(beyond, key=lambda m: m[1])
+                break
+        jn = j + direction
+        if not (0 <= jn < ctx.n):
+            break
+        if bounds is not None and not (bounds[0] <= jn <= bounds[1]):
+            break
+        ok, dy = ctx.pair_dy(min(j, jn))
+        if not ok:
+            break
+        if (getattr(ctx, "lazy", False) and direction > 0):
+            cadence = float(np.median(adv)) if len(adv) >= 2 else None
+            if cadence and 0 < abs(dy) < REPEAT_FRAC * cadence:
+                anchored = _walk_reanchor(visited, ctx, cadence,
+                                          ctx.bar_gap_tol)
+                if anchored is not None and np.sign(anchored) == np.sign(dy):
+                    dy = anchored
+        adv.append(abs(dy))
+        if ctx.offset(jn) is None:
+            ctx.set_offset(jn, (ctx.offset(j) - dy if direction > 0
+                                else ctx.offset(j) + dy))
+            if ctx.lazy:
+                sm_j, sm_jn = ctx.scan(j), ctx.scan(jn)
+                if sm_j is not None and sm_jn is not None:
+                    sm_jn.dx_cum = sm_j.dx_cum - float(
+                        ctx.pair(min(j, jn))["full_dx"])
+        sm_jn = ctx.scan(jn)
+        if sm_jn is None:
+            break
+        sjn = ctx.offset(jn)
+        its.extend((sjn + b0, sjn + b1) for b0, b1 in sm_jn.bars)
+        extent_lo = min(extent_lo, sjn + sm_jn.bbox[0])
+        extent_hi = max(extent_hi, sjn + sm_jn.bbox[1])
+        j = jn
+        visited.append(j)
+
+    if far is not None:
+        # The far bar's copies keep merging in the adjacent frames past the
+        # one that first showed it (a descending walk's copies sit LOWER in
+        # film coordinates, so they extend the page's tail): keep stepping
+        # while a frame can still contain the bar.
+        _absorb_scans(ctx, j, direction, absorb, its, visited, bounds,
+                      need=far)
+        merged = merge_intervals(its, ctx.bar_gap_tol)
+        near = next((m for m in merged if m[0] <= n_lo and m[1] >= n_hi),
+                    near)
+        far = next((m for m in merged if m[0] <= far[0] and m[1] >= far[1]),
+                   far)
+        if ascends:
+            lo, hi = near[1], far[0]
+        else:
+            lo, hi = far[1], near[0]
+    else:
+        edge = extent_hi if ascends else extent_lo
+        lo, hi = (near[1], edge) if ascends else (edge, near[0])
+    if hi - lo < ctx.min_page_height:
+        return None
+
+    # A scan holding BOTH boundary bars contains the complete page on its
+    # own: attribute the page to that scan alone (bounds snapped to its own
+    # bar edges, which are the page edges as that frame actually captured
+    # them) -- the neighbors only re-cover part of the page, so stitching
+    # them in would add a seam for no new content.
+    wset = walk_set if walk_set is not None else visited
+    for k2 in wset:
+        sm2 = ctx.scan(k2)
+        if sm2 is None:
+            continue
+        s2 = ctx.offset(k2)
+        if s2 is None:
+            continue
+        for b1, b2 in zip(sm2.bars, sm2.bars[1:]):
+            p_lo, p_hi = s2 + b1[1], s2 + b2[0]
+            if p_lo <= lo + ctx.bar_gap_tol and p_hi >= hi - ctx.bar_gap_tol:
+                return (float(p_lo), float(p_hi), [k2], True)
+    contrib = []
+    for k2 in wset:
+        sm2 = ctx.scan(k2)
+        if sm2 is None:
+            continue
+        s2 = ctx.offset(k2)
+        if s2 is None:
+            continue
+        if max(lo, s2 + sm2.bbox[0]) < min(hi, s2 + sm2.bbox[1]):
+            contrib.append(k2)
+    return (float(lo), float(hi), contrib, False)
+
+
+def dedup_pages(cands, tol):
+    """Merge the same page walked once per seed: a boundary bar shows in
+    several overlapping frames, and each frame's copy seeds its own walk.
+
+    `cands` are (lo, hi, contrib, owner) tuples from page_from_scan. Pages
+    whose film bounds agree within `tol` are the same physical page: a
+    group keeps an owner-attributed member's bounds and single-scan
+    contribs when one exists (its own bars bound the page), otherwise the
+    union of the members' bounds (the batch-wide bar merge's spread) and
+    contribs. Returns the deduplicated (lo, hi, contrib, owner) tuples in
+    film order."""
+    cands = sorted(cands, key=lambda c: (c[0], c[1], not c[3]))
+    out = []
+    for lo, hi, contrib, owner in cands:
+        if (out and abs(lo - out[-1][0]) <= tol
+                and abs(hi - out[-1][1]) <= tol):
+            if owner:
+                out[-1] = (float(lo), float(hi), list(contrib), True)
+            elif not out[-1][3]:
+                u = sorted(set(out[-1][2]) | set(contrib))
+                out[-1] = (min(out[-1][0], lo), max(out[-1][1], hi),
+                           u, False)
+            continue
+        out.append((float(lo), float(hi), list(contrib), bool(owner)))
+    return out
+
+
+def extend_contribs_lazy(ctx, contrib, film, cap=8):
+    """`extend_contribs` for a lazily materialized walk (LazyPageCtx): the
+    same chain walk -- while the pair in is linked, scans whose frames still
+    cover the page's film range contribute -- but every pair it needs is
+    computed on demand, and the walk stops at the first non-covering scan
+    (bounded by `cap` extensions per side) so a single-page plan never
+    SIFTs the rest of the batch."""
+    lo, hi = film
+    if not contrib:
+        return
+    k = max(contrib)
+    added = 0
+    while k + 1 < ctx.n and added < cap and ctx.pair_dy(k)[0]:
+        k += 1
+        added += 1
+        sm = ctx.scan(k)
+        s = ctx.ensure_offset(k) if sm is not None else None
+        if sm is None or s is None:
+            break
+        if max(lo, s + sm.bbox[0]) >= min(hi, s + sm.bbox[1]):
+            break
+        contrib.append(k)
+    k = min(contrib)
+    added = 0
+    while k > 0 and added < cap and ctx.pair_dy(k - 1)[0]:
+        k -= 1
+        added += 1
+        sm = ctx.scan(k)
+        s = ctx.ensure_offset(k) if sm is not None else None
+        if sm is None or s is None:
+            break
+        if max(lo, s + sm.bbox[0]) >= min(hi, s + sm.bbox[1]):
+            break
+        contrib.insert(0, k)
+
+
 def build_layout(valid, pair_results, valid_idx, gap_after, nv,
-                 bar_gap_tol, min_page_height):
+                 bar_gap_tol, min_page_height, workers=1):
     """Film-coordinate layout from per-pair overlaps: split the sequence into
     independent runs (broken at no-overlap / load gaps), give each scan a
     vertical film offset `S_seed` and a cumulative horizontal offset `dx_cum`,
-    and find the pages (content strips between merged black bars).
+    and find the pages -- one walk per boundary bar (black or blank), from
+    any starting scan in either film direction, each stopping at the bar
+    beyond it (see `page_from_scan`, parallelized over `workers` threads).
 
     Pure data -- no image loading, no printing -- so it is reused by `run()`
     and by the visual tests.
@@ -2151,45 +2719,40 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv,
             if k < r1 and pair_results[k]["ok"]:
                 x -= pair_results[k]["full_dx"]
 
+    # Pages: one walk per boundary bar (see page_from_scan), in BOTH film
+    # directions -- each bar seeds the page beyond it either way, and each
+    # page is therefore walked once per frame holding either of its
+    # boundary bars. The walks are independent reads of the layout (no
+    # image loads), so they run on a small thread pool when `workers` > 1,
+    # and dedup_pages() merges the copies. A barless run yields nothing (a
+    # single barless scan is its own whole-frame page).
+    ctx = BatchPageCtx(valid, S_seed, pair_results, valid_idx, gap_after,
+                       bar_gap_tol, min_page_height)
     all_pages = []  # (film_lo, film_hi, [scan indices into valid], run_index)
     for ri, (r0, r1) in enumerate(runs):
         run_range = list(range(r0, r1 + 1))
-        bar_intervals, fmin, fmax = collect_bar_intervals(run_range, valid,
-                                                           S_seed)
-        if not bar_intervals or fmin == float("inf"):
+        seeds = [(k, b, d) for k in run_range for b in valid[k].bars
+                 for d in (1, -1)]
+        if not seeds:
             if r0 == r1:                    # a single barless scan -> one page
-                all_pages.append((fmin, fmax, [r0], ri))
+                sm = valid[r0]
+                all_pages.append((float(sm.bbox[0]), float(sm.bbox[1]),
+                                  [r0], ri))
             continue
-        merged = merge_intervals(bar_intervals, bar_gap_tol)
-        for (lo, hi) in find_pages(merged, fmin, fmax, min_page_height):
-            # A scan that holds BOTH bounding bars of a page contains the
-            # complete page on its own. Attribute the page to that scan alone
-            # (bounds snapped to its own bar edges, which are the page edges
-            # as that frame actually captured them): the neighbors only
-            # re-cover part of the page, so stitching them in would add a
-            # seam (and a dependence on the pair dy) for no new content.
-            owner = None
-            for k in run_range:
-                s = S_seed[k]
-                bars = valid[k].bars
-                for b1, b2 in zip(bars, bars[1:]):
-                    p_lo, p_hi = s + b1[1], s + b2[0]
-                    if p_lo <= lo + bar_gap_tol and p_hi >= hi - bar_gap_tol:
-                        owner = (k, p_lo, p_hi)
-                        break
-                if owner is not None:
-                    break
-            if owner is not None:
-                k, p_lo, p_hi = owner
-                all_pages.append((p_lo, p_hi, [k], ri))
-                continue
-            contrib = []
-            for k in run_range:
-                sm = valid[k]
-                top, bottom, _, _ = sm.bbox
-                s = S_seed[k]
-                if max(lo, s + top) < min(hi, s + bottom):
-                    contrib.append(k)
+
+        def walk_seed(job):
+            k, b, d = job
+            return page_from_scan(ctx, k, direction=d, seed_bar=b,
+                                  bounds=(r0, r1),
+                                  walk_set=run_range)
+
+        if workers and workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                results = list(pool.map(walk_seed, seeds))
+        else:
+            results = [walk_seed(job) for job in seeds]
+        for lo, hi, contrib, owner in dedup_pages(
+                [r for r in results if r is not None], bar_gap_tol):
             all_pages.append((lo, hi, contrib, ri))
     return runs, S_seed, all_pages
 
@@ -2695,13 +3258,21 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                   max_iqr=500.0, max_dim=3200, force_cache=False,
                   bar_gap_tol=200.0, min_page_height=1000.0,
                   trim_border=True, verbose=True, only=None,
-                  horizontal=False, reverse=False, n_features=0):
+                  horizontal=False, reverse=False, n_features=0,
+                  workers=1, pair_fn=None, orient=None):
     """Phases 1-3 of `run()` without writing anything: load per-scan metadata
     (black bars + frame border), compute the per-pair overlap (reusing the
     SIFT cache), and build the film-coordinate layout. `only` optionally
     restricts the batch to a subset (see `select_subset`). Returns a dict with
     `valid` (list[ScanMeta]), `pair_results`, `valid_idx`, `gap_after`, `nv`,
     `runs`, `S_seed`, `all_pages`. Used by `run()` and the tests.
+
+    `pair_fn`, when given, replaces the SIFT pair overlap: it is called as
+    `pair_fn(scan_a, scan_b)` (two `ScanMeta`) and must return the same
+    result dict `compute_pair_overlap` does (`ok`, `full_dx`, `full_dy`,
+    `status`). Used by `plan_pages_ocr.py` to register pairs from OCR text.
+    `orient` overrides the horizontal `detect_film_direction` probe (so an
+    OCR-based caller can pass the direction it measured).
 
     `horizontal=True` marks a batch whose film strip runs HORIZONTALLY
     through each frame (pages separated by vertical black bars; see the
@@ -2753,32 +3324,30 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
             print(f"SIFT cache: {cache_dir}")
         print(f"Scans found: {n}")
 
-    orient = None
     if horizontal:
-        orient = detect_film_direction(scans_paths, verbose=verbose)
+        if orient is None:
+            orient = detect_film_direction(scans_paths, verbose=verbose)
         if verbose:
             drift = "right" if orient == "T" else "left"
             print(f"Horizontal batch: content drifts {drift} frame-to-frame "
                   f"(new content enters at the "
                   f"{'left' if orient == 'T' else 'right'} edge); "
                   f"transposing scans so the film axis is the frame rows")
-    elif reverse and verbose:
-        print("Vertical batch with --reverse: content drifts UP "
-              "frame-to-frame (the pair overlaps are A's BOTTOM rows <-> "
-              "B's TOP rows, dy < 0); no scans are transformed -- only the "
-              "pair-detection strip bounds and dy signs flip.")
+    else:
+        orient = None
+        if reverse and verbose:
+            print("Vertical batch with --reverse: content drifts UP "
+                  "frame-to-frame (the pair overlaps are A's BOTTOM rows <-> "
+                  "B's TOP rows, dy < 0); no scans are transformed -- only the "
+                  "pair-detection strip bounds and dy signs flip.")
 
     if verbose:
         print("\n[1/3] Detecting black bars and frame borders in each scan...")
 
-    scans = []
-    for p in scans_paths:
+    def load_meta(p):
         img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
         if img is None:
-            if verbose:
-                print(f"  WARNING: failed to load {p}; skipping")
-            scans.append(None)
-            continue
+            return None
         if horizontal:
             img = _transpose_frame(img, orient)
         h, w = img.shape
@@ -2795,12 +3364,35 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         white = (detect_white_gaps(img, bbox) if trim_border else [])
         bars = sorted(black + white)
         low = low_content_bands(img, bbox)
-        scans.append(ScanMeta(p, os.path.basename(p), h, w, bars,
-                              bbox, black=black, white=white,
-                              low_content=low))
-        # print(scans[-1])
-        if verbose and len(scans) % 10 == 0:
-            print(f"  ...{len(scans)}/{n}")
+        return ScanMeta(p, os.path.basename(p), h, w, bars,
+                        bbox, black=black, white=white,
+                        low_content=low)
+
+    # Each scan's bars / border are an independent job. imread and the
+    # NumPy detectors release the GIL, so a thread pool loads a batch in
+    # parallel (the image is dropped as soon as the job returns, so peak
+    # memory is ~`workers` full-res frames). Results are stored by index,
+    # so the scan order -- and everything downstream -- is unchanged.
+    scans = [None] * n
+    if workers and workers > 1 and n > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(load_meta, p): i
+                       for i, p in enumerate(scans_paths)}
+            done = 0
+            for fut in as_completed(futures):
+                scans[futures[fut]] = fut.result()
+                done += 1
+                if verbose and done % 10 == 0:
+                    print(f"  ...{done}/{n}")
+    else:
+        for i, p in enumerate(scans_paths):
+            scans[i] = load_meta(p)
+            if verbose and (i + 1) % 10 == 0:
+                print(f"  ...{i + 1}/{n}")
+    if verbose:
+        for p, sm in zip(scans_paths, scans):
+            if sm is None:
+                print(f"  WARNING: failed to load {p}; skipping")
 
     valid_idx = [i for i, s in enumerate(scans) if s is not None]
     if not valid_idx:
@@ -2821,7 +3413,10 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                   n_features=n_features)
     pair_results = []
     missing_seqs = []    # sequence numbers absent from the directory
-    for k in range(nv - 1):
+
+    def pair_job(k):
+        lines = []
+        missing = []
         a, b = valid[k], valid[k + 1]
 
         # A missing capture between two surviving scans means pages may be
@@ -2833,33 +3428,35 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         # covered, not that the missing frame's PAGES were captured at all.
         ma, mb = _scan_seq(a.name), _scan_seq(b.name)
         if ma is not None and mb is not None and mb - ma > 1:
-            missing_seqs.extend(range(ma + 1, mb))
-            pair_results.append(dict(ok=False, full_dx=0.0, full_dy=0.0,
-                                     matches=0, via_ncc=False,
-                                     via_band=False, status="missing_frame"))
+            missing.extend(range(ma + 1, mb))
+            res = dict(ok=False, full_dx=0.0, full_dy=0.0,
+                       matches=0, via_ncc=False,
+                       via_band=False, status="missing_frame")
             if verbose:
-                print(f" bars a={format_bars(a.bars)} b={format_bars(b.bars)}")
-                print(f"  {a.name} -> {b.name}: -> missing_frame "
-                      f"({mb - ma - 1} file(s) absent; forcing page break)")
-            continue
+                lines.append(f" bars a={format_bars(a.bars)} "
+                             f"b={format_bars(b.bars)}")
+                lines.append(f"  {a.name} -> {b.name}: -> missing_frame "
+                             f"({mb - ma - 1} file(s) absent; forcing page "
+                             f"break)")
+            return res, lines, missing
 
         # Strip bounds for the pair match: the boundary-spanning page strip
-        # (see compute_pair_overlap). Normal advance (dy > 0): A at/above its
-        # last bar's start, B at/below its first bar's end. Reversed (--reverse,
-        # dy < 0): A at/below its last bar's END, B at/above its first bar's
-        # START (the same shared boundary bar, mirrored). A barless scan
-        # imposes no bound.
-        if reverse:
-            max_y_a = a.bars[-1][1] if a.bars else None
-            min_y_b = b.bars[0][0] if b.bars else None
+        # (see compute_pair_overlap). Only the SIFT detector needs them; an
+        # OCR `pair_fn` registers the two frames directly.
+        if pair_fn is not None:
+            res = pair_fn(a, b)
         else:
-            max_y_a = a.bars[-1][0] if a.bars else None
-            min_y_b = b.bars[0][1] if b.bars else None
-        res = compute_pair_overlap(a.path, max_y_a, b.path, min_y_b,
-                                   kp_cache, cache_dir, params,
-                                   full_cache=full_kp_cache,
-                                   bars_a=a.bars, bars_b=b.bars,
-                                   orient=orient, reverse=reverse)
+            if reverse:
+                max_y_a = a.bars[-1][1] if a.bars else None
+                min_y_b = b.bars[0][0] if b.bars else None
+            else:
+                max_y_a = a.bars[-1][0] if a.bars else None
+                min_y_b = b.bars[0][1] if b.bars else None
+            res = compute_pair_overlap(a.path, max_y_a, b.path, min_y_b,
+                                       kp_cache, cache_dir, params,
+                                       full_cache=full_kp_cache,
+                                       bars_a=a.bars, bars_b=b.bars,
+                                       orient=orient, reverse=reverse)
         res["__h_a"] = a.h
         if res['status'] != "ok" or res.get("via_ncc") or res.get("via_band"):
             if res["ok"]:
@@ -2872,15 +3469,34 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                 tag += " [via pixel-NCC]"
             elif res["ok"] and res.get("via_band"):
                 tag += " [via featureless-band]"
-            print(f" bars a={format_bars(a.bars)} b={format_bars(b.bars)}")
-            print(f"  {a.name} -> {b.name}:{tag}")
+            lines.append(f" bars a={format_bars(a.bars)} "
+                         f"b={format_bars(b.bars)}")
+            lines.append(f"  {a.name} -> {b.name}:{tag}")
+        return res, lines, missing
+
+    # Every pair is an independent SIFT job; with `workers` > 1 they run on
+    # a small thread pool (OpenCV releases the GIL in detect/match/decode;
+    # the shared in-memory caches and the on-disk SQLite one absorb reuse).
+    # Results and their report lines come back in batch order either way,
+    # so a parallel run recomputes exactly what the serial one did -- only
+    # faster.
+    pair_idx = list(range(nv - 1))
+    if workers and workers > 1 and nv > 2:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            outcomes = list(pool.map(pair_job, pair_idx))
+    else:
+        outcomes = [pair_job(k) for k in pair_idx]
+    for res, lines, missing in outcomes:
         pair_results.append(res)
+        missing_seqs.extend(missing)
+        for line in lines:
+            print(line)
 
     if verbose:
         print("\n[3/3] Laying out scans in film coordinates and finding pages...")
     runs, S_seed, all_pages = build_layout(
         valid, pair_results, valid_idx, gap_after, nv,
-        bar_gap_tol, min_page_height)
+        bar_gap_tol, min_page_height, workers=workers)
     # Cadence-short pages are shredded or cropped by blank bands that
     # look exactly like junctions: grow them back into their own blanks.
     all_pages = absorb_blank_margins(
@@ -2897,6 +3513,125 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                 all_pages=all_pages,
                 missing_seqs=missing_seqs, axis="x" if horizontal else "y",
                 orient=orient, reverse=reverse)
+
+
+def plan_one_page(scan_dir, start, direction=1, *, pattern=None,
+                  output_dir="plans", cache_dir=None, ratio=0.6,
+                  contrast=0.08, min_size=3.0, max_dx=500.0,
+                  min_matches=20, max_iqr=500.0, max_dim=3200,
+                  force_cache=False, bar_gap_tol=200.0,
+                  min_page_height=1000.0, trim_border=True, reverse=False,
+                  horizontal=False, verbose=True, n_features=0, label=None,
+                  dry_run=False):
+    """Plan ONE page starting at scan `start`: take that scan's black/blank
+    boundary bars, and walk SUBSEQUENT scans (direction = 1) or PRECEDING
+    scans (direction = -1) -- laying each visited scan into film
+    coordinates from the measured pair dy -- until ANOTHER bar beyond the
+    start bar is found. The page is the content strip between the two
+    bars; write one TOML plan for it under `output_dir`.
+
+    `start` is a scan sequence number (the trailing four-digit image number,
+    e.g. '117') or an exact filename. Everything materializes lazily (see
+    LazyPageCtx): only the scans the walk visits are loaded and only the
+    pairs it crosses are SIFTed, so invocations seeded at different scans
+    run as independent parallel jobs without any start-to-end layout pass.
+
+    The default start bar is the seed scan's own boundary bar (see
+    page_from_scan): the page extends from that bar INTO the walk
+    direction, so `forward` yields the page the seed scan's frame holds
+    (reaching into subsequent scans when the frame's film tail ends
+    without a bar).
+
+    Returns (label, path) of the written plan, or None when the seed yields
+    no page (barless stretch / too short a strip).
+    """
+    scans_paths = list_scans(scan_dir, pattern=pattern)
+    if not scans_paths:
+        raise SystemExit(f"ERROR: no scans found in {scan_dir}")
+    names = {os.path.basename(p): i for i, p in enumerate(scans_paths)}
+    seqs = {}
+    for i, p in enumerate(scans_paths):
+        sseq = _scan_seq(os.path.basename(p))
+        if sseq is not None:
+            seqs.setdefault(sseq, i)
+    entry = str(start).strip()
+    if entry in names:
+        k = names[entry]
+    elif entry.isdigit() and int(entry) in seqs:
+        k = seqs[int(entry)]
+    else:
+        raise SystemExit(
+            f"ERROR: --start '{start}' matches no scan in {scan_dir} "
+            "(use a scan sequence number or an exact filename)")
+
+    orient = None
+    if horizontal:
+        orient = detect_film_direction(scans_paths, verbose=verbose)
+        if verbose:
+            drift = "right" if orient == "T" else "left"
+            print(f"Horizontal batch: content drifts {drift} "
+                  "frame-to-frame; transposing scans so the film axis is "
+                  "the frame rows")
+    ctx = LazyPageCtx(scans_paths, orient=orient, reverse=reverse,
+                      bar_gap_tol=bar_gap_tol,
+                      min_page_height=min_page_height, cache_dir=cache_dir,
+                      params=dict(ratio=ratio, contrast=contrast,
+                                  min_size=min_size, max_dx=max_dx,
+                                  min_matches=min_matches, max_iqr=max_iqr,
+                                  max_dim=max_dim, force_cache=force_cache,
+                                  n_features=n_features),
+                      trim_border=trim_border)
+    if verbose:
+        sm = ctx.scan(k)
+        if sm is None:
+            raise SystemExit(f"ERROR: {scans_paths[k]} failed to load")
+        print(f"Starting at {sm.name} ({sm.h}x{sm.w}); bars "
+              f"{format_bars(sm.bars)}")
+    page = page_from_scan(ctx, k, direction=direction,
+                          bounds=(0, ctx.n - 1))
+    if page is None:
+        if verbose:
+            print("No page: the seed scan yields no page strip in this "
+                  "direction (a barless stretch, a too-short strip, or an "
+                  "unloadable scan where the walk ended).")
+        return None
+    lo, hi, contrib, owner = page
+    # The label comes from the walk's own contributors (as run() labels),
+    # not from the extension below.
+    label_contrib = list(contrib)
+    if contrib:
+        extend_contribs_lazy(ctx, contrib, (lo, hi))
+    valid_view = _CtxScansView(ctx)
+    s_view = _CtxOffsetsView(ctx)
+    rng = scan_range(label_contrib, valid_view)
+    if rng is None:
+        raise SystemExit(
+            "ERROR: the page's contributing scans carry no four-digit "
+            "sequence number; pass an explicit --label to name the plan.")
+    label = label or f"scans{rng[0]:03d}-{rng[1]:03d}"
+    if dry_run:
+        if verbose:
+            span = " ".join(valid_view[c].name for c in contrib)
+            print(f"  page {label}: [{lo:.0f}, {hi:.0f}] ({hi - lo:.0f} px): "
+                  f"{span}  (dry run, no plan written)")
+        return label, None
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, f"{label}.toml")
+    auto = dict(film=convert_film((lo, hi), orient),
+                contribs=page_contribs((lo, hi), contrib, valid_view,
+                                       s_view,
+                                       axis=("x" if horizontal else None),
+                                       orient=orient))
+    write_plan_toml(path, label, "page", os.path.abspath(scan_dir), auto,
+                    axis="x" if horizontal else None, reverse=reverse)
+    if verbose:
+        span = " ".join(valid_view[c].name for c in contrib)
+        kind = ("single-scan owner" if owner
+                else f"{len(contrib)} scan(s)")
+        print(f"  page {label}: [{lo:.0f}, {hi:.0f}] ({hi - lo:.0f} px, "
+              f"{kind}): {span}")
+        print(f"  wrote {path}")
+    return label, path
 
 
 def plan_gap_merges(all_pages, runs, valid, S_seed, bar_gap_tol,
@@ -3089,60 +3824,21 @@ def scan_range(contrib, valid):
     return min(nums), max(nums)
 
 
-def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
-        ratio=0.6, contrast=0.08, min_size=3.0, max_dx=500.0, min_matches=20,
-        max_iqr=500.0, max_dim=3200, force_cache=False,
-        bar_gap_tol=200.0, min_page_height=1000.0, dry_run=False,
-        trim_border=True, reverse=False, only=None, horizontal=False,
-        verbose=True, n_features=0):
-    """Run the page PLANNING: analyze the batch (phases 1-3 via
-    `analyze_batch`), then write one TOML plan per page under `[auto]`
-    (phase 4). Compositing the plans into images is `compose_pages.py`'s job.
+def collapse_frame_shreds(all_pages, runs, S_seed, verbose=False):
+    """Merge frames' shredded page fragments into one page apiece.
 
-    `horizontal=True` marks a horizontally-advancing batch (see
-    `analyze_batch`); all its plans are written with `axis = "x"`, i.e. film
-    coordinates are film COLUMNS and the contributors' bbox/size are in the
-    scans' on-disk orientation.
+    A scan frame contains at most one full page, so when the layout hands
+    back SEVERAL adjacent pages with the exact same contributing scans, they
+    are one page shredded between mis-detected boundary bands (blank page
+    margins / fog misread as bars or junctions; the roll-intro leader counts
+    as part of the frame's page too). Merge each such group into a single
+    page spanning the fragments' union -- gated on the run's page cadence: a
+    union of ~one cycle collapses, while a union of ~TWO cycles (consecutive
+    full pages whose frame advance was genuinely under one page) stays
+    separate (``scansLLL-HHH`` + ``scansLLL-HHH-2``).
 
-    `reverse=True` marks a vertical batch scanned the other way (content
-    drifts UP frame-to-frame: A's bottom rows <-> B's top rows, dy < 0 --
-    the 20261007 "forward" rolls). No scan is transformed: the film frame
-    keeps the measured dy, and only the pair-detection geometry / gap-join
-    ordering flip (see `analyze_batch`). The plans record `reverse = true`
-    for provenance only -- compose_pages.py is direction-agnostic.
-    (Replaces the old meaning of --reverse, 'number pages bottom-of-film
-    first': page numbers come from scan sequence order either way.)
+    Pure data (no images) so it is directly testable; ``run()`` calls it.
     """
-    res = analyze_batch(scan_dir, pattern=pattern, cache_dir=cache_dir,
-                        ratio=ratio, contrast=contrast, min_size=min_size,
-                        max_dx=max_dx, min_matches=min_matches, max_iqr=max_iqr,
-                        max_dim=max_dim, force_cache=force_cache,
-                        bar_gap_tol=bar_gap_tol,
-                        min_page_height=min_page_height,
-                        trim_border=trim_border, verbose=verbose, only=only,
-                        horizontal=horizontal, reverse=reverse,
-                        n_features=n_features)
-    valid = res["valid"]; runs = res["runs"]; S_seed = res["S_seed"]
-    all_pages = res["all_pages"]
-    missing_seqs = res["missing_seqs"]
-    axis = res["axis"]
-    orient = res["orient"]
-    horizontal = axis == "x"
-
-    # Order pages: runs in scan order, and within each run by film coordinate
-    # (top-of-film first). Page NUMBERS below come from scan-sequence order.
-    all_pages.sort(key=lambda p: (p[3], p[0], p[1]))
-
-    # Frame-shred collapse: a scan frame contains at most one full page, so
-    # when the layout hands back SEVERAL adjacent pages with the exact same
-    # contributing scans, they are one page shredded between mis-detected
-    # boundary bands (blank page margins / fog misread as bars or junctions;
-    # the roll-intro leader counts as part of the frame's page too). Merge
-    # each such group into a single page spanning the fragments' union --
-    # gated on the run's page cadence: a union of ~one cycle is a shredded
-    # page and collapses, while a union of ~TWO cycles (consecutive full
-    # pages whose frame advance was genuinely under one page) stays two
-    # separate pages (`scansLLL-HHH` + `scansLLL-HHH-2`).
     cycles = {}
     for ri, (r0, r1) in enumerate(runs):
         adv = [S_seed[k + 1] - S_seed[k] for k in range(r0, r1)
@@ -3171,13 +3867,100 @@ def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
             collapsed.append((lo, hi, list(group[0][2]), group[0][3]))
             i = j
         else:
-            if len(group) > 1 and verbose and not (cyc and hi - lo <= 1.2 * cyc):
+            if (len(group) > 1 and verbose
+                    and not (cyc and hi - lo <= 1.2 * cyc)):
+                ratio = (f" ~ {hi - lo / cyc:.1f} cycles" if cyc
+                         else " (no measured cadence)")
                 print(f"  same-scan pages kept separate (union "
-                      f"{hi - lo:.0f} px ~ {hi - lo / cyc:.1f} cycles): "
+                      f"{hi - lo:.0f} px{ratio}): "
                       f"[{', '.join(str(k) for k in group[0][2])}]")
             collapsed.extend(group)
             i = j
-    all_pages = collapsed
+    return collapsed
+
+
+def run(scan_dir, pattern=None, output_dir="plans", cache_dir=None,
+        ratio=0.6, contrast=0.08, min_size=3.0, max_dx=500.0, min_matches=20,
+        max_iqr=500.0, max_dim=3200, force_cache=False,
+        bar_gap_tol=200.0, min_page_height=1000.0, dry_run=False,
+        trim_border=True, reverse=False, only=None, horizontal=False,
+        verbose=True, n_features=0, start=None, direction=1, workers=None,
+        pair_fn=None, orient=None):
+    """Run the page PLANNING: analyze the batch (phases 1-3 via
+    `analyze_batch`), then write one TOML plan per page under `[auto]`
+    (phase 4). Compositing the plans into images is `compose_pages.py`'s job.
+
+    `horizontal=True` marks a horizontally-advancing batch (see
+    `analyze_batch`); all its plans are written with `axis = "x"`, i.e. film
+    coordinates are film COLUMNS and the contributors' bbox/size are in the
+    scans' on-disk orientation.
+
+    `reverse=True` marks a vertical batch scanned the other way (content
+    drifts UP frame-to-frame: A's bottom rows <-> B's top rows, dy < 0 --
+    the 20261007 "forward" rolls). No scan is transformed: the film frame
+    keeps the measured dy, and only the pair-detection geometry / gap-join
+    ordering flip (see `analyze_batch`). The plans record `reverse = true`
+    for provenance only -- compose_pages.py is direction-agnostic.
+    (Replaces the old meaning of --reverse, 'number pages bottom-of-film
+    first': page numbers come from scan sequence order either way.)
+
+    Pages are planned one at a time from any starting scan:
+    `build_layout` seeds one walk per boundary bar, in both film
+    directions, each stopping at the bar beyond it (page_from_scan),
+    merged by dedup_pages; the walks are independent reads of the layout,
+    so they run over `workers` threads (None = a small default pool,
+    1 = serial -- the pair-overlap loop in `analyze_batch` parallelizes
+    the same way).
+
+    `start` (with `direction`) plans and writes exactly ONE page instead:
+    the walk begins at that scan's boundary bars (black or blank junctions)
+    and looks at subsequent (direction = 1) or preceding (direction = -1)
+    scans until another bar is found -- see `plan_one_page`. Such
+    invocations are independent (each SIFTs only the pairs it crosses), so
+    a batch's pages can be planned in parallel by seeding different scans.
+    """
+    if start is not None:
+        return plan_one_page(scan_dir, start, direction=direction,
+                             pattern=pattern, output_dir=output_dir,
+                             cache_dir=cache_dir, ratio=ratio,
+                             contrast=contrast, min_size=min_size,
+                             max_dx=max_dx, min_matches=min_matches,
+                             max_iqr=max_iqr, max_dim=max_dim,
+                             force_cache=force_cache,
+                             bar_gap_tol=bar_gap_tol,
+                             min_page_height=min_page_height,
+                             trim_border=trim_border, reverse=reverse,
+                             horizontal=horizontal, verbose=verbose,
+                             n_features=n_features, dry_run=dry_run)
+    if workers is None:
+        import multiprocessing
+        workers = min(4, multiprocessing.cpu_count() or 1)
+    res = analyze_batch(scan_dir, pattern=pattern, cache_dir=cache_dir,
+                        ratio=ratio, contrast=contrast, min_size=min_size,
+                        max_dx=max_dx, min_matches=min_matches, max_iqr=max_iqr,
+                        max_dim=max_dim, force_cache=force_cache,
+                        bar_gap_tol=bar_gap_tol,
+                        min_page_height=min_page_height,
+                        trim_border=trim_border, verbose=verbose, only=only,
+                        horizontal=horizontal, reverse=reverse,
+                        n_features=n_features, workers=workers,
+                        pair_fn=pair_fn, orient=orient)
+    valid = res["valid"]; runs = res["runs"]; S_seed = res["S_seed"]
+    all_pages = res["all_pages"]
+    missing_seqs = res["missing_seqs"]
+    axis = res["axis"]
+    orient = res["orient"]
+    horizontal = axis == "x"
+
+    # Order pages: runs in scan order, and within each run by film coordinate
+    # (top-of-film first). Page NUMBERS below come from scan-sequence order.
+    all_pages.sort(key=lambda p: (p[3], p[0], p[1]))
+
+    # Frame-shred collapse (see collapse_frame_shreds): a scan frame holds
+    # at most one full page, so adjacent layout pages sharing the exact same
+    # scans are one shredded page unless their union is ~two page cycles.
+    all_pages = collapse_frame_shreds(all_pages, runs, S_seed,
+                                      verbose=verbose)
 
     if verbose:
         print(f"\n  {len(runs)} run(s); {len(all_pages)} page(s) detected.")
@@ -3492,6 +4275,23 @@ def main():
                          "pages that continue into scans outside --only are "
                          "partial and are not rewritten; later pages still "
                          "take their full-batch names (and -2/-3 ordinals).")
+    ap.add_argument("--start", default=None,
+                    help="Plan exactly ONE page, starting at this scan (a "
+                         "scan sequence number -- the trailing digits -- or "
+                         "an exact filename): take the scan's black/blank "
+                         "boundary bars and walk --direction until another "
+                         "bar is found. Lazy: only the pairs the walk "
+                         "crosses are SIFTed, so one-page invocations seeded "
+                         "at different scans run in parallel.")
+    ap.add_argument("--direction", choices=("forward", "backward"),
+                    default="forward",
+                    help="Which way --start's walk goes: 'forward' walks "
+                         "subsequent scans, 'backward' preceding ones "
+                         "(default: forward).")
+    ap.add_argument("--workers", type=int, default=None,
+                    help="Thread pool size for the independent per-page and "
+                         "per-pair work (default: 4; 1 = serial). Walks read "
+                         "only, so results match the serial run.")
     args = ap.parse_args()
 
     run(args.scan_dir, pattern=args.pattern, output_dir=args.output_dir,
@@ -3501,7 +4301,10 @@ def main():
         bar_gap_tol=args.bar_gap_tol,
         min_page_height=args.min_page_height, dry_run=args.dry_run,
         trim_border=args.trim_border, reverse=args.reverse, only=args.only,
-        horizontal=args.horizontal, n_features=args.n_features)
+        horizontal=args.horizontal, n_features=args.n_features,
+        start=args.start,
+        direction=1 if args.direction == "forward" else -1,
+        workers=args.workers)
 
 
 if __name__ == "__main__":
