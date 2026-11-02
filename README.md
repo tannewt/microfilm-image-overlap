@@ -60,6 +60,23 @@ Plus helpers:
   `--save-field 'out/%s-field.png'` writes each batch's field for
   inspection. Requires Pillow (like `batch_report.py`).
 
+## Repository layout: stages, and where OCR lives
+
+The microfilm pipeline is split into stages, one folder each:
+
+- **`stage1-circuitpython/`** — the scanner firmware: a CircuitPython board
+  drives the Scan Pro reader from a mouse and fires the captures.
+- **`stage2-ocr/`** — OCR over the composed pages / raw scans: worker HTTP
+  servers, pullers, masters, the catalog/planning passes, the benchmarks,
+  the clipping and name-search tooling. It has its own `.gitignore` for its
+  data (`ocr_results/`, `clips/`, scan folders) and its own docs index —
+  start at **`stage2-ocr/README.md`**.
+
+Everything at the top level of this repo is the middle of the pipeline
+(overlap detection, `plan_pages.py`, `compose_pages.py`, QC). OCR used to be
+a separate `ocr-studio` repo; it was merged in here so a run can go from
+scans to text without leaving the repo.
+
 ## Requirements
 
 ```
