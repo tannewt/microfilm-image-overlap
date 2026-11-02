@@ -3,7 +3,8 @@ scans/
 scans2/
 pages/
 
-# The microfilm scanner firmware is a separate project; keep it out of here.
+# Old working copy of the scanner firmware; the maintained copy is
+# stage1-circuitpython/.
 20260818-microfilm-scanner/
 
 # Generated SIFT feature cache (SQLite), match visualizations, and run logs.
