@@ -19,5 +19,12 @@ clip_run_results.json
 # Sample pages for the benchmark: regenerate with scripts/make_bench_pages.py
 bench_pages/
 
+# Scratch dir: run logs/dumps. The launcher scripts are tracked.
+tmp/*
+!tmp/*.sh
+
+# Generated catalog output (rebuild with catalog_front_pages_1028.py)
+front_pages_1028.json
+
 # paddle's model downloads live in ~/.paddlex; the repo carries only the
 # rec charset (models/)

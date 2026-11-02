@@ -128,6 +128,15 @@ M. B. Parker's son.
 ("M. B. Parker is on the sick list, and Grant Robinson, Trempealeau, is taking his
 place" — 1900)
 
+**Alias / earlier years:** in the 1870s–80s 1006 Galesville pages this same man appears as
+**"Marcellus / Marcellas Parker"** — village **pathmaster**, a **brakeman on the Galesville
+railroad**, "moved to Greenwood," and "was quite badly hurt"; his wife and daughter also
+appear. So *Marcellus Parker* and *M. B. Parker* are the same Galesville Parker.
+
+**Family (Parker–Truax link):** per the George Parker death notice (§11) and family
+information, **Mary Esther Parker, Mrs. William Truax**, was a sister of Marcellus / M. B.
+Parker (and of Mrs. John McWain). See `TRUAXES.md` §18.
+
 ### 4. Miss Emma Parker — school teacher, Gale College class of 1890
 
 > "Misses Louise Scarseth and Emma Parker will retire from the school field for a few

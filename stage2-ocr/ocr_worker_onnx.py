@@ -39,7 +39,7 @@ from yaml import safe_load
 
 Image.MAX_IMAGE_PIXELS = None  # pages are ~4600x6300+ composites
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8077
+PORT = 8077  # overridden by argv[1] only when run as a server
 MODELS_DIR = os.environ.get(
     "OCR_ONNX_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "onnx_models"))
@@ -52,11 +52,14 @@ YML = (os.environ.get("OCR_DICT_YML")
        or os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "models/PP-OCRv6_medium_rec-inference.yml"))
 
-# DBNet decode / rec preprocessing constants (PaddleOCR defaults).
+# DBNet decode / rec preprocessing constants.  Values match the PP-OCRv6
+# det model's own PostProcess block (inference.yml: thresh 0.2, box_thresh
+# 0.45, unclip_ratio 1.4); the thresholds stay at the historically tuned
+# 0.3/0.5 -- only the unclip geometry was wrong (see _unclip).
 DET_LIMIT = 960        # longest side fed to det (rounded up to /32)
 DET_THRESH = 0.3       # binarize the prob map
 BOX_THRESH = 0.5       # mean-prob inside a candidate box
-UNCLIP_RATIO = 1.6     # box expansion around the text pixels
+UNCLIP_RATIO = 1.4     # box expansion around the text pixels (model value)
 REC_H = 48             # rec input height
 REC_BATCH = 8
 
@@ -89,12 +92,18 @@ def init():
             # fastest first, CPU last as fallback
             providers = [p, "CPUExecutionProvider"]
             break
-    _sess = {
-        "det": ort.InferenceSession(DET, providers=providers),
-        "rec": ort.InferenceSession(REC, providers=providers),
-    }
+    det = ort.InferenceSession(DET, providers=providers)
+    rec = ort.InferenceSession(REC, providers=providers)
+    _sess = {"det": det, "rec": rec}
     _charset = load_charset(YML)
-    return providers
+    # Report what the sessions actually got, not what we asked for: ORT
+    # logs "Falling back to ['CPUExecutionProvider']" and still builds the
+    # session, so the requested list would claim GPU on a CPU-only box.
+    actual = det.get_providers()
+    if rec.get_providers() != actual:
+        print(f"WARNING: det/rec providers differ: {actual} vs "
+              f"{rec.get_providers()}", flush=True)
+    return actual
 
 
 # ---------------------------------------------------------------- det ----
@@ -131,20 +140,21 @@ def _box_score(prob, box):
 
 
 def _unclip(box):
-    """Approximate Clipper's offset: scale the box outward from its
-    centroid by (perimeter * UNCLIP_RATIO) / area."""
-    area = cv2.contourArea(box.astype(np.int32))
-    perimeter = cv2.arcLength(box, True)
+    """PaddleX DBPostProcess unclip: offset the min-area rect outward by
+    distance = area * unclip_ratio / perimeter.
+
+    The previous version scaled the corners radially from the centroid,
+    which for a long thin line moves them almost entirely along the line
+    (horizontal), not across it -- line boxes came out ~2x too short in y
+    and did not match the CPU/paddle pipeline.  A true offset expands both
+    axes, which is what the rec crop and the reader expect."""
+    rect = cv2.minAreaRect(np.asarray(box, np.float32))
+    (cx, cy), (w, h), ang = rect
+    area, perimeter = w * h, 2.0 * (w + h)
     if area <= 1 or perimeter <= 0:
-        return box
+        return np.asarray(box, np.float32)
     dist = area / perimeter * UNCLIP_RATIO
-    c = box.mean(axis=0)
-    out = np.empty_like(box)
-    for i in range(len(box)):
-        v = box[i] - c
-        n = np.hypot(*v) or 1.0
-        out[i] = box[i] + v / n * dist
-    return out
+    return cv2.boxPoints(((cx, cy), (w + 2 * dist, h + 2 * dist), ang))
 
 
 def db_decode(prob, ratio):
@@ -316,6 +326,8 @@ class Handler(BaseHTTPRequestHandler):
 _prov = None
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        PORT = int(sys.argv[1])
     print(f"warming up onnx worker on port {PORT}...", flush=True)
     _prov = init()
     print(f"provider: {_prov}", flush=True)

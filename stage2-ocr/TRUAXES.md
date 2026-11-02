@@ -303,7 +303,9 @@ connection:
 > Centerville."
 
 So **Mrs. William Truax was born a Parker** and was a sister of M. B. Parker (the
-Galesville merchant, see `PARKERS.md`). It also means William Truax Sr.'s family and
+Galesville merchant, see `PARKERS.md`). **Family information: her full name was
+Mary Esther Parker; Marcellus / M. B. Parker was her brother** (and George Parker of
+Humbird, the deceased in this notice, was his brother too). It also means William Truax Sr.'s family and
 the Parker family were connected by marriage, and that at least this branch of the
 Parker siblings came from **Vermont** — the strongest Vermont link found in the whole
 corpus. Which William Truax her husband was (William Sr. or the stage-driving William

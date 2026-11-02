@@ -4,6 +4,9 @@ Three worker kinds, interchangeable in `workers.txt` — the dispatcher
 and benchmark don't care which runs on which machine (see the table at
 the bottom for when to use which).
 
+Remote machines (dalinar, clanker, majormajor) and their
+containers are documented in `INCUS-FLEET.md`.
+
 Worker machines need, from this folder: the worker script(s),
 `setup_paddle_env.sh` + `requirements-*.txt`, `onnx_models/` + `models/`
 (for the onnx/ncnn workers), and nothing from the image corpus.
@@ -16,7 +19,7 @@ The pi sandbox hides GPU sysfs — everything GPU reports "no devices"
 from inside. All GPU decisions happen outside:
 
 ```bash
-python ~/repos/ocr-studio/scripts/test_rocm_ort.py    # MIGraphX/ROCm route
+python ~/repos/image-overlap/stage2-ocr/scripts/test_rocm_ort.py    # MIGraphX/ROCm route
 # overrides: RX 6600/5600-class -> HSA_OVERRIDE_GFX_VERSION=10.3.0 (5600 has
 # no ROCm support at all); APUs -> often hang (Phoenix gfx1103: hangs today).
 python -c "import ncnn; print(ncnn.get_gpu_count())"  # Vulkan route, 0 = no
