@@ -1,0 +1,30 @@
+# Python environments
+.venv-paddle/
+.venv-onnx/
+__pycache__/
+*.pyc
+
+# Big corpus / working data (page images live in the image-overlap repo)
+P81-4720/
+P81-4721/
+P81-4722/
+20260826-newspaper-scans/
+ocr_results/
+clips/
+shards/
+resolved_jobs.json
+ocr_index_run.log
+clip_run_results.json
+
+# Sample pages for the benchmark: regenerate with scripts/make_bench_pages.py
+bench_pages/
+
+# Scratch dir: run logs/dumps. The launcher scripts are tracked.
+tmp/*
+!tmp/*.sh
+
+# Generated catalog output (rebuild with catalog_front_pages_1028.py)
+front_pages_1028.json
+
+# paddle's model downloads live in ~/.paddlex; the repo carries only the
+# rec charset (models/)

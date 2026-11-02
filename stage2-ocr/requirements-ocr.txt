@@ -1,0 +1,10 @@
+# OCR worker (paddle) env -- CPU baseline, all pip, Linux x86_64.
+#   uv venv .venv-paddle --python 3.13
+#   uv pip install --python .venv-paddle/bin/python -r requirements-ocr.txt
+# NOTE paddlepaddle==3.2.1 is PINNED: 3.3.1/3.0.0 have oneDNN crashes.
+# No ROCm build of paddle 3.x exists (their ROCm wheels stopped at
+# paddle 2.4 / py3.7) -- for AMD GPU use requirements-onnx.txt instead.
+paddlepaddle==3.2.1
+paddleocr
+pillow
+numpy
