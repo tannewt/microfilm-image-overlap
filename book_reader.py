@@ -79,18 +79,23 @@ page number shown in Go to page). Nested entries with "children" are
 also accepted. File > Open table of contents… (Ctrl+Shift+T) pick one
 explicitly; a sibling toc.json or <book>.toc.json is adopted
 automatically when a book is opened and the chosen file is stored in the
-project ("toc"). Double-click an entry to jump to its page. Entries
-whose page range holds commented pages show a ⚑ n badge, and a ⚑ Flagged
-section at the bottom lists every commented page for one-click jumping.
+project ("toc"). Double-click an entry to jump to its page; the entry
+covering the shown spread (an opening page wins) stays highlighted as
+you move through the book. Entries whose page range holds commented
+pages show a ⚑ n badge, and a ⚑ Flagged section at the bottom lists
+every commented page for one-click jumping.
 
 The scan sidebars (for QA of composed output): when a shown page was
 composited by compose_pages.py, its side of the book lists thumbnail
 images of every scan that contributed to that page, with the region each
 scan provided outlined in amber. Each page directory is mapped to the
-plans/ directory holding its plan TOMLs -- guessed once when a book is
-opened (conservatively: an ambiguous guess is left unset), or set or fixed
-per directory in the project editor (Ctrl+E) and stored in the project's
-plans_dirs. Click a thumbnail to open the full scan externally. Reverse
+plans/ directory holding its plan TOMLs -- guessed when a book is opened
+(conservatively: an ambiguous guess is left unset) or whenever an
+assignment is empty, or set or fixed per directory in the project editor
+(Ctrl+E) and stored in the project's plans_dirs. Guessing also recognizes
+the composed-batch layout, where a book's plans sit in one subdirectory per
+camera-roll prefix (compose_all_1028.py). Click a thumbnail to open the
+full scan externally. Reverse
 batches (plan_pages.py --reverse: dy < 0 as-shot) keep their film
 coordinates in the scans' on-disk orientation too, so the outlined
 regions are directly the contributed rows of the stored scans.
@@ -115,6 +120,7 @@ from PySide6.QtCore import QRect, QObject, QPointF, QRectF, QRunnable, QSize, Qt
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
+    QBrush,
     QColor,
     QDesktopServices,
     QImage,
@@ -168,10 +174,26 @@ def natural_key(path: Path):
 
 
 def collect_images(directory: Path) -> list[Path]:
-    return sorted(
-        (p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS),
-        key=natural_key,
-    )
+    """Images in `directory`, in book order.
+
+    A ``page_order.json`` file (a list of filenames) overrides the natural
+    filename sort; stage2-ocr/build_page_order_1028.py writes one per roll
+    so a book made from several camera-roll prefixes opens in date order.
+    Unknown/missing names fall back to the natural sort after the listed
+    pages.
+    """
+    images = [p for p in directory.iterdir()
+              if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+    order_path = directory / "page_order.json"
+    try:
+        order = json.loads(order_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        order = None
+    if isinstance(order, list):
+        rank = {str(name): i for i, name in enumerate(order)}
+        return sorted(images, key=lambda p: (rank.get(p.name, len(rank)),
+                                             natural_key(p)))
+    return sorted(images, key=natural_key)
 
 
 def build_spreads(n: int) -> list[tuple[int, ...]]:
@@ -248,6 +270,7 @@ class Project:
             "directories": ["pages/P81-4720", "pages/P81-4721"],
             "plans_dirs": ["plans/P81-4720", ""],   # parallel to directories;
                                                     # empty = unassigned
+                                                    # (guessed on open)
             "skip": ["scans011-011.png"],
             "confirmed_pairs": [["a.png", "b.png"], ...]
         }
@@ -261,7 +284,6 @@ class Project:
         # Per page directory: the plans/ directory holding that batch's plan
         # TOMLs (for the scan-contributor sidebars), or None when unassigned.
         self.plans_dirs: list[Path | None] = []
-        self.plans_dirs_saved: bool = True   # False for pre-plans_dirs projects
         self.skip: set[str] = set()
         self.confirmed: set[frozenset[str]] = set()
         # Per-page comments: key -> note text (a fixing-plan / issue hint,
@@ -342,9 +364,8 @@ class Project:
                 None if not p
                 else (Path(p) if Path(p).is_absolute() else project_dir / p)
             )
-        # Projects saved before plans_dirs existed: the UI may fall back to
-        # guessing the assignment on open.
-        self.plans_dirs_saved = "plans_dirs" in data
+        # Projects saved before plans_dirs existed leave every entry empty;
+        # the reader guesses those (and any other empty entry) on open.
         # Ids are full absolute paths; older project files stored ids
         # relative to the project file's directory.  Resolve them so all
         # forms match the ids key_for() generates.
@@ -696,6 +717,31 @@ BLANK_TINT = (64, 138, 255, 105)   # low_content_rows: film, margins, blanks
 BAR_TINT = (206, 70, 255, 125)     # blank_rows: bars / white junctions
 
 
+def plan_toml_for(plans_dir: Path, page_stem: str) -> Path | None:
+    """The plan TOML for the page file named `page_stem`, or None.
+
+    Plans are usually flat (``plans_dir/<page stem>.toml``), but composite
+    batches keep one subdirectory per camera-roll prefix and name each
+    composed page ``<prefix>_<plan label>.png`` (see compose_all_1028.py),
+    so the plan is ``plans_dir/<prefix>/<plan label>.toml``. Both layouts
+    are tried; the longest matching prefix wins.
+    """
+    flat = plans_dir / (page_stem + ".toml")
+    if flat.is_file():
+        return flat
+    try:
+        subdirs = [p for p in plans_dir.iterdir() if p.is_dir()]
+    except OSError:
+        return None
+    prefixes = sorted((p for p in subdirs if page_stem.startswith(p.name + "_")),
+                      key=lambda p: -len(p.name))
+    for sub in prefixes:
+        nested = sub / (page_stem[len(sub.name) + 1:] + ".toml")
+        if nested.is_file():
+            return nested
+    return None
+
+
 def guess_plans_dir(page_dir: Path, base: Path | None) -> Path | None:
     """Best-effort plans/ directory for a page directory, or None.
 
@@ -711,6 +757,12 @@ def guess_plans_dir(page_dir: Path, base: Path | None) -> Path | None:
          with dashes ("20260929-05671-6200" -> plans/20260929/05671-6200),
          so match the page path's dash-joined key against plans dirs' keys
          (exact, then unique/longest suffix extension like "X-flat").
+      3. same leaf name: plan runs are named for the run, not the page tree
+         ("pages/20261028-newspaper-scans/<book>" plans live in
+         plans/ocr_1028/<book>), so compare the page dir's own name with the
+         plans dirs' names. Several runs can plan the same book (a
+         bad-filter retry, say); then the run that actually plans this page
+         dir's pages wins, but only when it wins outright.
     """
     page_dir = page_dir.resolve()
     rel_parts: list[str] = []
@@ -769,6 +821,24 @@ def guess_plans_dir(page_dir: Path, base: Path | None) -> Path | None:
         tail = [d for d, k in dirs if key and k.endswith("-" + key)]
         if len(tail) == 1:
             return tail[0]
+        # 3) same leaf name (see the docstring). Ties are broken by how many
+        # of this page dir's pages the plans dir actually has plans for.
+        same_name = [d for d, _k in dirs if d.name == page_dir.name]
+        if len(same_name) == 1:
+            return same_name[0]
+        if len(same_name) > 1:
+            try:
+                stems = [p.stem for p in page_dir.iterdir()
+                         if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+            except OSError:
+                stems = []
+            if stems:
+                scores = [(sum(plan_toml_for(d, s) is not None for s in stems), d)
+                          for d in same_name]
+                best = max(n for n, _d in scores)
+                winners = [d for n, d in scores if n == best]
+                if best > 0 and len(winners) == 1:
+                    return winners[0]
     return None
 
 
@@ -799,7 +869,9 @@ class PlanLibrary:
     on-disk (width, height).
     Returns None when `plans_dir` is None (no plans directory assigned for
     the page's directory); a stub with toml=None when the plan file is just
-    absent, so the UI can report each case precisely.
+    absent, so the UI can report each case precisely. The plan file is
+    looked up by `plan_toml_for`, so both the flat and the camera-roll-prefix
+    subdirectory layouts are found.
     """
 
     LIMIT = 256
@@ -823,8 +895,8 @@ class PlanLibrary:
     def _parse(page: Path, plans_dir: Path | None) -> dict | None:
         if plans_dir is None:
             return None
-        toml_path = plans_dir / (page.stem + ".toml")
-        if not toml_path.is_file():
+        toml_path = plan_toml_for(plans_dir, page.stem)
+        if toml_path is None:
             return {"toml": None, "kind": None, "axis": None, "scans": [],
                     "missing": [], "error": None}
         try:
@@ -2095,16 +2167,18 @@ class MainWindow(QMainWindow):
         except (OSError, json.JSONDecodeError) as e:
             self.status.showMessage(f"Could not load project: {e}", 8000)
             return
-        # Plans-dir assignments: never re-guess what a project file saved
-        # explicitly (even empty = user unset it in the editor). For pre-
-        # plans_dirs projects, guess one per page directory now (conservatively:
-        # an ambiguous guess stays None, fixable in the editor, Ctrl+E).
-        if not self.project.plans_dirs_saved:
-            self.project.plans_dirs = [
-                guess_plans_dir(d, self.project._base())
-                if d is not None and d.is_dir() else None
-                for d in self.project.directories
-            ]
+        # Plans-dir assignments: keep the ones the project file saved, and
+        # guess the empty ones (a failed guess is saved as empty, and the
+        # project editor re-guesses empty rows too). Guesses are
+        # conservative: an ambiguous guess stays None, fixable in the
+        # editor (Ctrl+E).
+        base = self.project._base()
+        self.project.plans_dirs = [
+            pd if pd is not None else (
+                guess_plans_dir(d, base) if d is not None and d.is_dir() else None)
+            for d, pd in zip(self.project.directories,
+                             self.project.plans_dirs + [None] * len(self.project.directories))
+        ]
         self.act_rtl.setChecked(self.project.reverse)   # restore saved direction
         self.reload_book()
         self._adopt_toc()
@@ -2478,7 +2552,7 @@ class MainWindow(QMainWindow):
             if info["toml"] is None:
                 sidebar.set_page(
                     title,
-                    f"no plan named {page.stem}.toml in\n{plans_dir}",
+                    f"no plan for {page.stem} in\n{plans_dir}",
                     [],
                 )
                 continue
@@ -2527,6 +2601,8 @@ class MainWindow(QMainWindow):
         section listing every commented page."""
         self._toc_entries: list[TocEntry] = []
         self._toc_file: Path | None = None
+        self._toc_items: dict[int, QTreeWidgetItem] = {}
+        self._toc_current_item: QTreeWidgetItem | None = None
         self.toc_dock = QDockWidget("Table of contents", self)
         self.toc_dock.setObjectName("toc_dock")
         self.toc_tree = QTreeWidget()
@@ -2597,27 +2673,17 @@ class MainWindow(QMainWindow):
                 self.load_toc(cand)
                 return
 
-    def _toc_range_end(self, pos: int, n_pages: int) -> int:
-        """Pages covered by entries[pos]: up to the next entry at the same
-        or shallower level (deeper subsections stay inside the parent),
-        else the end of the book."""
-        level = self._toc_entries[pos].level
-        for later in self._toc_entries[pos + 1:]:
-            if later.level <= level and later.index is not None:
-                return later.index
-        return n_pages
-
     def rebuild_toc(self) -> None:
         """Refill the TOC tree: ⚑ Flagged pages first, then the entries
-        nested by level; entries with commented pages in their range get a
-        ⚑ count."""
+        nested by level; entries whose pages carry comments get a ⚑ count."""
         entries = self._toc_entries if self.project.toc_path is not None \
             else []     # stale entries from a previously opened book
         tree = self.toc_tree
         tree.blockSignals(True)
         tree.clear()
+        self._toc_items = {}
+        self._toc_current_item = None
         resolve_toc(entries, len(self.spread._pages))
-        n_pages = len(self.spread._pages)
         keys = self.spread._keys
         flagged = [(i, self.project.comments[k]) for i, k in enumerate(keys)
                    if self.project.comments.get(k)]
@@ -2635,16 +2701,15 @@ class MainWindow(QMainWindow):
                 child.setData(0, Qt.ItemDataRole.UserRole, i)
                 top.addChild(child)
 
-        # Flag counts per entry: a page belongs to the most recent (deepest)
-        # entry whose range covers it.
+        # Flag counts per entry: a page belongs to the entry it resolves to
+        # (the latest start at or before it), not to a range inferred from
+        # list order -- TOCs can put a section at the end whose pages are
+        # early in the book (the "Undated" issues here).
         counts = [0] * len(entries)
         for page_i, _ in flagged:
-            for pos in range(len(entries) - 1, -1, -1):
-                e = entries[pos]
-                if e.index is not None and e.index <= page_i \
-                        and page_i < self._toc_range_end(pos, n_pages):
-                    counts[pos] += 1
-                    break
+            pos = self._toc_pos_for_page(page_i)
+            if pos is not None:
+                counts[pos] += 1
 
         stack: list[QTreeWidgetItem] = []
         root = tree.invisibleRootItem()
@@ -2661,8 +2726,78 @@ class MainWindow(QMainWindow):
                 stack.pop()
             (stack[-1] if stack else root).addChild(item)
             stack.append(item)
+            self._toc_items[pos] = item
         tree.expandAll()
         tree.blockSignals(False)
+        self._highlight_toc_entry()
+
+    def _toc_exact_pos(self, page: int) -> int | None:
+        """Deepest TOC entry that starts exactly at `page` (a dated issue
+        wins over the year heading sharing its page)."""
+        if self.project.toc_path is None:
+            return None
+        best_key = None
+        best_pos = None
+        for pos, e in enumerate(self._toc_entries):
+            if e.index != page:
+                continue
+            key = (e.level, pos)
+            if best_key is None or key > best_key:
+                best_key, best_pos = key, pos
+        return best_pos
+
+    def _toc_pos_for_page(self, page: int) -> int | None:
+        """The TOC entry covering `page`: the latest start at or before it.
+
+        Entries are not necessarily in page order (an "Undated" section can
+        sit at the end of the file but start near the front of the book), so
+        don't infer a section's range from the next entry in the list. On a
+        shared start page the deeper entry wins, so a dated issue is
+        preferred over its year heading.
+        """
+        if self.project.toc_path is None:
+            return None
+        best_key = None
+        best_pos = None
+        for pos, e in enumerate(self._toc_entries):
+            if e.index is None or e.index > page:
+                continue
+            key = (e.index, e.level, pos)
+            if best_key is None or key > best_key:
+                best_key, best_pos = key, pos
+        return best_pos
+
+    def _highlight_toc_entry(self) -> None:
+        """Highlight the entry for the page(s) in the current spread."""
+        prev = self._toc_current_item
+        if prev is not None:
+            try:
+                prev.setBackground(0, QBrush())
+                prev.setData(0, Qt.ItemDataRole.ForegroundRole, None)
+            except RuntimeError:     # item already deleted by a rebuild
+                pass
+        self._toc_current_item = None
+
+        spread = self.spread._spread_at(self.spread.spread_index())
+        visible = sorted(i for i in (spread or ()) if i is not None)
+        if not visible:
+            return
+        # A chapter opening on either page of the spread wins; otherwise
+        # fall back to the section covering the first visible page.
+        pos = next((p for p in (self._toc_exact_pos(page) for page in visible)
+                    if p is not None), None)
+        if pos is None:
+            pos = self._toc_pos_for_page(visible[0])
+        item = self._toc_items.get(pos) if pos is not None else None
+        if item is None:
+            return
+
+        palette = self.toc_tree.palette()
+        item.setBackground(0, palette.highlight())
+        item.setForeground(0, palette.highlightedText())
+        self._toc_current_item = item
+        self.toc_tree.setCurrentItem(item)
+        self.toc_tree.scrollToItem(item)
 
     def _toc_jump(self, item: QTreeWidgetItem, _col: int = 0) -> None:
         """Jump to the page an entry points at (double-click / Enter)."""
@@ -2677,6 +2812,7 @@ class MainWindow(QMainWindow):
 
     def _update_status(self) -> None:
         self._update_sidebars()
+        self._highlight_toc_entry()
         n = self.spread.spread_count()
         if n == 0:
             self.status.showMessage("No book open")

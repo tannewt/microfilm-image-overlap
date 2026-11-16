@@ -33,6 +33,20 @@ sequence of scans back together. Three entry points:
   `flatten_lighting.py` versions) and stitches each page with a hard switch at
   the overlap, honoring any `[manual]` overrides in the plan. No SIFT here, so
   the input scans can be iterated on without re-planning.
+- **`pair_annotator.py`** — a BookReader-like viewer for **one pair of
+  consecutive scans**: hand-mark the exact translation (anchors), a pair gap
+  (no overlap), or a black page-boundary bar. Writes a durable JSON override
+  file instead of editing generated plans. See "Manual pair annotations" below.
+- **`bar_annotator.py`** — a single-scan viewer for marking the **one or two
+  blank page-boundary bars** that split a scan into sections. Writes the same
+  annotation JSON (the `bars` table).
+- **`plan_v2.py`** — section-based planning: split each scan by its manual
+  bars, align consecutive scans, merge bars in film coordinates, and write one
+  TOML per page listing every contributing **scan + section (1, 2, 3)**.
+  This is the model the manual bar/bar-anchor work is building toward.
+- **`section_annotator.py`** — review plan-v2 pages: compose the page from its
+  sections, keep/drop contributing sections, confirm or reject each gap, and
+  save the decisions to `section_overrides.json` without editing the plans.
 - **`compare_pages.py`** — QC the plans: compare neighboring page plans to flag
   **duplicates** (the same page planned twice) and **match up** pairs whose
   edges share SIFT points (adjacent in the original book). See
@@ -335,6 +349,10 @@ detection failure.
 | `extract_anomalies.py` | summarize a run's no-overlap & near-duplicate pairs |
 | `plan_pages.py` | plan one page per microfilm page: per-page TOML ([auto] contributors + offsets) |
 | `plan_pages_ocr.py` | one-page planning whose pair overlaps come from OCR text instead of SIFT (writes the same TOML plan) |
+| `pair_annotator.py` | BookReader-like viewer for manually marking scan-pair anchors, pair gaps, and page-boundary bars; writes `plans/ocr_1028/annotations/<roll>.json` |
+| `bar_annotator.py` | single-scan viewer for marking 1–2 blank page-boundary bars per scan (sections S1/S2/S3); shares the pair-annotator JSON |
+| `plan_v2.py` | section-based page planning: one TOML per page listing contributing scans + sections |
+| `section_annotator.py` | review plan-v2 pages: section keep/drop and gap confirmation, saved to `section_overrides.json` |
 | `scan_ocr_reader.py` | scan + OCR side-by-side QA viewer (shows the OCR results `plan_pages_ocr.py` uses) |
 | `compose_pages.py` | composite the plans into page images (honors [manual] overrides; accepts flat scans) |
 | `compare_pages.py` | QC the plans: flag duplicate neighboring pages and pairs whose edges share SIFT points |
@@ -777,18 +795,314 @@ The pair registration (`ocr_pair_match`) filters repeated words, applies
 the same film-advance sign gate as the SIFT detector, and -- knowing the
 scan height -- accepts only a cluster the size of a page advance, so a
 blank/ad-only overlap cannot fold the neighbours onto the wrong film rows
-and shred a page. When the text offers no such cluster but the two frames
-share a **black boundary bar** (the same bar captured twice, matched by
-thickness), `bar_pair_offset` derives the shift from the bar directly and
-uses it instead of the weak text alignment. A pair with neither reads as
-broken, so the layout breaks a run there, just as an unlinked SIFT pair
-would. `plan_batch_ocr` reuses `plan_pages.run` through a new optional
-`pair_fn` hook; `analyze_batch` gained a matching `orient` override so the
+and shred a page. Two further guards matter on the 20261028 rolls:
+
+* a **large dx is not film motion**. A real pair drifts only a few tens of
+  pixels sideways; a cluster shifted hundreds of pixels is unrelated text
+  (a repeated headline/ad). `max_dx` (default 500 px, the SIFT planner's
+  tolerance) rejects it instead of inventing a page step.
+* a **strong near-zero dy is a duplicate exposure / stalled frame**, not a
+  bad measurement. When the content is almost identical its text cluster
+  is far stronger than anything a normal advance offers, so the magnitude
+  window now keeps it (`stall=True`) instead of discarding it and letting a
+  weak unrelated in-window cluster win. `plan_pages.build_layout` drops the
+  redundant later scan (`collapse_duplicate_stalls`) so it cannot seed a
+  phantom page; a genuine short advance (e.g. ~595 px) is above the
+  duplicate threshold and stays.
+
+A weak cluster (only a handful of words) stays linked but is flagged
+`weak`: `build_layout` re-anchors it on the run's established page cadence,
+and breaks the run when even that implies a page far shorter than normal
+(the 00275 0352->0353 junction, rebuilt by the gap-join pass with its red
+middle band). A missing capture (`0046`->`0048`, one absent file) is
+stitched normally when the survivors still register a strong one-page
+advance -- the absent frame was redundant -- and only becomes a red
+placeholder when they do not.
+
+When the text offers no usable cluster but the two frames share a **black
+boundary bar** (the same bar captured twice, matched by thickness),
+`bar_pair_offset` derives the shift from the bar directly and uses it
+instead of the weak text alignment. A pair with neither reads as broken, so
+the layout breaks a run there, just as an unlinked SIFT pair would.
+`plan_batch_ocr` reuses `plan_pages.run` through a new optional `pair_fn`
+hook; `analyze_batch` gained a matching `orient` override so the
 OCR-detected horizontal direction is used instead of SIFT.
+
+The page-cadence estimate used to split under-detected bars now prefers
+the merged **bar-spacing** median when it is within 1.8x the per-pair
+advance (a partially overlapping page), and keeps the advance when the
+spacing is a missed-bar multiple. That distinction is what makes a
+11750-px two-page span split into two ~5860-px pages (00275 scans0430-0437),
+and fixes the half-height pages in 00275 scans0499-0570 (a ~5960 px page
+with only ~3600 px advance). It also requires most frames in the run to
+actually show a boundary; a run where only 31-47% of frames carry a bar
+(P77-626 07395 scans0523-0552) has a spacing median at 2x the real page, so
+the advance is used instead.
+
+The local 20261028 re-plan helper is `stage2-ocr/plan_all_1028_local.py`
+(one process per edition, same front-page filter as the remote workers,
+plus a few previous-issue scans of layout context). `stage2-ocr/
+build_toc_1028.py` turns the same `front_pages_1028.json` issue catalog into
+one BookReader TOC per roll, and `stage2-ocr/apply_plans_1028.py` stages
+only the changed plans for recomposition and deletes stale pages.
+`build_page_order_1028.py` writes a date-sorted `page_order.json` beside the
+pages (a roll may be composed from several camera-roll prefixes with
+different date ranges), and `book_reader.collect_images` honours it so the
+book opens chronologically without renaming the page files or plans.
 
 The default batch pattern keeps files with a 4-digit trailing sequence
 index, so stray directory files (`start.tif`, `test.tif`, `test2.tif`) do
 not enter the layout as unnamed scans.
+
+### Manual pair annotations (`pair_annotator.py`)
+
+The automatic detectors are good but not perfect, and the remaining failures
+are localized: a pair with no usable text/SIFT match, a missed black bar, a
+duplicate exposure.  `pair_annotator.py` is a BookReader-like viewer for
+**one pair of consecutive scans** where you record the ground truth directly:
+
+```
+python pair_annotator.py 20261028-newspaper-scans/P72-2707-CENLIB9102
+python pair_annotator.py scanA.tif scanB.tif
+```
+
+- **Anchor** (`A`): click the same feature in the left and right scan. One
+  anchor gives the exact translation `dx = xb - xa`, `dy = yb - ya`; add more
+  for confidence and the median is used.
+- **OCR-guided anchor**: OCR sidecars are loaded with each scan. Hovering an
+  OCR box highlights the corresponding box in the other scan. The match is
+  box-geometry first: with a known pair offset (plan auto-offset or manual
+  anchor), the hovered box is shifted onto the other scan and the
+  best-overlapping box wins; text similarity is only a fallback when the
+  offset is unknown or no box lands nearby. Click the OCR in A to pin it,
+  then click the same character/place in B to create the anchor. The OCR
+  highlight only guides you to the right line -- the anchor uses the two
+  clicked points. The default view shows only hovered/pinned/matched boxes,
+  and the toolbar can show every box at once.
+- **Pair gap** (`G`): the scans do not overlap (broken run / missing film).
+- **Page bar** (`B`): drag a horizontal band across either scan to mark a
+  black page-boundary bar. Bars are stored per scan.
+- **OK** (`O`): reviewed and accepted as-is.
+- Notes, delete, autosave, `Right`/`Left` pair navigation, and a status filter
+  are in the window; `Ctrl+O` opens a roll directory and `Ctrl+Shift+O` opens
+  an existing annotation file.
+
+OCR comes from the same auto-detected roots the OCR planner uses
+(`stage2-ocr/ocr_results/paddle_scans_1028/<roll>/`, then `paddle_scans`,
+`paddle`, next to the scans, or an explicit repeated `--ocr-dir`).
+
+Annotations are written to
+`plans/ocr_1028/annotations/<roll>.json` by default, separate from the
+generated plans so a re-plan cannot destroy them:
+
+```json
+{
+  "pairs": {
+    "P72-2707-CENLIB9102/08490_.../570-571": {
+      "status": "anchored",
+      "anchors": [{"a": [1000.5, 1200.25], "b": [1004.5, 1205.75]}],
+      "dx": 4.0, "dy": 5.5,
+      "note": ""
+    },
+    "P72-2707-CENLIB9102/08490_.../571-572": {"status": "gap"}
+  },
+  "bars": {
+    "P72-2707-CENLIB9102/08490_.../570": [[520, 720]]
+  }
+}
+```
+
+`pairs[key].dx/dy` is the manual pair translation A->B; `status = "gap"`
+means do not stitch across it.  This is the manual override layer the planner
+will consume (wiring it into `plan_pages.py` is a separate step, so the
+annotations survive re-plans while that is developed).
+
+### Bar annotations and section-based plan v2
+
+The manual pair anchors and the bar marks are the inputs to a simpler page
+model:
+
+1. **A scan is split by its blank bars into sections S1/S2/S3.**
+   `bar_annotator.py` is a single-scan viewer for marking those bars:
+
+   ```
+   python bar_annotator.py 20261028-newspaper-scans/P72-2707-CENLIB9102 --at 570
+   ```
+
+   Drag a horizontal band across a blank bar to add it; the scan always fits
+   the window (no zoom/pan). Select a manual bar and drag its top or bottom
+   edge to adjust it; `Delete` removes it. Auto-detected bars are shown dashed
+   amber; drag an auto bar's edge to convert-and-adjust it, or double-click it
+   to convert it unchanged. `Delete` on a selected auto suggestion dismisses
+   it. Manual bars are solid green.
+
+   Auto-detect combines dark-bar detection, fine-window white-gap detection,
+   OCR-empty row bands, and a dynamic-programming **diagonal dark path**
+   detector for bars that drift a few degrees; old-plan `blank_rows` are
+   merged in as extra suggestions. It emits **one or two** suggestions only:
+   a second bar must be far away and have real OCR boxes between the two.
+   OCR is also a safety constraint: selected bars are trimmed so they never
+   cover an OCR box. A tall OCR-only gap with no black/diagonal detector
+   support becomes a small (~100 px) bar centred between the surrounding OCR
+   boxes, which is fine because white margins around the OCR are allowed.
+   If every detector misses, a fallback band is offered only when a text-free
+   gap exists; no bar is suggested if OCR covers the content. The auto
+   values are only a starting point: the manual bars are authoritative.
+   The scan list and the S1/S2/S3 labels make it easy to walk a roll and mark
+   one or two bars per scan. Bars are saved in the same
+   `plans/ocr_1028/annotations/<roll>.json` as the pair anchors.
+
+2. **Sections are correlated across scans by their pair offsets.** A manual
+   pair anchor is authoritative; otherwise `plan_v2.py` uses the old plan's
+   offset, then OCR. The bars merge across scans into film coordinates.
+
+3. **Plan v2 writes one TOML per page**, not per raw scan range:
+
+   ```
+   python plan_v2.py 20261028-newspaper-scans/P72-2707-CENLIB9102 \
+       --annotations plans/ocr_1028/annotations/P72-2707-CENLIB9102.json \
+       --output-dir plans/v2/P72-2707-CENLIB9102
+   ```
+
+   Each page plan records:
+
+   ```toml
+   [auto]
+   film = [1062842.5, 1068030.9]
+   sections = [
+     { scan = "..._0569.tif", index = 569, section = 3,
+       rows = [6110, 6299], film = [...], film_offset = ..., dx = ... },
+     { scan = "..._0570.tif", index = 570, section = 2,
+       rows = [1198, 6299], film = [...], film_offset = ..., dx = ... },
+     { scan = "..._0571.tif", index = 571, section = 1,
+       rows = [0, 1265], film = [...], film_offset = ..., dx = ... },
+   ]
+   gaps = []
+   ```
+
+   `sections[i].section` is the 1-based section number of that scan; `rows`
+   are the scan rows to crop, and `film`/`film_offset`/`dx` place it. Uncovered
+   film rows become `gaps` for red filling. `bar_source` records whether that
+   section's bar was manual, auto, or old-plan. `[page].page_index` and the
+   `[inventory]` table are the place to attach the issue/date/page identity;
+   `label` already names the contributing scans/sections.
+
+   Bars are **not required up front**: the default `--bars auto` uses manual
+   bars where you have them and the 1-or-2-bar detector for every remaining
+   scan, so every scan gets sections and no page silently spans a whole
+   unmarked run. `--bars plan` falls back to old-plan `blank_rows` instead;
+   `--bars manual` (alias `--manual-bars-only`) uses only bars you checked.
+
+   Each plan carries a `[review]` table:
+
+   ```toml
+   [review]
+   needs_review = false
+   auto_bars = true
+   reasons = []
+   ```
+
+   `auto_bars = true` says at least one contributing section used an
+   automatic bar. `needs_review = true` is the real queue: gaps or no
+   sections. A page touching three or more overlapping scans is allowed and
+   not flagged (the summary still reports the count for monitoring). The
+   summary prints both counts.
+   The plan v2 output is deliberately data-only; the review tool composes
+   from `sections` for inspection. A page with a huge `sections` list is
+   worth a look, but three or more scans is not itself an error.
+
+### Reviewing sections and gaps: `section_annotator.py`
+
+`section_annotator.py` loads a plan-v2 directory, composes the selected page
+with `compose_pages.py`'s section assembler, and overlays every contributing
+section and gap:
+
+```
+python section_annotator.py plans/v2/P72-2707-CENLIB9102
+```
+
+- The page list filters to **Needs review**, **Has gaps**, **Auto bars**,
+  **Unreviewed**, or **Reviewed**.
+- The section table has a **Keep** checkbox per contributing scan/section.
+  Unchecking one recomposes without it, so you can see which section is
+  stealing or missing content.
+- Each gap has a status: **Unreviewed**, **Confirmed real gap**, or
+  **Not a gap**. Confirming all gaps marks the page `gap_accepted`.
+- Page status is `unreviewed`, `ok`, `needs_fix`, `gap_accepted`, or `skip`.
+- The **Page** tab shows the composed page. The **Sections & bars** tab
+  explodes it into its contributing scan sections (Ctrl+1 / Ctrl+2 switch,
+  or double-click a row in the section table). Select a component to see the
+  full scan with its manual/auto bars, section labels, and the exact page band
+  highlighted. Bars can be added, adjusted, accepted, or deleted there; that
+  writes the shared bar annotation JSON and marks the page `needs_fix`.
+- **Replan** (`R`) rebuilds the current page with `plan_v2.py` and loads the
+  result. It plans a small window around the page's scans (not the whole roll),
+  aligns the window back onto the existing film coordinates, and rewrites the
+  neighbouring pages that the changed bar/pair actually moved — not only the
+  selected page — so the whole affected run stays on consistent film
+  coordinates. The page label is kept as the stable identity used by
+  `section_overrides.json`. If the new page subsumes a stale short/gap page
+  (the same sections or a strong film overlap), that duplicate plan is
+  absorbed: the lowest page number is kept, the duplicate TOML is deleted, and
+  any page override is merged into the kept page. A page whose scan was
+  dropped as a duplicate exposure/stall is removed the same way, so a
+  ghost gap page cannot survive a re-plan. That dropped scan is recorded under
+  `"duplicates"` in `section_overrides.json` (with the scan it duplicates), and
+  `plan_v2.py --section-overrides ...` excludes it on later runs.
+- The **Scan map** tab (Ctrl+3) shows **two consecutive scans** at a time with
+  their section bands; **Previous pair** / **Next pair** walk the neighbouring
+  pairs. Lines connect sections whose film-row intervals overlap, so you can
+  see how a section on the left continues into the right scan; page-used
+  sections are green, dropped ones red, and a page gap with no overlapping
+  section is a dashed red line. Drag from a section in one scan onto a section
+  in the other to mark them as the same; manual links are magenta and a second
+  drag removes one. **Clear pair links** removes all links between the two
+  displayed scans. Links are stored under `"links"` in
+  `section_overrides.json` and are consumed by `plan_v2.py`: a linked pair
+  becomes an explicit page made of those two sections, placed by the pair
+  offset, and that derived offset replaces the old-plan/OCR offset (and
+  suppresses furniture re-anchoring). An explicit section-overlap override
+  still wins, so a linked page can overlap or leave a gap as clicked in the
+  Section overlap tab. Linked pages replace normal pages whose sections are
+  fully covered by the links.
+- The **Section overlap** tab (Ctrl+4) shows the same scan pair with its
+  section bands and **all OCR boxes**. OCR boxes that match between the two
+  scans through the current pair offset are green; unmatched boxes are faint
+  blue (toggle **Show all OCR boxes**). Click an OCR box in the left scan,
+  then the matching box in the right scan, to override the pair translation
+  with those two box centres. The override is stored under `"overlaps"` in
+  `section_overrides.json` and is consumed by `plan_v2.py` ahead of manual
+  anchors, section links, old plans, and OCR. **Clear overlap override**
+  removes it and falls back to the automatic source.
+- Decisions are saved beside the plans as `section_overrides.json`:
+
+```json
+{
+  "pages": {
+    "page0062-56s3-57s1-gap": {
+      "status": "gap_accepted",
+      "sections": {"..._0056.tif|3": {"keep": true}},
+      "gaps": {"295269.8-299251.3": {"status": "confirmed"}},
+      "note": ""
+    }
+  },
+  "links": {"..._0056.tif|3": ["..._0057.tif|1"]},
+  "overlaps": {
+    "P72-.../08490_.../570-571": {"dx": 4.5, "dy": -5288.2,
+                                  "anchors": [{"a": [1000, 1200],
+                                               "b": [1004, -4088]}]}
+  },
+  "duplicates": {
+    "P72-.../08490_.../57": {"of": "P72-.../08490_.../56",
+                             "note": "duplicate exposure"}
+  }
+}
+```
+
+Review decisions live in `section_overrides.json`, so they survive a re-plan.
+Replanning rewrites the kept page's generated TOML and removes any stale
+duplicate it absorbs. Section drops and gap decisions are not yet consumed by a
+composer; that is the next integration step.
 
 ### Two-bar pairs and the bar-constrained NCC fallback
 

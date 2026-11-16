@@ -225,9 +225,23 @@ def filter_plans(outdir: Path, job: dict, scan_dir: Path,
                 if scan == fname]
         return min(vals) if vals else None
 
+    def fname_seq(fname: str):
+        seq = seq_by_fname.get(fname)
+        if seq is not None:
+            return seq
+        # The local planner adds a few PREVIOUS-issue scans as layout
+        # context; they are not in job["scans"], but their trailing sequence
+        # number still identifies the run they belong to.
+        m = re.search(r"(?<!\d)(\d{4})\D*$", fname)
+        return int(m.group(1)) if m else None
+
     def plan_seqs(plan):
-        return {seq_by_fname[scan] for scan, _off in _offsets(plan)
-                if scan in seq_by_fname}
+        out = set()
+        for scan, _off in _offsets(plan):
+            seq = fname_seq(scan)
+            if seq is not None:
+                out.add(seq)
+        return out
 
     start = job["start"]
     next_start = job.get("next_start")
@@ -244,6 +258,55 @@ def filter_plans(outdir: Path, job: dict, scan_dir: Path,
 
     drop = set()
     dropped = []
+    # Ownership by layout RUN, not raw film offsets.  With a few scans of
+    # previous-issue context, an edition can contain a broken pair and
+    # therefore TWO unrelated film coordinate systems (the pair offsets are
+    # per-run).  Comparing their offsets directly made valid pages look
+    # "before this front bar" or "after the next" and dropped them (or kept
+    # them in two editions).  Scans that co-occur in a plan belong to one
+    # run; union-find over the plans recovers those runs, so a film-bar test
+    # is only applied inside the run that owns the front bar.
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    plan_seqs_cache = {}
+    for name, plan in plans.items():
+        seqs = plan_seqs(plan)
+        plan_seqs_cache[name] = seqs
+        if plan_films(plan) is None:
+            # A gap-join plan deliberately bridges two layout runs; it
+            # must not fuse their unrelated film coordinate systems.
+            continue
+        ss = list(seqs)
+        for other in ss[1:]:
+            union(ss[0], other)
+
+    comp_start = find(start) if start in parent else None
+    linked = (next_start is not None and comp_start is not None
+              and next_start in parent
+              and find(next_start) == comp_start)
+
+    def in_start_run(name: str) -> bool:
+        seqs = plan_seqs_cache.get(name) or set()
+        return (comp_start is not None and bool(seqs)
+                and find(min(seqs)) == comp_start)
+
+    # A page is owned by exactly one edition.  Use the near film edge with
+    # the bar-merge tolerance so a page that straddles a front bar is kept
+    # only by the edition whose bar starts it; pages in a different run are
+    # judged by scan sequence instead (their film coordinates are unrelated).
+    edge_tol = 500.0
     b_start = None
     if start_top is not None:
         s0 = offset_for(start)
@@ -252,34 +315,44 @@ def filter_plans(outdir: Path, job: dict, scan_dir: Path,
         b_start = s0 + start_top
         for name, plan in plans.items():
             film = plan_films(plan)
-            if film and film[1] <= b_start + 1.0:
+            seqs = plan_seqs_cache.get(name) or set()
+            if film and in_start_run(name):
+                if film[1] <= b_start + 1.0:
+                    drop.add(name)
+                    dropped.append((name, f"before front bar {b_start:.0f}"))
+                elif film[0] < b_start - edge_tol:
+                    drop.add(name)
+                    dropped.append((name, f"starts before front bar "
+                                          f"{b_start:.0f}"))
+            elif seqs and max(seqs) < start:
                 drop.add(name)
-                dropped.append((name, f"before front bar {b_start:.0f}"))
+                dropped.append((name, "previous issue run"))
     if next_start is not None:
-        s0 = offset_for(start)
-        sN = offset_for(next_start)
-        if s0 is None:
-            s0 = 0.0
-        # A broken pair makes the next scan start a NEW layout run at film
-        # offset 0.  Its coordinates are unrelated to this run's, so the
-        # next front-bar cutoff must be skipped; instead drop plans made
-        # only from the next run's scans.
-        linked = sN is not None and sN > s0 + 1000.0
         if linked and next_top is not None:
-            b_next = sN + next_top
+            sN = offset_for(next_start)
+            b_next = (sN if sN is not None else 0.0) + next_top
             for name, plan in plans.items():
                 if name in drop:
                     continue
                 film = plan_films(plan)
-                if film and film[0] >= b_next - 1.0:
+                seqs = plan_seqs_cache.get(name) or set()
+                if film and in_start_run(name):
+                    if film[0] >= b_next - 1.0:
+                        drop.add(name)
+                        dropped.append((name, f"after next front bar "
+                                              f"{b_next:.0f}"))
+                    elif film[1] > b_next + edge_tol:
+                        drop.add(name)
+                        dropped.append((name, f"ends after next front bar "
+                                              f"{b_next:.0f}"))
+                elif seqs and min(seqs) >= next_start:
                     drop.add(name)
-                    dropped.append((name, f"after next front bar "
-                                          f"{b_next:.0f}"))
-        elif not linked:
+                    dropped.append((name, "next issue run"))
+        else:
             for name, plan in plans.items():
                 if name in drop:
                     continue
-                seqs = plan_seqs(plan)
+                seqs = plan_seqs_cache.get(name) or set()
                 if seqs and min(seqs) >= next_start:
                     drop.add(name)
                     dropped.append((name, "next layout run"))

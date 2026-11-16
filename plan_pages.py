@@ -2010,10 +2010,52 @@ Override [auto] here to fine-tune this page without re-planning.
 """
 
 
+def manual_block(text):
+    """Return the raw, non-empty ``[manual]`` section of a plan TOML.
+
+    Used to keep hand fixes across a re-plan. Only the block from the
+    ``[manual]`` line to the end of the file is returned, so the generated
+    ``[page]`` / ``[auto]`` parts are never reused. An empty section (the
+    self-documenting stub every generated plan carries) returns "".
+    """
+    lines = (text or "").splitlines(keepends=True)
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == "[manual]":
+            start = i
+            break
+    if start is None:
+        return ""
+    body = [ln for ln in lines[start + 1:]
+            if ln.strip() and not ln.lstrip().startswith("#")]
+    return "".join(lines[start:]) if body else ""
+
+
+def merge_manual_text(text, old_text):
+    """Append the old plan's non-empty ``[manual]`` block to a new plan body.
+
+    ``text`` must end with the generated empty ``[manual]`` stub. Returns it
+    unchanged when the old plan had no hand edits.
+    """
+    block = manual_block(old_text)
+    if not block:
+        return text
+    cut = text.rfind("\n[manual]")
+    if cut >= 0:
+        head = text[:cut].rstrip("\n")
+    else:
+        head = text.rstrip("\n")
+    return head + "\n\n" + block.lstrip("\n")
+
+
 def write_plan_toml(path, label, kind, source_dir, auto, axis=None,
-                    reverse=False, missing_note=None):
+                    reverse=False, missing_note=None, preserve_manual=True):
     """Write one page plan: `[auto]` holds the computed data, `[manual]`
     (empty, self-documenting) is where hand edits override it.
+
+    With ``preserve_manual`` (the default), a non-empty ``[manual]`` section
+    already in ``path`` is copied onto the newly generated plan, so a re-plan
+    cannot silently discard hand fixes. The auto data is still replaced.
 
     `axis` marks a horizontal batch's film axis in `[page]`: for
     `axis = "x"` the page's `film` range and every `film_offset` are film
@@ -2064,8 +2106,19 @@ def write_plan_toml(path, label, kind, source_dir, auto, axis=None,
               for note in manual_doc.split("\n") if note]
 
     lines += ["[manual]", ""]
+    body = "\n".join(lines)
+    if preserve_manual and os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                old_text = f.read()
+        except OSError:
+            old_text = ""
+        kept = manual_block(old_text)
+        if kept:
+            body = merge_manual_text(body, old_text)
+            print(f"  preserved [manual] overrides in {path}", flush=True)
     with open(path, "w") as f:
-        f.write("\n".join(lines))
+        f.write(body)
 
 # --------------------------------------------------------------------------- #
 # Driver
@@ -2530,9 +2583,15 @@ def page_from_scan(ctx, k, direction=1, seed_bar=None, bounds=None,
         ok, dy = ctx.pair_dy(min(j, jn))
         if not ok:
             break
-        if (getattr(ctx, "lazy", False) and direction > 0):
+        if getattr(ctx, "lazy", False):
             cadence = float(np.median(adv)) if len(adv) >= 2 else None
-            if cadence and 0 < abs(dy) < REPEAT_FRAC * cadence:
+            prev_res = ctx.pair(min(j, jn))
+            if (cadence and prev_res.get("weak")
+                    and abs(abs(dy) - cadence) > 0.15 * cadence):
+                sign = np.sign(dy) or (np.sign(adv[-1]) if adv else 1.0)
+                dy = float(sign) * cadence
+            elif (cadence and direction > 0
+                  and 0 < abs(dy) < REPEAT_FRAC * cadence):
                 anchored = _walk_reanchor(visited, ctx, cadence,
                                           ctx.bar_gap_tol)
                 if anchored is not None and np.sign(anchored) == np.sign(dy):
@@ -2671,6 +2730,95 @@ def extend_contribs_lazy(ctx, contrib, film, cap=8):
         contrib.insert(0, k)
 
 
+DUP_STALL_FRAC = 0.03   # a "stall" pair whose |dy| is under this share of
+                        # the scan height is a duplicate exposure of the same
+                        # film position (not a genuine short advance)
+
+
+def collapse_duplicate_stalls(valid, valid_idx, pair_results, gap_after):
+    """Drop the later scan of a duplicate-exposure pair from the layout.
+
+    OCR finds the duplicate pair by its near-zero, very strong text
+    alignment (``plan_pages_ocr.ocr_pair_result`` sets ``stall=True``).
+    Keeping both frames at the same film offset still seeds two walks per
+    boundary bar and can emit a phantom page between them (00275
+    scans013-015 carried a bogus extra page from duplicate scan 0015).
+    Drop the redundant later scan and synthesize the pair across it
+    (the duplicate's dy ~= 0, so the sum is the real advance to the next
+    surviving frame).  A genuine short advance (00275 0037->0038, ~595 px)
+    is above ``DUP_STALL_FRAC`` and stays.
+
+    Returns ``(valid, valid_idx, pair_results, gap_after)`` -- the same
+    objects when nothing was dropped.
+    """
+    nv = len(valid)
+    if nv < 2:
+        return valid, valid_idx, pair_results, gap_after
+    drop = set()
+    for k in range(nv - 1):
+        res = pair_results[k]
+        if (res.get("ok") and res.get("stall")
+                and abs(res.get("full_dy", 0.0))
+                <= DUP_STALL_FRAC * valid[k].h):
+            drop.add(k + 1)
+    if not drop:
+        return valid, valid_idx, pair_results, gap_after
+    keep = [i for i in range(nv) if i not in drop]
+    new_valid = [valid[i] for i in keep]
+    new_valid_idx = [valid_idx[i] for i in keep]
+    new_pairs = []
+    for a, b in zip(keep, keep[1:]):
+        raw_lo, raw_hi = valid_idx[a], valid_idx[b]
+        if any(g in gap_after for g in range(raw_lo, raw_hi)):
+            new_pairs.append(dict(ok=False, full_dx=0.0, full_dy=0.0,
+                                  matches=0, via_ncc=False, via_band=False,
+                                  status="missing_frame"))
+            continue
+        seg = pair_results[a:b]
+        if not seg or not all(r.get("ok") for r in seg):
+            new_pairs.append(dict(ok=False, full_dx=0.0, full_dy=0.0,
+                                  matches=0, via_ncc=False, via_band=False,
+                                  status="duplicate_chain_broken"))
+            continue
+        new_pairs.append(dict(
+            ok=True,
+            full_dx=float(sum(r["full_dx"] for r in seg)),
+            full_dy=float(sum(r["full_dy"] for r in seg)),
+            matches=int(min(r.get("matches", 0) for r in seg)),
+            via_ncc=any(r.get("via_ncc") for r in seg),
+            via_band=any(r.get("via_band") for r in seg),
+            status="ok",
+            weak=any(r.get("weak") for r in seg),
+            stall=False))
+    new_gap_after = set()
+    for t in range(len(new_valid_idx) - 1):
+        raw_lo, raw_hi = new_valid_idx[t], new_valid_idx[t + 1]
+        if any(g in gap_after for g in range(raw_lo, raw_hi)):
+            new_gap_after.add(new_valid_idx[t])
+    return new_valid, new_valid_idx, new_pairs, new_gap_after
+
+
+def _weak_pair_page_height(a, b, dy, ascending):
+    """The page height a doubtful OCR pair implies between its two boundary
+    bars, or None when either scan has no usable bar.
+
+    ``ascending`` is the film direction the measured dy implies (dy < 0 on
+    the --reverse reels): the page opens at A's film-extreme bar and closes
+    at B's nearest bar.  Used only for *weak* OCR registrations, to tell a
+    genuine advance (the implied page is ~normal height) from a junction
+    whose middle page is missing (the implied page is far too short and the
+    gap-join pass must fill it with a red band).
+    """
+    if not a.bars or not b.bars:
+        return None
+    step = abs(dy)
+    if ascending:
+        h = step + b.bars[0][0] - a.bars[-1][1]
+    else:
+        h = step + a.bars[0][1] - b.bars[-1][0]
+    return h if h > 0 else None
+
+
 def build_layout(valid, pair_results, valid_idx, gap_after, nv,
                  bar_gap_tol, min_page_height, workers=1):
     """Film-coordinate layout from per-pair overlaps: split the sequence into
@@ -2692,6 +2840,7 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv,
     runs = []
     run_start = 0
     advances = []
+    dxs = []          # accepted lateral shifts in the current run
     for k in range(nv - 1):
         res = pair_results[k]
         break_here = (valid_idx[k] in gap_after) or (not res["ok"])
@@ -2702,13 +2851,52 @@ def build_layout(valid, pair_results, valid_idx, gap_after, nv,
             continue
         dy = res["full_dy"]
         cadence = float(np.median(advances)) if advances else None
-        if cadence and 0 < abs(dy) < REPEAT_FRAC * cadence:
+        if cadence and res.get("weak"):
+            # Weak OCR registration: the few matched words landed on a
+            # wrong-but-in-window translation (00275 0013->0014 measured
+            # -3380 against a ~5118 run, 0024->0025 -3937 against ~5100).
+            # The run's established advance is the only reliable evidence;
+            # replace the weak guess when it clearly disagrees, keeping
+            # the measured advance direction.
+            if abs(abs(dy) - cadence) > 0.15 * cadence:
+                sign = np.sign(dy) or (np.sign(advances[-1])
+                                       if advances else 1.0)
+                dy = float(sign) * cadence
+            # If even the cadence-anchored pair implies a page far shorter
+            # than the film's normal one, the middle page is genuinely
+            # missing (00275 0352->0353: ~2580 px between the bars).  Break
+            # the run so plan_gap_merges rebuilds the junction with its red
+            # filler; a normal advance (0013->0014, 0024->0025) stays linked.
+            page_h = _weak_pair_page_height(valid[k], valid[k + 1], dy,
+                                            ascending=dy < 0)
+            if page_h is not None and page_h < 0.7 * cadence:
+                res["ok"] = False
+                res["status"] = "weak_short_gap"
+                runs.append((run_start, k))
+                run_start = k + 1
+                advances = []
+                dxs = []
+                continue
+            # A weak text alignment's dx is as unreliable as its dy (the
+            # 00275 0013->0014 cluster was shifted ~412 px sideways).  A
+            # real pair drifts only a few tens of px; keep the run's recent
+            # lateral trend instead of adding the false shift to dx_cum.
+            dxv = float(res.get("full_dx", 0.0))
+            if dxs:
+                med = float(np.median(dxs))
+                if abs(dxv - med) > 150.0:
+                    res["full_dx"] = med
+            elif abs(dxv) > 150.0:
+                res["full_dx"] = 0.0
+        elif (cadence and 0 < abs(dy) < REPEAT_FRAC * cadence
+                and not res.get("linked")):
             anchored = _furniture_reanchor(valid, run_start, k, S_seed,
                                            cadence, bar_gap_tol)
             if anchored is not None and np.sign(anchored) == np.sign(dy):
                 dy = anchored
         S_seed[k + 1] = S_seed[k] - dy
         advances.append(abs(dy))
+        dxs.append(float(res.get("full_dx", 0.0)))
     runs.append((run_start, nv - 1))
 
     # Cumulative horizontal offset per scan, relative to its run start.
@@ -3018,11 +3206,46 @@ def anticipate_page_breaks(all_pages, runs, valid, S_seed,
         intervals, _, _ = collect_bar_intervals(run_range, valid, S_seed)
         starts = [lo for lo, _ in merge_intervals(intervals, bar_gap_tol)]
         spacings = [b - a for a, b in zip(starts, starts[1:]) if b > a]
+        run_scans = valid[r0:r1 + 1]
+        bar_frac = (sum(1 for sm in run_scans if sm.bars) / len(run_scans)
+                    if run_scans else 0.0)
         cyc = None
-        if len(advances) >= 3:
-            cyc = float(np.median(advances))
-        elif len(spacings) >= 3:
-            cyc = float(np.median(spacings))
+        # The page CYCLE is the distance between page boundaries.  The
+        # bar-spacing median measures it directly where consecutive
+        # boundaries were detected; the per-pair ADVANCE is a cycle sample
+        # only when the frames barely overlap (advance ~= page), so it
+        # UNDER-estimates a page on an overlapping roll (00275: ~4030 px
+        # advance vs a ~5990 px page -- using it made a 11750-px two-page
+        # span look like three 3916-px pages, scans0430-0437).
+        #
+        # But the spacing median is a multiple of the cycle when the bar
+        # detectors missed every other boundary (P77-626 07395: ~2830 px
+        # advance, true page ~3000 px, spacing median ~6090 px; P77-626
+        # 00789: ~5800 px advance, spacing ~12000 px).  A spacing under
+        # 1.8x the advance is the page itself (a partially overlapping
+        # capture); a larger spacing is a missed-bar multiple, so keep the
+        # advance instead of inflating every page by 2x/3x.  The 1.8 limit
+        # matters: 00275 scans0499-0575 advance ~3600 px/frame but page
+        # boundaries are ~5970 px apart (ratio 1.65-1.75), and a 1.6 limit
+        # fell back to the advance and split every real page in half.
+        sp = float(np.median(spacings)) if len(spacings) >= 3 else None
+        adv = float(np.median(advances)) if len(advances) >= 3 else None
+        if sp is not None and adv is not None:
+            # Sparse bar evidence: when most frames in the run show no
+            # boundary at all (P77-626 07395 scans0523-0552: only 31-47 %
+            # carry a bar), the spacing median skips boundaries -- its
+            # ~6090 px is 2x the real ~3000 px page.  Only trust the
+            # spacing as the page cycle when most frames actually show a
+            # boundary (P71-678 00275 scans0490-0570: 89-96 % do, and the
+            # ~5960 px spacing is the real page).
+            if bar_frac < 0.8:
+                cyc = adv
+            else:
+                cyc = sp if sp <= 1.8 * adv else adv
+        elif sp is not None:
+            cyc = sp
+        elif adv is not None:
+            cyc = adv
         if cyc:
             cycles[ri] = cyc
             fallback.append(cyc)
@@ -3427,18 +3650,7 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         # 06818's 0045 -> 0047) -- but that only proves the FILM is
         # covered, not that the missing frame's PAGES were captured at all.
         ma, mb = _scan_seq(a.name), _scan_seq(b.name)
-        if ma is not None and mb is not None and mb - ma > 1:
-            missing.extend(range(ma + 1, mb))
-            res = dict(ok=False, full_dx=0.0, full_dy=0.0,
-                       matches=0, via_ncc=False,
-                       via_band=False, status="missing_frame")
-            if verbose:
-                lines.append(f" bars a={format_bars(a.bars)} "
-                             f"b={format_bars(b.bars)}")
-                lines.append(f"  {a.name} -> {b.name}: -> missing_frame "
-                             f"({mb - ma - 1} file(s) absent; forcing page "
-                             f"break)")
-            return res, lines, missing
+        missing_gap = (ma is not None and mb is not None and mb - ma > 1)
 
         # Strip bounds for the pair match: the boundary-spanning page strip
         # (see compute_pair_overlap). Only the SIFT detector needs them; an
@@ -3457,6 +3669,29 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
                                        full_cache=full_kp_cache,
                                        bars_a=a.bars, bars_b=b.bars,
                                        orient=orient, reverse=reverse)
+        # A missing capture between two surviving scans used to force a
+        # page break unconditionally, because the absent frame might hold
+        # pages neither neighbor saw.  But when the two survivors still
+        # register a strong ONE-page-advance overlap (00275 0046 -> 0048,
+        # 0084 -> 0086, 0310 -> 0312), the film simply advanced once and
+        # the absent frame was a redundant exposure: stitching normally
+        # recovers every page and no red placeholder is needed.  Treat a
+        # gap as a real hole only when the surviving pair cannot link (or
+        # links only weakly, so its offset is a guess).
+        if missing_gap and (not res["ok"] or res.get("weak")
+                            or (mb - ma) > 2):
+            missing.extend(range(ma + 1, mb))
+            res = dict(ok=False, full_dx=0.0, full_dy=0.0,
+                       matches=0, via_ncc=False,
+                       via_band=False, status="missing_frame")
+            if verbose:
+                lines.append(f" bars a={format_bars(a.bars)} "
+                             f"b={format_bars(b.bars)}")
+                lines.append(f"  {a.name} -> {b.name}: -> missing_frame "
+                             f"({mb - ma - 1} file(s) absent; the surviving "
+                             f"frames do not link)")
+            return res, lines, missing
+
         res["__h_a"] = a.h
         if res['status'] != "ok" or res.get("via_ncc") or res.get("via_band"):
             if res["ok"]:
@@ -3491,6 +3726,13 @@ def analyze_batch(scan_dir, pattern=None, cache_dir=None, ratio=0.6,
         missing_seqs.extend(missing)
         for line in lines:
             print(line)
+
+    # Duplicate exposures: OCR sees the near-identical text as a strong
+    # stall.  Drop the redundant later scan before layout so it cannot seed
+    # a phantom page of its own.
+    valid, valid_idx, pair_results, gap_after = collapse_duplicate_stalls(
+        valid, valid_idx, pair_results, gap_after)
+    nv = len(valid)
 
     if verbose:
         print("\n[3/3] Laying out scans in film coordinates and finding pages...")

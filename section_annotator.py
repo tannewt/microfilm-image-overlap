@@ -46,7 +46,17 @@ neighbouring pairs with the buttons).  Sections whose film-row intervals
 overlap are linked as a hint; drag from a section in one scan to a section in
 the other to mark them as the same.  Drag the same pair again to unlink, or
 use **Clear pair links**.  Manual links are magenta and stored in
-``section_overrides.json`` under ``links``.
+``section_overrides.json`` under ``links``; ``plan_v2`` treats a link as a page
+join, builds an explicit page from the two linked sections, and uses the
+derived offset instead of the old-plan/OCR one.
+
+The **Section overlap** tab shows the same scan pair with its section bands
+plus every OCR box.  OCR boxes that match between the two scans are green;
+all other boxes are faint blue.  Click an OCR box in the left scan, then the
+matching box in the right scan, to override the pair's overlap translation
+(``dx``/``dy``).  The override is stored in ``section_overrides.json`` under
+``overlaps`` and takes precedence over the old-plan/OCR offset the next time
+``plan_v2`` replans the page.
 
 Usage:
     python section_annotator.py plans/v2/P72-2707-CENLIB9102
@@ -65,6 +75,7 @@ Controls
     Ctrl+1        show the composed page tab
     Ctrl+2        show the sections & bars tab
     Ctrl+3        show the scan/section map tab
+    Ctrl+4        show the section overlap tab
     Ctrl+wheel    zoom
     drag          pan
 """
@@ -136,6 +147,7 @@ import bar_annotator as ba
 from pair_annotator import (
     AnnotationStore,
     OcrLibrary,
+    ScanView,
     default_annotation_path,
     scan_index,
 )
@@ -242,6 +254,11 @@ class OverrideStore:
         # Scans explicitly excluded from planning as duplicate exposures,
         # keyed by "<roll>/<prefix>/<index>".
         self.duplicates: dict[str, dict] = {}
+        # Manual pair-overlap overrides, keyed by
+        # "<roll>/<prefix>/<a_index>-<b_index>".  dx/dy are the B-minus-A
+        # translation in scan pixels, the same convention as the pair
+        # annotator and plan_v2 pair offsets.
+        self.overlaps: dict[str, dict] = {}
 
     def load(self) -> None:
         if not self.path.is_file():
@@ -252,6 +269,8 @@ class OverrideStore:
                       for k, vals in (data.get("links") or {}).items()}
         self.duplicates = {str(k): dict(v)
                            for k, v in (data.get("duplicates") or {}).items()}
+        self.overlaps = {str(k): dict(v)
+                         for k, v in (data.get("overlaps") or {}).items()}
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -273,12 +292,20 @@ class OverrideStore:
             if key:
                 duplicates[key] = dict(rec)
         self.duplicates = duplicates
+        overlaps = {}
+        for key, rec in self.overlaps.items():
+            if (key and rec.get("dx") is not None
+                    and rec.get("dy") is not None):
+                overlaps[key] = dict(rec)
+        self.overlaps = overlaps
         data = {"version": self.VERSION,
                 "pages": {k: self.pages[k] for k in sorted(self.pages)}}
         if links:
             data["links"] = links
         if duplicates:
             data["duplicates"] = {k: duplicates[k] for k in sorted(duplicates)}
+        if overlaps:
+            data["overlaps"] = {k: overlaps[k] for k in sorted(overlaps)}
         tmp = self.path.with_suffix(".part.json")
         tmp.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
         os.replace(tmp, self.path)
@@ -358,6 +385,25 @@ class OverrideStore:
 
     def unmark_duplicate(self, scan: str) -> bool:
         return self.duplicates.pop(scan, None) is not None
+
+    def get_overlap(self, key: str) -> dict:
+        return dict(self.overlaps.get(key) or {})
+
+    def set_overlap(self, key: str, dx: float, dy: float,
+                    anchors: list[dict] | None = None,
+                    note: str = "") -> dict:
+        rec = self.overlaps.setdefault(key, {})
+        rec["dx"] = round(float(dx), 2)
+        rec["dy"] = round(float(dy), 2)
+        if anchors:
+            rec["anchors"] = [dict(a) for a in anchors]
+        if note:
+            rec["note"] = note
+        rec["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        return rec
+
+    def clear_overlap(self, key: str) -> bool:
+        return self.overlaps.pop(key, None) is not None
 
     def touch(self, label: str) -> None:
         self.page(label)["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
@@ -492,6 +538,110 @@ class PageView(QGraphicsView):
             factor = 1.25 if delta > 0 else 0.8
             self.scale(factor, factor)
         event.accept()
+
+
+# --------------------------------------------------------------------------- #
+# section overlap view
+# --------------------------------------------------------------------------- #
+
+class OverlapScanView(ScanView):
+    """A pair-annotator scan view with plan section bands drawn on top.
+
+    The base view already paints OCR boxes and emits ``pointClicked`` with the
+    OCR index under the cursor.  This subclass adds the plan's S1/S2/S3 bands
+    and makes a click on an OCR box select it even while the view is in
+    select/pan mode, so the overlap override tab needs no extra mode button.
+    """
+
+    def __init__(self, side: str, parent: QWidget | None = None):
+        super().__init__(side, parent)
+        self._bands: list[QGraphicsItem] = []
+        self._loaded_path: Path | None = None
+
+    def load(self, path: Path) -> bool:
+        ok = super().load(Path(path))
+        self._loaded_path = Path(path) if ok else None
+        self._bands = []
+        return ok
+
+    def loaded_path(self) -> Path | None:
+        return self._loaded_path
+
+    def clear_bands(self) -> None:
+        for item in self._bands:
+            if item.scene() is self._scene:
+                self._scene.removeItem(item)
+        self._bands = []
+
+    def clear_view(self) -> None:
+        self.clear_bands()
+        self._scene.clear()
+        self._overlays = []
+        self._pixmap_item = None
+        self._ocr_layer = None
+        self._ocr_entries = []
+        self._ocr_markers = []
+        self._hover_ocr = -1
+        self._loaded_path = None
+
+    def set_bands(self, sections: list, used: dict[int, bool]) -> None:
+        self.clear_bands()
+        if self._pixmap_item is None:
+            return
+        width = float(self._image_size.width())
+        for number, (lo, hi) in enumerate(sections, 1):
+            y0 = max(0.0, float(lo))
+            y1 = min(float(self._image_size.height()), float(hi))
+            if y1 <= y0:
+                continue
+            in_page = number in used
+            keep = used.get(number, True)
+            if in_page and keep:
+                fill, edge, style = (QColor(51, 209, 122, 35), "#33d17a",
+                                     Qt.SolidLine)
+            elif in_page:
+                fill, edge, style = (QColor(255, 138, 128, 35), "#ff8a80",
+                                     Qt.DashLine)
+            else:
+                fill, edge, style = (QColor(90, 169, 255, 14), "#5aa9ff",
+                                     Qt.DotLine)
+            rect = QGraphicsRectItem(0, y0, width, y1 - y0)
+            rect.setBrush(QBrush(fill))
+            rect.setPen(QPen(QColor(edge), 1.5, style))
+            rect.setZValue(3)
+            self._scene.addItem(rect)
+            self._bands.append(rect)
+            label = f"S{number}"
+            if in_page:
+                label += "  PAGE" if keep else "  DROP"
+            text = QGraphicsSimpleTextItem(label)
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(9)
+            text.setFont(font)
+            text.setBrush(QBrush(QColor(edge).lighter(130)))
+            text.setPos(5, y0 + 3)
+            text.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+            text.setZValue(12)
+            self._scene.addItem(text)
+            self._bands.append(text)
+
+    def set_ocr_marks(self, marks: dict[int, str]) -> None:
+        # The base class adds a ring per marked box; with a full page of
+        # matched OCR that is visual noise.  The coloured box itself is the
+        # signal here.
+        if self._ocr_layer is not None:
+            self._ocr_layer.set_marks(marks)
+
+    def mousePressEvent(self, event):  # noqa: N802
+        if event.button() == Qt.LeftButton and self._mode == "select":
+            pos = self.mapToScene(event.position().toPoint())
+            idx = self.ocr_entry_at(pos)
+            if idx is not None:
+                self.pointClicked.emit(self.side, pos, idx)
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
 
 # --------------------------------------------------------------------------- #
@@ -874,6 +1024,11 @@ class MainWindow(QMainWindow):
         self.map_pair = 0
         self.map_film: tuple[float, float] = (0.0, 0.0)
         self.map_page_label: str | None = None
+        self.overlap_pair_key: str = ""
+        self.overlap_pending: tuple[str, int | None, object] | None = None
+        self.overlap_left_ocr = None
+        self.overlap_right_ocr = None
+        self.overlap_match_cache: dict[tuple, tuple[dict, dict, int]] = {}
 
         self._autosave = QTimer(self)
         self._autosave.setSingleShot(True)
@@ -912,6 +1067,9 @@ class MainWindow(QMainWindow):
                                          lambda: self.tabs.setCurrentWidget(self.sections_tab))
         self.act_map_tab = self._act("Show scan &map", "Ctrl+3",
                                     lambda: self.tabs.setCurrentWidget(self.map_tab))
+        self.act_overlap_tab = self._act(
+            "Show section &overlap", "Ctrl+4",
+            lambda: self.tabs.setCurrentWidget(self.overlap_tab))
         self.act_ok = self._act("Mark page &OK", "", lambda: self.set_page_status(STATUS_OK))
         self.act_fix = self._act("Mark page needs &fix", "",
                                  lambda: self.set_page_status(STATUS_NEEDS_FIX))
@@ -1097,6 +1255,67 @@ class MainWindow(QMainWindow):
         ml.addWidget(self.map_view, 1)
         self.tabs.addTab(self.map_tab, "Scan map")
 
+        # Section overlap: the same pair, with OCR boxes and the explicit
+        # translation override.  Matched OCR boxes are green; click one in
+        # each scan to set the pair's dx/dy.
+        self.overlap_label = QLabel("Select a page to override its section overlap")
+        self.overlap_label.setWordWrap(True)
+        self.overlap_label.setStyleSheet("QLabel { padding: 4px 8px; color: #ddd; "
+                                         "background: #242424; }")
+        self.overlap_a_label = QLabel("A")
+        self.overlap_b_label = QLabel("B")
+        for lab in (self.overlap_a_label, self.overlap_b_label):
+            lab.setStyleSheet("QLabel { padding: 4px 8px; color: #ddd; "
+                              "background: #242424; }")
+            lab.setWordWrap(True)
+        self.overlap_a = OverlapScanView("a")
+        self.overlap_b = OverlapScanView("b")
+        for view in (self.overlap_a, self.overlap_b):
+            view.pointClicked.connect(self._on_overlap_point)
+        ov_left = QWidget()
+        ov_ll = QVBoxLayout(ov_left)
+        ov_ll.setContentsMargins(0, 0, 0, 0)
+        ov_ll.setSpacing(0)
+        ov_ll.addWidget(self.overlap_a_label)
+        ov_ll.addWidget(self.overlap_a, 1)
+        ov_right = QWidget()
+        ov_rl = QVBoxLayout(ov_right)
+        ov_rl.setContentsMargins(0, 0, 0, 0)
+        ov_rl.setSpacing(0)
+        ov_rl.addWidget(self.overlap_b_label)
+        ov_rl.addWidget(self.overlap_b, 1)
+        ov_split = QSplitter(Qt.Horizontal)
+        ov_split.addWidget(ov_left)
+        ov_split.addWidget(ov_right)
+        ov_split.setSizes([750, 750])
+
+        self.overlap_prev = QPushButton("◀ Previous pair")
+        self.overlap_prev.clicked.connect(lambda: self._map_step(-1))
+        self.overlap_next = QPushButton("Next pair ▶")
+        self.overlap_next.clicked.connect(lambda: self._map_step(1))
+        self.overlap_show_ocr = QPushButton("Show all OCR boxes")
+        self.overlap_show_ocr.setCheckable(True)
+        self.overlap_show_ocr.setChecked(True)
+        self.overlap_show_ocr.toggled.connect(self._toggle_overlap_ocr)
+        self.overlap_clear = QPushButton("Clear overlap override")
+        self.overlap_clear.clicked.connect(self._clear_overlap_override)
+        ov_bar = QHBoxLayout()
+        ov_bar.addWidget(self.overlap_prev)
+        ov_bar.addWidget(self.overlap_next)
+        ov_bar.addWidget(self.overlap_show_ocr)
+        ov_bar.addWidget(self.overlap_clear)
+        ov_bar.addStretch(1)
+
+        self.overlap_tab = QWidget()
+        ol = QVBoxLayout(self.overlap_tab)
+        ol.setContentsMargins(0, 0, 0, 0)
+        ol.setSpacing(0)
+        ol.addWidget(self.overlap_label)
+        ol.addLayout(ov_bar)
+        ol.addWidget(ov_split, 1)
+        self.tabs.addTab(self.overlap_tab, "Section overlap")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
         tb = QToolBar("Main")
         tb.setMovable(False)
         self.addToolBar(tb)
@@ -1105,7 +1324,7 @@ class MainWindow(QMainWindow):
                   self.act_replan, self.act_ok, self.act_fix,
                   self.act_gaps, None, self.act_fit, None,
                   self.act_page_tab, self.act_sections_tab,
-                  self.act_map_tab):
+                  self.act_map_tab, self.act_overlap_tab):
             tb.addSeparator() if a is None else tb.addAction(a)
 
         sb = QStatusBar()
@@ -1130,6 +1349,9 @@ class MainWindow(QMainWindow):
             return
         self.plan_dir = plan_dir
         self.plans = plans
+        self.overlap_match_cache.clear()
+        self.overlap_pair_key = ""
+        self.overlap_pending = None
         self.overrides = OverrideStore(
             overrides or (plan_dir / "section_overrides.json"))
         self.overrides.load()
@@ -1258,6 +1480,16 @@ class MainWindow(QMainWindow):
         self.map_page_label = None
         self.map_label.setText("Select a page to map its sections")
         self.map_view.clear()
+        self.overlap_pair_key = ""
+        self.overlap_pending = None
+        self.overlap_left_ocr = None
+        self.overlap_right_ocr = None
+        self.overlap_label.setText("Select a page to override its section overlap")
+        self.overlap_a_label.setText("A")
+        self.overlap_b_label.setText("B")
+        self.overlap_a.clear_view()
+        self.overlap_b.clear_view()
+        self._update_overlap_buttons()
 
     def load_page(self, index: int):
         if not (0 <= index < len(self.plans)):
@@ -1265,6 +1497,7 @@ class MainWindow(QMainWindow):
         self._commit_note()
         self.current = index
         page = self.plans[index]
+        self.overlap_pending = None
         self._loading = True
         try:
             self.page_title.setText(page.label)
@@ -1636,6 +1869,7 @@ class MainWindow(QMainWindow):
                 matches.setdefault(best[1], []).append(cand)
 
         keepers: dict[int, PagePlan] = {}
+        assignments: list[tuple[PagePlan, dict]] = []
         removed: list[PagePlan] = []
         current_keeper = None
         for i, cands in matches.items():
@@ -1646,6 +1880,7 @@ class MainWindow(QMainWindow):
             data["reverse"] = keeper.reverse
             pv2.write_plan(keeper.path, data)
             keepers[i] = keeper
+            assignments.append((keeper, data))
             for old in cands:
                 if old.path == keeper.path:
                     continue
@@ -1678,6 +1913,9 @@ class MainWindow(QMainWindow):
                     pass
                 removed.append(cand)
 
+        if assignments:
+            self._renumber_synced(assignments)
+
         if current_keeper is None and keepers and any(
                 p.label == page.label for p in removed):
             current_keeper = min(keepers.values(),
@@ -1687,13 +1925,19 @@ class MainWindow(QMainWindow):
             return None, removed
         return current_keeper, removed
 
-    def _merge_override(self, src: str, dst: str):
-        if self.overrides is None:
-            return
-        rec = self.overrides.pages.pop(src, None)
-        if not rec:
-            return
-        target = self.overrides.page(dst)
+    @staticmethod
+    def _page_label(page_index: int, data: dict) -> str:
+        tags = [f"{s['index']}s{s['section']}"
+                for s in data.get("sections") or []]
+        if not tags:
+            tags = [f"gap{int(float(data['film'][0]))}"]
+        label = f"page{page_index:04d}-" + "-".join(tags)
+        if data.get("gaps"):
+            label += "-gap"
+        return label
+
+    @staticmethod
+    def _merge_override_record(rec: dict, target: dict):
         if target.get("status", STATUS_UNREVIEWED) == STATUS_UNREVIEWED:
             target["status"] = rec.get("status", STATUS_UNREVIEWED)
         for key, val in (rec.get("sections") or {}).items():
@@ -1706,6 +1950,71 @@ class MainWindow(QMainWindow):
             target["note"] = (old + "\n" + note).strip() if old else note
         if (rec.get("updated") or "") > (target.get("updated") or ""):
             target["updated"] = rec["updated"]
+
+    def _renumber_synced(self, assignments: list[tuple[PagePlan, dict]]):
+        """Give the rewritten pages contiguous film-order page numbers.
+
+        When links/bar changes merge or drop pages, keeping the old lowest
+        number can put the new content out of order (e.g. a later film page
+        keeping a lower page number).  Reassign the window's existing page
+        numbers in film order and regenerate labels from the new sections.
+        """
+        ordered = sorted(assignments, key=lambda item: (
+            float(item[1]["film"][0]), float(item[1]["film"][1])))
+        indices = sorted(keeper.page_index for keeper, _data in assignments)
+        targets = []
+        for (keeper, data), index in zip(ordered, indices):
+            label = self._page_label(index, data)
+            data["label"] = label
+            data["page_index"] = index
+            targets.append((keeper, data, label, index, keeper.label))
+
+        # Only a label/path that belongs to another page outside this window
+        # would make the rename unsafe.
+        old_paths = {keeper.path for keeper, _d, _l, _i, _o in targets}
+        for keeper, _data, label, _index, _old in targets:
+            final = keeper.path.with_name(f"{label}.toml")
+            if final.exists() and final not in old_paths:
+                return
+
+        moved = {}
+        if self.overrides is not None:
+            for _keeper, _data, _label, _index, old_label in targets:
+                moved[old_label] = self.overrides.pages.pop(old_label, None)
+
+        temps = []
+        for keeper, data, label, index, old_label in targets:
+            final = keeper.path.with_name(f"{label}.toml")
+            tmp = keeper.path.with_name(f".{label}.part.toml")
+            pv2.write_plan(tmp, data)
+            temps.append((keeper, tmp, final, label, index, old_label))
+
+        for keeper, _data, _label, _index, _old in targets:
+            try:
+                keeper.path.unlink()
+            except OSError:
+                pass
+        for keeper, tmp, final, label, index, _old in temps:
+            os.replace(tmp, final)
+            keeper.path = final
+            keeper.label = label
+            keeper.page_index = index
+
+        if self.overrides is not None:
+            for _keeper, _data, _label, _index, old_label in targets:
+                rec = moved.get(old_label)
+                new_label = _label
+                if rec:
+                    self._merge_override_record(
+                        rec, self.overrides.page(new_label))
+
+    def _merge_override(self, src: str, dst: str):
+        if self.overrides is None:
+            return
+        rec = self.overrides.pages.pop(src, None)
+        if not rec:
+            return
+        self._merge_override_record(rec, self.overrides.page(dst))
 
     def replan(self):
         """Re-run plan_v2 for a window around this page and load the result.
@@ -1924,6 +2233,16 @@ class MainWindow(QMainWindow):
                     return float(sec["film_offset"])
         return None
 
+    def _scan_dx(self, page: PagePlan, scan: str) -> float:
+        for sec in page.sections:
+            if sec["scan"] == scan:
+                return float(sec.get("dx", 0.0))
+        for other in self.plans:
+            for sec in other.sections:
+                if sec["scan"] == scan:
+                    return float(sec.get("dx", 0.0))
+        return 0.0
+
     def _populate_map(self, page: PagePlan):
         if not page.sections:
             self.map_panels = []
@@ -1932,6 +2251,7 @@ class MainWindow(QMainWindow):
             self.map_label.setText(f"{page.label} · no sections to map")
             self.map_view.clear()
             self._update_map_buttons()
+            self._render_overlap_pair()
             return
         self._ensure_bar_context(page)
         by_scan: dict[str, list[dict]] = {}
@@ -1972,6 +2292,7 @@ class MainWindow(QMainWindow):
                 "index": scan_index(path),
                 "path": path,
                 "offset": offset,
+                "dx": self._scan_dx(page, scan),
                 "sections": sections,
                 "used": used,
             })
@@ -2016,6 +2337,8 @@ class MainWindow(QMainWindow):
             self.map_label.setText(
                 (self.map_page_label or "No page") + " · no sections to map")
             self.map_view.clear()
+            if self.tabs.currentWidget() is self.overlap_tab:
+                self._render_overlap_pair()
             return
         count = len(self.map_panels)
         if count >= 2:
@@ -2030,6 +2353,13 @@ class MainWindow(QMainWindow):
             f"green = page-used, red = dropped")
         self.map_view.set_panels(
             self.map_film, pair, self.overrides.links if self.overrides else {})
+        if self.tabs.currentWidget() is self.overlap_tab:
+            self._render_overlap_pair()
+
+    def _on_tab_changed(self, _index: int):
+        if self.tabs.currentWidget() is self.overlap_tab:
+            self._render_overlap_pair()
+
 
     def _map_step(self, delta: int):
         if len(self.map_panels) < 2:
@@ -2059,6 +2389,266 @@ class MainWindow(QMainWindow):
             self._mark_dirty()
             self._render_map_pair()
             self.statusBar().showMessage("Cleared pair links", 4000)
+
+    # ---------- section overlap override -------------------------------
+
+    @staticmethod
+    def _overlap_key(page: PagePlan, pair: list[dict]) -> str:
+        if len(pair) < 2:
+            return ""
+        a_scan = str(pair[0].get("scan") or "")
+        b_scan = str(pair[1].get("scan") or "")
+        a_idx = scan_index(Path(a_scan))
+        b_idx = scan_index(Path(b_scan))
+        if a_idx is None or b_idx is None:
+            return ""
+        if a_idx > b_idx:
+            a_scan, b_scan = b_scan, a_scan
+            a_idx, b_idx = b_idx, a_idx
+        prefix = a_scan[:a_scan.rfind("_")] if "_" in a_scan else a_scan
+        return f"{page.source_dir.name}/{prefix}/{a_idx}-{b_idx}"
+
+    def _overlap_offset(self, page: PagePlan, pair: list[dict]):
+        key = self._overlap_key(page, pair)
+        rec = self.overrides.get_overlap(key) if self.overrides else {}
+        if rec.get("dx") is not None and rec.get("dy") is not None:
+            return float(rec["dx"]), float(rec["dy"]), \
+                "manual override", key
+        if self.bar_store is not None:
+            rec = self.bar_store.get_pair(key)
+            if rec.get("dx") is not None and rec.get("dy") is not None:
+                return float(rec["dx"]), float(rec["dy"]), \
+                    "pair anchor", key
+        if len(pair) >= 2:
+            dx = float(pair[0].get("dx", 0.0)) - float(
+                pair[1].get("dx", 0.0))
+            dy = float(pair[0].get("offset", 0.0)) - float(
+                pair[1].get("offset", 0.0))
+            return dx, dy, "plan", key
+        return 0.0, 0.0, "none", key
+
+    def _match_ocr_boxes(self, key: str, left, right, dx: float, dy: float,
+                         left_size: tuple[int, int],
+                         right_size: tuple[int, int]):
+        """Match every OCR box through the current pair translation.
+
+        Returns ``(left_marks, right_marks, count)``.  Box geometry is the
+        primary correspondence (same physical line, possibly different OCR
+        text); exact text is only a fallback when no box lands nearby.
+        """
+        cache_key = (key, round(dx, 2), round(dy, 2),
+                     str(getattr(left, "path", "")),
+                     str(getattr(right, "path", "")))
+        cached = self.overlap_match_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        left_marks: dict[int, str] = {}
+        right_marks: dict[int, str] = {}
+        count = 0
+        if left is not None and right is not None:
+            lw, lh = left_size
+            rw, rh = right_size
+            for i, entry in enumerate(left.entries):
+                cx, cy = entry.center
+                px, py = cx + dx, cy + dy
+                if not (0 <= px <= rw and 0 <= py <= rh):
+                    continue
+                j = right.match_box(entry, dx, dy)
+                if j is not None:
+                    jx, jy = right.entries[j].center
+                    if not (0 <= jx - dx <= lw and 0 <= jy - dy <= lh):
+                        j = None
+                if j is None and entry.norm:
+                    candidates = right.by_norm.get(entry.norm) or []
+                    if candidates:
+                        j = min(candidates, key=lambda k: (
+                            (right.entries[k].center[0] - px) ** 2
+                            + (right.entries[k].center[1] - py) ** 2))
+                        jx, jy = right.entries[j].center
+                        if not (0 <= jx - dx <= lw and 0 <= jy - dy <= lh):
+                            j = None
+                if j is not None:
+                    left_marks[i] = "match"
+                    right_marks[j] = "match"
+                    count += 1
+        result = (left_marks, right_marks, count)
+        self.overlap_match_cache[cache_key] = result
+        return result
+
+    def _update_overlap_buttons(self):
+        count = len(self.map_panels)
+        has_pair = count >= 2
+        self.overlap_prev.setEnabled(has_pair and self.map_pair > 0)
+        self.overlap_next.setEnabled(has_pair
+                                     and self.map_pair < count - 2)
+        has_override = bool(
+            self.overrides and self.overlap_pair_key
+            and self.overrides.get_overlap(self.overlap_pair_key))
+        self.overlap_clear.setEnabled(has_override)
+
+    def _render_overlap_pair(self):
+        pair = self._map_pair_panels()
+        if self.current is None or len(pair) < 2:
+            self.overlap_pair_key = ""
+            self.overlap_pending = None
+            self.overlap_left_ocr = None
+            self.overlap_right_ocr = None
+            self.overlap_a.clear_view()
+            self.overlap_b.clear_view()
+            self.overlap_a_label.setText("A")
+            self.overlap_b_label.setText("B")
+            self.overlap_label.setText(
+                (self.map_page_label or "No page")
+                + " · no scan pair to override")
+            self._update_overlap_buttons()
+            return
+
+        page = self.plans[self.current]
+        self._ensure_bar_context(page)
+        key = self._overlap_key(page, pair)
+        if key != self.overlap_pair_key:
+            self.overlap_pair_key = key
+            self.overlap_pending = None
+        dx, dy, source, key = self._overlap_offset(page, pair)
+        self.overlap_pair_key = key
+
+        scans = []
+        views = (self.overlap_a, self.overlap_b)
+        for view, panel in zip(views, pair):
+            path = Path(panel["path"])
+            if view.loaded_path() != path:
+                if not view.load(path):
+                    scans.append(None)
+                    continue
+                ocr_scan = self.ocr_lib.load(path) if self.ocr_lib else None
+                view.set_ocr(ocr_scan.entries if ocr_scan else None)
+                scans.append(ocr_scan)
+            else:
+                scans.append(self.ocr_lib.load(path)
+                             if self.ocr_lib else None)
+            view.set_show_all_ocr(self.overlap_show_ocr.isChecked())
+            view.set_bands(panel.get("sections") or [],
+                           panel.get("used") or {})
+        self.overlap_left_ocr, self.overlap_right_ocr = scans[0], scans[1]
+
+        sizes = []
+        for view in views:
+            size = view.image_size()
+            sizes.append((size.width(), size.height()))
+        left_marks, right_marks, count = self._match_ocr_boxes(
+            key, self.overlap_left_ocr, self.overlap_right_ocr,
+            dx, dy, sizes[0], sizes[1])
+        left_marks = dict(left_marks)
+        right_marks = dict(right_marks)
+        if self.overlap_pending is not None:
+            side, index, _point = self.overlap_pending
+            if index is not None:
+                if side == "a":
+                    left_marks[index] = "pinned"
+                else:
+                    right_marks[index] = "pinned"
+        self.overlap_a.set_ocr_marks(left_marks)
+        self.overlap_b.set_ocr_marks(right_marks)
+
+        for view, panel, scan in zip(views, pair, scans):
+            n_ocr = len(scan.entries) if scan else 0
+            label = view.side.upper()
+            label += f" · {panel.get('index', '?')} · {panel.get('scan', '')}"
+            label += f" · OCR {n_ocr or 'none'}"
+            (self.overlap_a_label if view is self.overlap_a
+             else self.overlap_b_label).setText(label)
+
+        count_total = len(self.map_panels)
+        pair_text = (f"pair {self.map_pair + 1}/{count_total - 1}"
+                     if count_total >= 2 else "single scan")
+        scans_text = " ↔ ".join(str(p.get("index", "?")) for p in pair)
+        note = ""
+        if self.overlap_pending is not None:
+            side, _idx, _point = self.overlap_pending
+            note = (f" · clicked {side.upper()} — now click the matching "
+                    f"OCR box in {'B' if side == 'a' else 'A'}")
+        self.overlap_label.setText(
+            f"{self.map_page_label} · {pair_text} · scans {scans_text} · "
+            f"dx={dx:+.1f} dy={dy:+.1f} ({source}) · "
+            f"{count} OCR match(es){note} · green = matched OCR, "
+            f"click one box in each scan to override")
+        self._update_overlap_buttons()
+
+    def _on_overlap_point(self, side: str, point, ocr_index: int):
+        if self.current is None or self.overrides is None:
+            return
+        pair = self._map_pair_panels()
+        if len(pair) < 2:
+            return
+        index = ocr_index if ocr_index is not None and ocr_index >= 0 else None
+        if self.overlap_pending is None or self.overlap_pending[0] == side:
+            self.overlap_pending = (side, index, point)
+            self._render_overlap_pair()
+            if index is not None:
+                scan = (self.overlap_left_ocr if side == "a"
+                        else self.overlap_right_ocr)
+                text = scan.entries[index].text if scan else ""
+                self.statusBar().showMessage(
+                    f"Pinned {side.upper()} OCR: {text[:100]} — click the "
+                    f"matching box in {'B' if side == 'a' else 'A'}", 10000)
+            return
+
+        pending_side, pending_index, pending_point = self.overlap_pending
+        if pending_side == "a":
+            a_point, b_point = pending_point, point
+            a_index, b_index = pending_index, index
+        else:
+            a_point, b_point = point, pending_point
+            a_index, b_index = index, pending_index
+
+        ax, ay = a_point.x(), a_point.y()
+        bx, by = b_point.x(), b_point.y()
+        left, right = self.overlap_left_ocr, self.overlap_right_ocr
+        if (a_index is not None and b_index is not None
+                and left is not None and right is not None
+                and 0 <= a_index < len(left.entries)
+                and 0 <= b_index < len(right.entries)):
+            ax, ay = left.entries[a_index].center
+            bx, by = right.entries[b_index].center
+        dx, dy = bx - ax, by - ay
+        page = self.plans[self.current]
+        key = self._overlap_key(page, pair)
+        if not key:
+            self.statusBar().showMessage(
+                "Could not derive a scan-pair key for this override", 6000)
+            return
+        self.overrides.set_overlap(
+            key, dx, dy,
+            anchors=[{"a": [round(ax, 2), round(ay, 2)],
+                      "b": [round(bx, 2), round(by, 2)]}])
+        self.overlap_pending = None
+        self.overlap_match_cache.clear()
+        self._mark_dirty()
+        self._render_overlap_pair()
+        self.statusBar().showMessage(
+            f"Section overlap override: dx={dx:+.1f} dy={dy:+.1f} "
+            f"({key}) — press Replan (R) to apply", 8000)
+
+    def _toggle_overlap_ocr(self, checked: bool):
+        for view in (self.overlap_a, self.overlap_b):
+            view.set_show_all_ocr(bool(checked))
+        self.statusBar().showMessage(
+            "Showing all OCR boxes; green = matched" if checked
+            else "Showing only pinned/matched OCR boxes", 3000)
+
+    def _clear_overlap_override(self):
+        if self.overrides is None or not self.overlap_pair_key:
+            return
+        if self.overrides.clear_overlap(self.overlap_pair_key):
+            self.overlap_pending = None
+            self.overlap_match_cache.clear()
+            self._mark_dirty()
+            self._render_overlap_pair()
+            self.statusBar().showMessage(
+                f"Cleared overlap override for {self.overlap_pair_key}", 5000)
+        else:
+            self.statusBar().showMessage(
+                "This pair has no explicit overlap override", 4000)
 
     def _on_component_row(self, row: int):
         if self.component_page is None or row < 0:

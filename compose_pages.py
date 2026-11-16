@@ -251,8 +251,14 @@ def apply_manual(page):
         if film is None:
             raise SystemExit(f"ERROR: {where}: no film range in [auto] or "
                              "[manual].")
+        # plan_v2 pages carry `sections` (one cropped piece per contributing
+        # scan section) instead of the v1 `contribs` list.  Keep them on the
+        # effective plan so compose_page can build the equivalent contributors.
+        sections = [dict(sec) for sec in (auto.get("sections") or [])]
+        gaps = [list(g) for g in (auto.get("gaps") or [])]
         return dict(kind="page", label=label, film=[float(v) for v in film],
-                    contribs=contribs, axis=_plan_axis(page))
+                    contribs=contribs, sections=sections, gaps=gaps,
+                    axis=_plan_axis(page))
 
     if kind == "gap_join":
         sections = [dict(sec) for sec in auto.get("sections", [])]
@@ -649,6 +655,53 @@ def check_sizes(contribs, resolver):
                 "identical dimensions to the planned scans.")
 
 
+def v2_contribs(sections, resolvers, default_dir, lru):
+    """Turn plan_v2 `sections` into composer contributors.
+
+    A v2 section stores only its scan rows and film placement; the scans'
+    content columns were not recorded, so (like section_annotator.py) the
+    full scan width is used and the white frame border is retained.  Loading
+    through the shared LRU means assemble_page reuses the same in-memory scan.
+    """
+    out = []
+    for sec in sections:
+        scan_dir = default_dir
+        resolver = resolvers.get(scan_dir)
+        if resolver is None:
+            resolver = resolvers[scan_dir] = ScanResolver(scan_dir)
+        path = resolver.resolve(sec["scan"])
+        img = _load_gray_cached(path, lru)
+        if img is None:
+            continue
+        h, w = img.shape[:2]
+        r0, r1 = (int(v) for v in sec["rows"])
+        out.append({
+            "scan": sec["scan"],
+            "path": path,
+            "bbox": [max(0, r0), min(h - 1, r1), 0, w - 1],
+            "size": [h, w],
+            "film_offset": float(sec["film_offset"]),
+            "dx": float(sec.get("dx", 0.0)),
+        })
+    return out
+
+
+def _fill_v2_gaps(img, film, gaps):
+    """Paint plan_v2's uncovered film rows red so review pages show them."""
+    if img is None or not gaps:
+        return img
+    out = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR) if img.ndim == 2 else img.copy()
+    h = out.shape[0]
+    f_lo, f_hi = film
+    for gap in gaps:
+        y0 = int(round(max(float(gap[0]), f_lo) - f_lo))
+        y1 = int(round(min(float(gap[1]), f_hi) - f_lo))
+        y0, y1 = max(0, y0), min(h, y1)
+        if y1 > y0:
+            out[y0:y1, :] = (0, 0, 255)
+    return out
+
+
 def compose_page(plan, resolvers, lru, default_dir, field_lru=None,
                  spot_blur=41, spot_weight=1.0):
     """Render one effective plan to an image (grayscale or BGR for red bands).
@@ -670,13 +723,19 @@ def compose_page(plan, resolvers, lru, default_dir, field_lru=None,
         return img, label
 
     if plan["kind"] == "page":
-        contribs = resolve_contribs(_axis_bbox(plan["contribs"], axis),
-                                    resolvers, default_dir)
-        check_sizes(contribs, resolvers)
+        if plan.get("contribs"):
+            contribs = resolve_contribs(_axis_bbox(plan["contribs"], axis),
+                                        resolvers, default_dir)
+            check_sizes(contribs, resolvers)
+        else:
+            contribs = v2_contribs(plan.get("sections") or [], resolvers,
+                                   default_dir, lru)
         img, _ = assemble_page(plan["film"], contribs, lru,
                                field_lru=field_lru, spot_blur=spot_blur,
                                spot_weight=spot_weight, axis=axis)
-        return _axis_canvas(img, axis), label
+        img = _fill_v2_gaps(_axis_canvas(img, axis), plan["film"],
+                            plan.get("gaps") or [])
+        return img, label
 
     # gap_join: stack the sections (each its own film frame), with the red
     # bands the plan inserts between them. The later scan's piece comes first

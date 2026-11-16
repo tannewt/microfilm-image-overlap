@@ -18,8 +18,17 @@ normalize, CTC decode incl. charset from inference.yml) is shared with
 ocr_worker_onnx.py -- import from there so the two workers stay in
 parity.
 
+The models shipped in onnx_models/ are only as good as the conversion
+that made them: the committed det.ncnn.* decodes garbage on every
+backend (rec is fine). Check a box with scripts/test_ncnn_det.py before
+trusting it -- it prints the prob-map correlation against the ORT det
+and a PASS/FAIL verdict.
+
 Usage: .venv-onnx/bin/python ocr_worker_ncnn.py [port]
 env:   OCR_NCNN_GPU=0  force the CPU backend (debug)
+       OCR_NCNN_DEVICE=<index|name substring>  pin this worker to one
+         Vulkan device (e.g. a box with two GPUs runs one worker per GPU:
+         OCR_NCNN_DEVICE=0 and OCR_NCNN_DEVICE=1, or "radeon"/"arc")
 """
 
 import json
@@ -47,18 +56,55 @@ REC_BUCKETS = [400, 800, 1600, 3200]
 _ort_lock = base._ort_lock      # same one-at-a-time request shape
 _sess = None
 _gpu = False
+_device = -1
+
+
+def _pick_device():
+    """Vulkan device for this worker. ncnn enumerates every ICD device
+    (on a two-GPU box plus the software lavapipe): OCR_NCNN_DEVICE is
+    either an index or a case-insensitive substring of the device name,
+    so each worker can be pinned to one GPU. Empty -> ncnn's default."""
+    want = os.environ.get("OCR_NCNN_DEVICE", "").strip()
+    names = []
+    for i in range(ncnn.get_gpu_count()):
+        try:
+            names.append(ncnn.get_gpu_info(i).device_name())
+        except Exception:
+            names.append(f"device{i}")
+    if not want:
+        return ncnn.get_default_gpu_index(), names
+    if want.isdigit():
+        idx = int(want)
+        if idx >= len(names):
+            raise SystemExit(f"OCR_NCNN_DEVICE={idx} but only {len(names)} "
+                             f"Vulkan device(s): {names}")
+        return idx, names
+    hits = [i for i, name in enumerate(names) if want.lower() in name.lower()]
+    if not hits:
+        raise SystemExit(f"OCR_NCNN_DEVICE={want!r} matched no Vulkan "
+                         f"device: {names}")
+    return hits[0], names
 
 
 def init():
-    global _sess, _gpu
+    global _sess, _gpu, _device
     use_gpu = os.environ.get("OCR_NCNN_GPU", "1") == "1" \
         and ncnn.get_gpu_count() > 0
     _gpu = bool(use_gpu)
+    names = []
+    if _gpu:
+        _device, names = _pick_device()
+    else:
+        _device = -1
+        names = [ncnn.get_gpu_info(i).device_name()
+                 for i in range(ncnn.get_gpu_count())]
     _sess = {}
     for key, param in (("det", DET),
                        *[(f"rec{w}", os.path.join(MODELS_DIR, f"rec_{w}.ncnn.param"))
                          for w in REC_BUCKETS]):
         net = ncnn.Net()
+        if _gpu and _device >= 0:
+            net.set_vulkan_device(_device)
         net.opt.use_vulkan_compute = _gpu
         net.opt.num_threads = 4
         net.opt.use_fp16_packed = net.opt.use_fp16_storage = _gpu
@@ -73,7 +119,9 @@ def init():
         _sess[key] = net
     base._charset = base.load_charset(base.YML)
     return {"gpu": _gpu, "devices": ncnn.get_gpu_count(),
-            "rec_buckets": REC_BUCKETS}
+            "device": _device,
+            "device_name": names[_device] if 0 <= _device < len(names) else None,
+            "all_devices": names, "rec_buckets": REC_BUCKETS}
 
 
 def det_prob(bgr):
@@ -161,6 +209,7 @@ class Handler(base.Handler):    # _json / request plumbing reused as-is
     def do_GET(self):
         if self.path == "/health":
             self._json(200, {"ok": _sess is not None, "gpu": _gpu,
+                             "device": _device,
                              "busy": _ort_lock.locked()})
         else:
             self._json(404, {"error": "not found"})

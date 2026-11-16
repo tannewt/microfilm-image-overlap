@@ -31,9 +31,14 @@ ONNX_DIR = os.environ.get(
     "OCR_ONNX_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)),
                  "..", "onnx_models"))
-GPU_EPS = ("MIGraphXExecutionProvider", "ROCmExecutionProvider")
-PREFERRED = ["MIGraphXExecutionProvider", "ROCmExecutionProvider",
-             "DnnlExecutionProvider", "CPUExecutionProvider"]
+# provider names differ per build: AMD's pip onnxruntime-rocm exposes
+# ROCMExecutionProvider, Arch's python-onnxruntime-rocm exposes
+# MIGraphXExecutionProvider (older: ROCmExecutionProvider)
+GPU_EPS = ("ROCMExecutionProvider", "MIGraphXExecutionProvider",
+           "ROCmExecutionProvider")
+PREFERRED = ["ROCMExecutionProvider", "MIGraphXExecutionProvider",
+             "ROCmExecutionProvider", "DnnlExecutionProvider",
+             "CPUExecutionProvider"]
 
 
 def main():

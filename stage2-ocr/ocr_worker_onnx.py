@@ -86,12 +86,24 @@ def init():
     # AMD's official builds (Arch python-onnxruntime-rocm >= 1.29)
     # expose the GPU EP as MIGraphXExecutionProvider (formerly
     # ROCmExecutionProvider); NVIDIA builds keep CUDAExecutionProvider.
-    for p in ("ROCmExecutionProvider", "MIGraphXExecutionProvider",
-              "CUDAExecutionProvider"):
+    # provider name differs per build: AMD's pip onnxruntime-rocm uses
+    # ROCMExecutionProvider, Arch's python-onnxruntime-rocm uses
+    # MIGraphXExecutionProvider (older builds: ROCmExecutionProvider)
+    for p in ("ROCMExecutionProvider", "MIGraphXExecutionProvider",
+              "ROCmExecutionProvider", "CUDAExecutionProvider"):
         if p in avail:
             # fastest first, CPU last as fallback
             providers = [p, "CPUExecutionProvider"]
             break
+    # ROCm on big pages needs a large, non-doubling arena: MIOpen asks for
+    # multi-GB conv workspaces, and the default kNextPowerOfTwo arena fails
+    # with "Failed to allocate ... 1.5 GB" on a 16 GB card.
+    prov_opts = {}
+    if providers[0] != "CPUExecutionProvider":
+        prov_opts = {"arena_extend_strategy": "kSameAsRequested"}
+        if os.environ.get("OCR_GPU_MEM_LIMIT"):
+            prov_opts["gpu_mem_limit"] = os.environ["OCR_GPU_MEM_LIMIT"]
+        providers = [(providers[0], prov_opts)] + providers[1:]
     det = ort.InferenceSession(DET, providers=providers)
     rec = ort.InferenceSession(REC, providers=providers)
     _sess = {"det": det, "rec": rec}
@@ -130,13 +142,28 @@ def _det_norm(im_bgr):
 
 
 def _box_score(prob, box):
+    """Mean prob inside a quad.
+
+    Scored in a local ROI, not on a full-prob-map-sized mask: on a
+    4600x5600 page the per-contour full-size mask was ~900 allocations
+    of 26 MB each and dominated the whole runtime (~4.5 s/page of the
+    GPU workers; the det map itself is 0.3 s).  Integer translation of
+    the polygon rasterizes to the same pixels, so the score is identical."""
     h, w = prob.shape[:2]
     box = box.copy()
     box[:, 0] = np.clip(box[:, 0], 0, w - 1)
     box[:, 1] = np.clip(box[:, 1], 0, h - 1)
-    mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.fillPoly(mask, [box.astype(np.int32)], 1)
-    return prob[mask == 1].mean()
+    x0 = max(0, int(np.floor(box[:, 0].min())))
+    y0 = max(0, int(np.floor(box[:, 1].min())))
+    x1 = min(w, int(np.ceil(box[:, 0].max())) + 1)
+    y1 = min(h, int(np.ceil(box[:, 1].max())) + 1)
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    sub = prob[y0:y1, x0:x1]
+    mask = np.zeros(sub.shape, dtype=np.uint8)
+    cv2.fillPoly(mask, [(box - (x0, y0)).astype(np.int32)], 1)
+    sel = sub[mask == 1]
+    return float(sel.mean()) if sel.size else 0.0
 
 
 def _unclip(box):
@@ -189,14 +216,25 @@ def db_decode(prob, ratio):
     return boxes
 
 
+# Optional downscale for the detector: OCR_DET_SCALE=0.5 runs det on a
+# half-size page (4x less GPU memory and time) and scales the boxes back up.
+# Measured box recall vs native det on a full page: 0.75 -> 912/913,
+# 0.5 -> 908/913, 0.43 -> 875/913, 0.33 -> 769/913.
+DET_SCALE = float(os.environ.get("OCR_DET_SCALE", "1.0") or "1.0")
+
+
 def det_boxes(bgr):
+    scale = DET_SCALE
+    if scale != 1.0:
+        bgr = cv2.resize(bgr, None, fx=scale, fy=scale,
+                         interpolation=cv2.INTER_AREA)
     x, ratio = _det_norm(bgr)
     # paddle2onnx folds the post-ops in: det's output is ALREADY a
     # 0-1 probability map (and rec's is already softmaxed), so no
     # sigmoid/softmax here.
     prob = _sess["det"].run(None,
                             {_sess["det"].get_inputs()[0].name: x})[0][0, 0]
-    return db_decode(prob, ratio)
+    return db_decode(prob, ratio * scale)
 
 
 def _crop(bgr, box):
@@ -230,6 +268,23 @@ def _rec_norm_batch(crops):
     return out
 
 
+def decode_ctc(logits):
+    """Greedy CTC decode of a softmaxed (N, T, C) batch ->
+    [(text, confidence)] -- shared with the ncnn and OpenVINO workers."""
+    pred = logits.argmax(axis=2)                  # (N, T)
+    conf = logits.max(axis=2)                     # (N, T)
+    outs = []
+    for p, c in zip(pred, conf):
+        chars, probs = [], []
+        for idx, pr in zip(p, c):
+            if idx != 0 and (not chars or idx != chars[-1]):
+                chars.append(idx)
+                probs.append(float(pr))
+        text = "".join(_charset[j] for j in chars)
+        outs.append((text, float(np.mean(probs)) if probs else 0.0))
+    return outs
+
+
 def rec_lines(crops):
     """CTC-greedy decode of a batch of line crops -> (text, confidence)."""
     outs = []
@@ -238,16 +293,7 @@ def rec_lines(crops):
         x = _rec_norm_batch(chunk)
         logits = _sess["rec"].run(
             None, {_sess["rec"].get_inputs()[0].name: x})[0]
-        pred = logits.argmax(axis=2)              # (N, T)
-        conf = logits.max(axis=2)                 # (N, T)
-        for p, c in zip(pred, conf):
-            chars, probs = [], []
-            for idx, pr in zip(p, c):
-                if idx != 0 and (not chars or idx != chars[-1]):
-                    chars.append(idx)
-                    probs.append(float(pr))
-            text = "".join(_charset[j] for j in chars)
-            outs.append((text, float(np.mean(probs)) if probs else 0.0))
+        outs.extend(decode_ctc(logits))
     return outs
 
 
